@@ -11,7 +11,7 @@ import logging
 from typing import Any
 
 from PySide6.QtCore import Qt, Slot, QSize
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -59,6 +59,7 @@ class MainWindow(QMainWindow):
         self._setup_docks()
         self._setup_central_widget()
         self._setup_statusbar()
+        self._setup_fullscreen_shortcuts()
 
         logger.info("Main window initialised")
 
@@ -238,6 +239,22 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(central)
 
+    def _setup_fullscreen_shortcuts(self) -> None:
+        """Register global shortcuts that work even in fullscreen.
+
+        F11 and Escape must work when menu/toolbar are hidden.
+        QShortcut with Qt.ApplicationShortcut context ensures this.
+        """
+        # F11 toggle fullscreen (global, works even in fullscreen)
+        self._fs_shortcut = QShortcut(QKeySequence("F11"), self)
+        self._fs_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._fs_shortcut.activated.connect(self._on_toggle_fullscreen)
+
+        # Escape to exit fullscreen
+        self._esc_shortcut = QShortcut(QKeySequence("Escape"), self)
+        self._esc_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._esc_shortcut.activated.connect(self._on_exit_fullscreen)
+
     def _setup_statusbar(self) -> None:
         """Configure the status bar."""
         status = QStatusBar(self)
@@ -296,23 +313,40 @@ class MainWindow(QMainWindow):
     # ── Slots: view ─────────────────────────────────────────────────
 
     @Slot()
+    @Slot()
     def _on_toggle_fullscreen(self) -> None:
         """Toggle fullscreen mode."""
-        self._fullscreen = not self._fullscreen
         if self._fullscreen:
-            self.showFullScreen()
-            self.menuBar().hide()
-            self._viewer_toolbar.hide()
-            # Also hide main toolbar
-            for tb in self.findChildren(QToolBar):
-                tb.hide()
+            self._on_exit_fullscreen()
         else:
-            self.showNormal()
-            self.menuBar().show()
-            self._viewer_toolbar.show()
-            for tb in self.findChildren(QToolBar):
-                tb.show()
-        self.act_fullscreen.setChecked(self._fullscreen)
+            self._on_enter_fullscreen()
+
+    def _on_enter_fullscreen(self) -> None:
+        """Enter fullscreen."""
+        self._fullscreen = True
+        self.showFullScreen()
+        self.menuBar().hide()
+        self._viewer_toolbar.hide()
+        for tb in self.findChildren(QToolBar):
+            tb.hide()
+        self.act_fullscreen.setChecked(True)
+        self._status_text.setText("Fullscreen — press Esc or F11 to exit")
+
+    def _on_exit_fullscreen(self) -> None:
+        """Exit fullscreen and restore UI."""
+        if not self._fullscreen:
+            return
+        self._fullscreen = False
+        self.showNormal()
+        self.menuBar().show()
+        self._viewer_toolbar.show()
+        for tb in self.findChildren(QToolBar):
+            tb.show()
+        self.act_fullscreen.setChecked(False)
+        if self._connected:
+            self._status_text.setText(f"Session active: {self._peer_id}")
+        else:
+            self._status_text.setText("Ready")
 
     @Slot()
     def _on_fit_view(self) -> None:

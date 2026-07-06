@@ -146,13 +146,11 @@ class Message:
         )
 
     @classmethod
-    def from_reader(cls, reader: Any) -> Message:  # noqa: ANN401
+    async def from_reader(cls, reader: Any) -> Message:  # noqa: ANN401
         """Read and decode a message from an asyncio StreamReader."""
-        import asyncio
-
         header_data = b""
         while len(header_data) < _HEADER_SIZE:
-            chunk = reader.read(_HEADER_SIZE - len(header_data))
+            chunk = await reader.read(_HEADER_SIZE - len(header_data))
             if not chunk:
                 raise ConnectionError("Connection closed while reading header")
             header_data += chunk
@@ -163,7 +161,7 @@ class Message:
 
         body_data = b""
         while len(body_data) < body_len:
-            chunk = reader.read(body_len - len(body_data))
+            chunk = await reader.read(body_len - len(body_data))
             if not chunk:
                 raise ConnectionError("Connection closed while reading body")
             body_data += chunk
@@ -266,3 +264,21 @@ class Message:
     @classmethod
     def error(cls, code: int, message: str) -> Message:
         return cls(MessageType.ERROR, {"code": code, "message": message})
+
+    @classmethod
+    def relay_register(
+        cls, session_id: str = "",
+    ) -> Message:
+        """Register with a relay server or create a new session."""
+        return cls(
+            MessageType.RELAY_REGISTER,
+            {"session_id": session_id},
+        )
+
+    @classmethod
+    def relay_route(cls, inner_type: int, inner_payload: dict) -> Message:
+        """Route a message through the relay to the paired peer."""
+        return cls(
+            MessageType.RELAY_ROUTE,
+            {"inner_type": inner_type, "inner_payload": inner_payload},
+        )

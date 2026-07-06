@@ -76,6 +76,57 @@ uv run pytest              # Run all tests
 
 ## Relay server
 
+Il relay server permette la connessione quando P2P diretto (WebRTC) non è possibile
+(NAT simmetrico, firewall restrittivi).
+
+### Avvio rapido
+
 ```bash
+# Con uv (raccomandato)
 uv run opendesk-relay --port 8474
+
+# Con pip
+opendesk-relay --port 8474
+
+# O direttamente
+python3 -m relay_server.server --port 8474
 ```
+
+### Installazione come servizio systemd (Linux)
+
+```bash
+# Installa come servizio di sistema
+sudo ./scripts/install-relay.sh --port 8474
+
+# Avvia
+sudo systemctl start opendesk-relay
+
+# Logs in tempo reale
+sudo journalctl -u opendesk-relay -f
+
+# Riavvia dopo aggiornamenti
+sudo systemctl restart opendesk-relay
+```
+
+### Configurazione client
+
+Nelle impostazioni del client OpenDesk (Tools → Settings → Network), imposta:
+
+| Campo | Valore |
+|-------|--------|
+| **Relay Host** | IP pubblico del server |
+| **Relay Port** | 8474 (o la porta configurata) |
+| **Enable relay** | ✅ |
+
+### Opzioni CLI
+
+```
+opendesk-relay --help
+opendesk-relay --host 0.0.0.0 --port 8474 --debug
+```
+
+| Opzione | Default | Descrizione |
+|---------|---------|-------------|
+| `--host` | `0.0.0.0` | Indirizzo su cui ascoltare |
+| `--port` | `8474` | Porta TCP |
+| `--debug` | off | Logging dettagliato |
