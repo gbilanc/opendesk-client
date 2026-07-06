@@ -55,6 +55,12 @@ QMenu::separator {
     margin: 4px 8px;
 }
 
+/* ── Session Info ── */
+#SessionInfoWidget {
+    background-color: #0f172a;
+    border-bottom: 1px solid #1e3a5f;
+}
+
 /* ── Toolbar ── */
 QToolBar {
     background-color: #1e293b;

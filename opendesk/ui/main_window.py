@@ -8,25 +8,24 @@ and status bar.  Manages the overall connection lifecycle.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
-from PySide6.QtCore import Qt, Slot, QSize
+from PySide6.QtCore import QSize, Qt, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
-    QHBoxLayout,
     QMainWindow,
     QMessageBox,
-    QSplitter,
     QStatusBar,
     QToolBar,
     QVBoxLayout,
     QWidget,
 )
 
+from opendesk.crypto.auth import AuthManager
 from opendesk.ui.chat_panel import ChatPanel
 from opendesk.ui.connections import ConnectionDialog, SessionStatusWidget
 from opendesk.ui.file_transfer_ui import FileTransferDock
+from opendesk.ui.session_info import SessionInfoWidget
 from opendesk.ui.settings_dialog import SettingsDialog
 from opendesk.ui.viewer import RemoteViewer, ViewerToolbar
 
@@ -50,6 +49,9 @@ class MainWindow(QMainWindow):
         self._connected: bool = False
         self._fullscreen: bool = False
         self._peer_id: str = ""
+
+        # Session management
+        self._auth_manager = AuthManager()
 
         # Build UI
         self._setup_actions()
@@ -226,11 +228,15 @@ class MainWindow(QMainWindow):
         self.tabifyDockWidget(self._chat_panel, self._transfer_dock)
 
     def _setup_central_widget(self) -> None:
-        """Build the central area with the remote viewer."""
+        """Build the central area with session info + remote viewer."""
         central = QWidget(self)
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+
+        # Session info bar (shows your ID + password like TeamViewer)
+        self._session_info = SessionInfoWidget(self._auth_manager, central)
+        layout.addWidget(self._session_info)
 
         # The remote viewer
         self._viewer = RemoteViewer(central)
@@ -326,6 +332,7 @@ class MainWindow(QMainWindow):
         self._fullscreen = True
         self.showFullScreen()
         self.menuBar().hide()
+        self._session_info.hide()
         self._viewer_toolbar.hide()
         for tb in self.findChildren(QToolBar):
             tb.hide()
@@ -339,6 +346,7 @@ class MainWindow(QMainWindow):
         self._fullscreen = False
         self.showNormal()
         self.menuBar().show()
+        self._session_info.show()
         self._viewer_toolbar.show()
         for tb in self.findChildren(QToolBar):
             tb.show()
@@ -368,7 +376,6 @@ class MainWindow(QMainWindow):
     @Slot()
     def _on_toggle_theme(self) -> None:
         """Toggle between light and dark theme."""
-        from PySide6.QtWidgets import QApplication
         from opendesk.app import toggle_theme
         theme = toggle_theme(QApplication.instance())
         self.act_toggle_theme.setText(
