@@ -79,7 +79,7 @@ class RelayServer:
     # ── startup / shutdown ──────────────────────────────────────────
 
     async def start(self) -> None:
-        """Start the relay server."""
+        """Start the relay server and keep running until stopped."""
         self._server = await asyncio.start_server(
             self._handle_client,
             host=self._host,
@@ -90,6 +90,10 @@ class RelayServer:
 
         # Start periodic cleanup
         asyncio.create_task(self._cleanup_loop())
+
+        # Keep the server running until stop() is called
+        async with self._server:
+            await self._server.serve_forever()
 
     async def stop(self) -> None:
         """Stop the relay server."""
