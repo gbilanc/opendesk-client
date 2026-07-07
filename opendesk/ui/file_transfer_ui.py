@@ -38,9 +38,8 @@ class FileTransferDock(QDialog):
         self.setMinimumSize(380, 350)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
 
-        # ── Central widget ──
-        central = QWidget(self)
-        layout = QVBoxLayout(central)
+        # ── Layout ──
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(6)
 
@@ -58,8 +57,6 @@ class FileTransferDock(QDialog):
         self._clear_btn.setStyleSheet("font-size: 12px;")
         self._clear_btn.clicked.connect(self._clear_completed)
         layout.addWidget(self._clear_btn)
-
-        self.setWidget(central)
 
     # ── public API ──────────────────────────────────────────────────
 

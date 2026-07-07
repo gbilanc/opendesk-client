@@ -38,9 +38,8 @@ class ChatPanel(QDialog):
         self.resize(360, 450)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
 
-        # ── Central widget ──
-        central = QWidget(self)
-        layout = QVBoxLayout(central)
+        # ── Layout ──
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(8)
 
@@ -67,8 +66,6 @@ class ChatPanel(QDialog):
         input_layout.addWidget(self._send_btn)
 
         layout.addLayout(input_layout)
-
-        self.setWidget(central)
 
         # Connect input enable
         self._input.textChanged.connect(self._on_input_changed)
