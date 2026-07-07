@@ -238,8 +238,15 @@ class _RelaySession:
             self.inbox.put(("message", msg, self.session_seq))
 
             t = msg.type
-            if t == MessageType.RELAY_REGISTER and msg.payload.get("paired"):
-                self.inbox.put(("connected", ("client", self.session_id), self.session_seq))
+            if t == MessageType.RELAY_REGISTER:
+                if msg.payload.get("paired"):
+                    self.inbox.put(("connected", ("client", self.session_id), self.session_seq))
+                elif msg.payload.get("mode") == "host":
+                    # Session doesn't exist — we were registered as host instead
+                    logger.warning("Session %s not found on relay", self.session_id)
+                    self.inbox.put(("error", f"Session {self.session_id} not found", self.session_seq))
+                    self.inbox.put(("disconnected", None, self.session_seq))
+                    break
 
             elif t == MessageType.AUTH_REQUEST:
                 await self._send_async(Message.auth_response(self.password))
