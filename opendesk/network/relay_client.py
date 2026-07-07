@@ -340,10 +340,10 @@ class RelayClient(QObject):
         if self._session:
             self._session.send_message(msg)
 
-    def send_frame(self, rgb: np.ndarray, width: int, height: int, pts: int) -> None:
+    def send_frame(self, rgb: np.ndarray, width: int, height: int, pts: int, keyframe: bool = False) -> None:
         """Send a video frame (host only)."""
         if self._session:
-            self._session.send_frame(rgb, width, height, pts)
+            self._session.send_frame(rgb, width, height, pts, keyframe=keyframe)
 
     def send_mouse_event(
         self, x: int, y: int, button: int | None = None,
