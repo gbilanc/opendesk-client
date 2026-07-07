@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 
 import numpy as np
 
@@ -92,6 +93,7 @@ class MainWindow(QMainWindow):
         self._relay.frame_received.connect(self._on_frame_received)
         self._relay.message_received.connect(self._on_relay_message)
         self._relay.error.connect(self._on_relay_error)
+        self._relay.device_list_received.connect(self._on_device_list_received)
 
         # Screen capture for hosting
         self._capture: ScreenCapture | None = None
@@ -110,6 +112,16 @@ class MainWindow(QMainWindow):
         # Settings
         self._settings = QSettings("OpenDesk", "OpenDesk")
 
+        # Device identity (persistent, generated once)
+        self._device_id = self._settings.value("device/id", "")
+        if not self._device_id:
+            self._device_id = str(uuid.uuid4())
+            self._settings.setValue("device/id", self._device_id)
+        self._device_name = self._settings.value("device/name", "")
+        if not self._device_name:
+            self._device_name = f"Desktop-{self._device_id[:8]}"
+            self._settings.setValue("device/name", self._device_name)
+
         # Relay retry counter (exponential backoff)
         self._relay_retries = 0
 
@@ -117,6 +129,9 @@ class MainWindow(QMainWindow):
         self._bw_measure_bytes: int = 0
         self._bw_measure_time: float = 0.0
         self._bw_estimated_kbps: float = 0.0
+
+        # Device list from relay (cache)
+        self._device_list_cache: list[dict] = []
 
         # Build UI
         self._setup_actions()
@@ -374,7 +389,11 @@ class MainWindow(QMainWindow):
             "Starting host on relay %s:%s with session %s", host, port, session_id
         )
         self._status_text.setText(f"Hosting: {session_id}")
-        self._relay.start_hosting(host, port, self._host_session_id, password)
+        self._relay.start_hosting(
+            host, port, self._host_session_id, password,
+            device_id=self._device_id,
+            device_name=self._device_name,
+        )
 
     @Slot(str, str)
     def _on_relay_connected(self, role: str, session_id: str) -> None:
@@ -465,6 +484,18 @@ class MainWindow(QMainWindow):
 
         self._on_disconnect()
 
+    @Slot(list)
+    def _on_device_list_received(self, devices: list[dict]) -> None:
+        """Called when the relay sends the current device list."""
+        logger.debug("Device list received: %d devices", len(devices))
+        self._device_list_cache = devices
+        # Update connection dialog if it's open
+        if hasattr(self, "_connection_dialog") and self._connection_dialog is not None:
+            try:
+                self._connection_dialog.update_device_list(devices)
+            except Exception:
+                pass
+
     def _schedule_relay_retry(self) -> None:
         """Schedule a relay reconnection attempt with exponential backoff."""
         # Cap at 5 retries (max ~2 minutes of trying)
@@ -486,7 +517,11 @@ class MainWindow(QMainWindow):
         self._status_text.setText("Reconnecting to relay...")
         # Need the password — retrieve from session_info
         password = self._session_info.password if self._session_info else ""
-        self._relay.start_hosting(host, port, self._host_session_id, password)
+        self._relay.start_hosting(
+            host, port, self._host_session_id, password,
+            device_id=self._device_id,
+            device_name=self._device_name,
+        )
 
     # ── Screen capture and streaming (host) ─────────────────────────
 
