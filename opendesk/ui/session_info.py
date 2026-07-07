@@ -12,11 +12,13 @@ import random
 import string
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QWidget,
 )
@@ -27,21 +29,28 @@ logger = logging.getLogger(__name__)
 
 
 class SessionInfoWidget(QWidget):
-    """Displays the local session ID and password for incoming connections.
+    """Displays the device identity, session ID and password.
 
-    Designed to sit between the toolbar and the remote viewer.
-    Auto-adapts to light/dark theme via palette colors.
+    Shows the persistent device ID (UUID), an editable device name,
+    and the current session ID + password for incoming connections.
     """
 
     session_refreshed = Signal(str, str)  # session_id, password
+    device_name_changed = Signal(str)  # new device name
 
     def __init__(
-        self, auth_manager: AuthManager, parent: QWidget | None = None,
+        self, auth_manager: AuthManager,
+        device_id: str = "",
+        device_name: str = "",
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._auth = auth_manager
         self._session_id = ""
         self._password = ""
+        self._device_id = device_id
+        self._device_name = device_name
+        self._name_editing = False
         self._setup_ui()
         self.refresh_session()
 
@@ -54,8 +63,58 @@ class SessionInfoWidget(QWidget):
         layout.setContentsMargins(20, 10, 20, 10)
         layout.setSpacing(12)
 
-        # ── Il tuo ID ──
-        id_label = QLabel("Il tuo ID:")
+        # ── Device ID (persistent) ──
+        device_label = QLabel("Dispositivo:")
+        device_label.setStyleSheet(
+            "font-size: 13px; font-weight: 700; color: #2563eb;"
+        )
+        layout.addWidget(device_label)
+
+        self._device_name_label = QLabel(self._device_name)
+        self._device_name_label.setObjectName("DeviceNameLabel")
+        self._device_name_label.setStyleSheet(
+            """
+            QLabel#DeviceNameLabel {
+                font-size: 14px;
+                font-weight: 700;
+                padding: 4px 8px;
+                border: 1px solid transparent;
+                border-radius: 4px;
+            }
+            QLabel#DeviceNameLabel:hover {
+                border-color: palette(mid);
+                background: rgba(37, 99, 235, 0.08);
+            }
+            """
+        )
+        self._device_name_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._device_name_label.mousePressEvent = self._start_name_edit  # type: ignore[method-assign]
+        layout.addWidget(self._device_name_label)
+
+        self._device_id_label = QLabel(self._device_id[:8])
+        self._device_id_label.setStyleSheet(
+            "font-size: 11px; color: palette(shadow); padding: 0 4px;"
+        )
+        self._device_id_label.setToolTip(f"ID dispositivo: {self._device_id}")
+        layout.addWidget(self._device_id_label)
+
+        # ── Name editor (hidden by default) ──
+        self._name_editor = QLineEdit(self._device_name)
+        self._name_editor.setFixedHeight(30)
+        self._name_editor.setMaximumWidth(200)
+        self._name_editor.setVisible(False)
+        self._name_editor.returnPressed.connect(self._finish_name_edit)
+        self._name_editor.editingFinished.connect(self._finish_name_edit)
+        layout.addWidget(self._name_editor)
+
+        # ── Separator ──
+        sep1 = QFrame()
+        sep1.setFrameShape(QFrame.Shape.VLine)
+        sep1.setStyleSheet("max-width: 1px;")
+        layout.addWidget(sep1)
+
+        # ── Session ID ──
+        id_label = QLabel("ID sessione:")
         id_label.setStyleSheet(
             "font-size: 13px; font-weight: 700; color: #2563eb;"
         )
@@ -87,10 +146,10 @@ class SessionInfoWidget(QWidget):
         layout.addWidget(self._copy_id_btn)
 
         # ── Separator ──
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setStyleSheet("max-width: 1px;")
-        layout.addWidget(sep)
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.Shape.VLine)
+        sep2.setStyleSheet("max-width: 1px;")
+        layout.addWidget(sep2)
 
         # ── Password ──
         pwd_label = QLabel("Password:")
@@ -171,6 +230,35 @@ class SessionInfoWidget(QWidget):
     @property
     def password(self) -> str:
         return self._password
+
+    # ── Device name editing ────────────────────────────────────────
+
+    @Slot()
+    def set_device_name(self, name: str) -> None:
+        """Update the displayed device name (from settings)."""
+        self._device_name = name
+        self._device_name_label.setText(name)
+        self._name_editor.setText(name)
+
+    def _start_name_edit(self, event: QMouseEvent | None = None) -> None:  # noqa: N802
+        """Show the name editor in place of the label."""
+        self._device_name_label.setVisible(False)
+        self._name_editor.setText(self._device_name)
+        self._name_editor.setVisible(True)
+        self._name_editor.selectAll()
+        self._name_editor.setFocus()
+
+    @Slot()
+    def _finish_name_edit(self) -> None:  # noqa: N802
+        """Apply the new name and emit signal."""
+        new_name = self._name_editor.text().strip()
+        if not new_name:
+            new_name = self._device_name
+        self._device_name = new_name
+        self._device_name_label.setText(new_name)
+        self._device_name_label.setVisible(True)
+        self._name_editor.setVisible(False)
+        self.device_name_changed.emit(new_name)
 
     # ── Session lifecycle ───────────────────────────────────────────
 

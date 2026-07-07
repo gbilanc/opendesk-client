@@ -318,8 +318,14 @@ class MainWindow(QMainWindow):
         layout.setSpacing(0)
 
         # Session info bar (shows your ID + password like TeamViewer)
-        self._session_info = SessionInfoWidget(self._auth_manager, central)
+        self._session_info = SessionInfoWidget(
+            self._auth_manager,
+            device_id=self._device_id,
+            device_name=self._device_name,
+            parent=central,
+        )
         self._session_info.session_refreshed.connect(self._on_session_refreshed)
+        self._session_info.device_name_changed.connect(self._on_device_name_changed)
         layout.addWidget(self._session_info)
 
         # session_refreshed was already emitted in __init__, catch up
@@ -503,6 +509,13 @@ class MainWindow(QMainWindow):
                 )
             except Exception:
                 pass
+
+    @Slot(str)
+    def _on_device_name_changed(self, new_name: str) -> None:
+        """Save the device name when the user edits it."""
+        self._device_name = new_name
+        self._settings.setValue("device/name", new_name)
+        logger.info("Device name changed to: %s", new_name)
 
     def _schedule_relay_retry(self) -> None:
         """Schedule a relay reconnection attempt with exponential backoff."""
