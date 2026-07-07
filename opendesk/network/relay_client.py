@@ -259,6 +259,9 @@ class _RelaySession:
             except (ConnectionError, asyncio.IncompleteReadError) as e:
                 logger.warning("Connection lost: %s", e)
                 break
+            except asyncio.CancelledError:
+                logger.debug("Read cancelled (shutting down)")
+                break
 
     def send_frame(self, rgb: np.ndarray, width: int, height: int, pts: int) -> None:
         """Send a VIDEO_FRAME over the relay."""
