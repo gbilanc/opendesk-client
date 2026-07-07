@@ -320,21 +320,11 @@ class MainWindow(QMainWindow):
     def _setup_statusbar(self) -> None:
         """Configure the status bar."""
         status = QStatusBar(self)
-        status.setStyleSheet("""
-            QStatusBar {
-                background: #f8fafc;
-                border-top: 1px solid #e2e8f0;
-                padding: 2px 12px;
-                font-size: 12px;
-                color: #64748b;
-            }
-        """)
 
         self._session_status = SessionStatusWidget()
         status.addPermanentWidget(self._session_status)
 
         self._status_text = QLabel("Ready")
-        self._status_text.setStyleSheet("font-size: 12px; color: #64748b;")
         status.addWidget(self._status_text, 1)
 
         # ── Caps Lock indicator ──

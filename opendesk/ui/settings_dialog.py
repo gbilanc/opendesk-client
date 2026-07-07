@@ -61,30 +61,6 @@ class SettingsDialog(QDialog):
 
         # ── Tabs ──
         tabs = QTabWidget()
-        tabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                padding: 16px;
-                background: #ffffff;
-            }
-            QTabBar::tab {
-                padding: 10px 20px;
-                border: 1px solid transparent;
-                border-bottom: none;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
-                font-weight: 500;
-            }
-            QTabBar::tab:selected {
-                background: #ffffff;
-                border-color: #e2e8f0;
-                color: #2563eb;
-            }
-            QTabBar::tab:hover:!selected {
-                background: #f8fafc;
-            }
-        """)
 
         # ── Tab 1: Video ──
         video_tab = QWidget()

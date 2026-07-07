@@ -53,15 +53,6 @@ class ChatPanel(QDockWidget):
         self._display = QTextBrowser()
         self._display.setReadOnly(True)
         self._display.setOpenExternalLinks(False)
-        self._display.setStyleSheet("""
-            QTextBrowser {
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                padding: 8px;
-                background: #ffffff;
-                font-size: 13px;
-            }
-        """)
         self._display.setMinimumHeight(120)
         layout.addWidget(self._display, 1)
 
@@ -71,35 +62,12 @@ class ChatPanel(QDockWidget):
 
         self._input = QLineEdit()
         self._input.setPlaceholderText("Type a message...")
-        self._input.setStyleSheet("""
-            QLineEdit {
-                padding: 10px 14px;
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                font-size: 13px;
-            }
-            QLineEdit:focus {
-                border-color: #2563eb;
-            }
-        """)
         self._input.returnPressed.connect(self._send_message)
         input_layout.addWidget(self._input, 1)
 
         self._send_btn = QPushButton("Send")
         self._send_btn.setEnabled(False)
-        self._send_btn.setStyleSheet("""
-            QPushButton {
-                padding: 10px 20px;
-                border: none;
-                border-radius: 8px;
-                background: #2563eb;
-                color: white;
-                font-weight: 600;
-                font-size: 13px;
-            }
-            QPushButton:hover { background: #1d4ed8; }
-            QPushButton:disabled { background: #94a3b8; }
-        """)
+        self._send_btn.setObjectName("PrimaryButton")
         self._send_btn.clicked.connect(self._send_message)
         input_layout.addWidget(self._send_btn)
 

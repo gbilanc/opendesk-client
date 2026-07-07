@@ -52,39 +52,16 @@ class FileTransferDock(QDockWidget):
 
         # Header
         header = QLabel("Active Transfers")
-        header.setStyleSheet("font-size: 14px; font-weight: 600; color: #0f172a;")
+        header.setStyleSheet("font-size: 14px; font-weight: 600;")
         layout.addWidget(header)
 
         # Transfer list
         self._list = QListWidget()
-        self._list.setStyleSheet("""
-            QListWidget {
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                padding: 4px;
-            }
-            QListWidget::item {
-                padding: 8px;
-                border-radius: 6px;
-            }
-            QListWidget::item:hover {
-                background: #f8fafc;
-            }
-        """)
         layout.addWidget(self._list, 1)
 
         # Bottom: clear completed
         self._clear_btn = QPushButton("Clear Completed")
-        self._clear_btn.setStyleSheet("""
-            QPushButton {
-                padding: 6px 14px;
-                border: 1px solid #e2e8f0;
-                border-radius: 6px;
-                background: #ffffff;
-                font-size: 12px;
-            }
-            QPushButton:hover { background: #f1f5f9; }
-        """)
+        self._clear_btn.setStyleSheet("font-size: 12px;")
         self._clear_btn.clicked.connect(self._clear_completed)
         layout.addWidget(self._clear_btn)
 
@@ -129,18 +106,18 @@ class FileTransferDock(QDockWidget):
         # Name row
         name_row = QHBoxLayout()
         name_label = QLabel(job.file_info.name)
-        name_label.setStyleSheet("font-weight: 600; font-size: 12px; color: #0f172a;")
+        name_label.setStyleSheet("font-weight: 600; font-size: 12px;")
         name_row.addWidget(name_label, 1)
 
         status_label = QLabel(job.state.name.replace("_", " ").title())
-        status_label.setStyleSheet("font-size: 11px; color: #64748b;")
+        status_label.setStyleSheet("font-size: 11px;")
         name_row.addWidget(status_label)
 
         layout.addLayout(name_row)
 
         # Size info
         size_label = QLabel(self._format_size(job.file_info.size))
-        size_label.setStyleSheet("font-size: 11px; color: #94a3b8;")
+        size_label.setStyleSheet("font-size: 11px;")
         layout.addWidget(size_label)
 
         # Progress bar
@@ -149,17 +126,6 @@ class FileTransferDock(QDockWidget):
         progress.setValue(int(job.progress * 100))
         progress.setFixedHeight(6)
         progress.setTextVisible(False)
-        progress.setStyleSheet("""
-            QProgressBar {
-                border: none;
-                background: #f1f5f9;
-                border-radius: 3px;
-            }
-            QProgressBar::chunk {
-                background: #2563eb;
-                border-radius: 3px;
-            }
-        """)
         layout.addWidget(progress)
 
         # Store progress bar reference

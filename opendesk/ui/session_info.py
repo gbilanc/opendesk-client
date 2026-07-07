@@ -71,10 +71,8 @@ class SessionInfoWidget(QWidget):
                 font-family: 'Courier New', 'Consolas', monospace;
                 letter-spacing: 3px;
                 padding: 2px 14px;
-                border: 1px solid #cbd5e1;
+                border: 1px solid palette(mid);
                 border-radius: 6px;
-                background: rgba(255,255,255,0.6);
-                color: #0f172a;
                 min-width: 180px;
             }
             """
@@ -91,7 +89,7 @@ class SessionInfoWidget(QWidget):
         # ── Separator ──
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setStyleSheet("background: #cbd5e1; max-width: 1px;")
+        sep.setStyleSheet("max-width: 1px;")
         layout.addWidget(sep)
 
         # ── Password ──
@@ -111,10 +109,9 @@ class SessionInfoWidget(QWidget):
                 font-family: 'Courier New', 'Consolas', monospace;
                 letter-spacing: 1px;
                 padding: 2px 14px;
-                border: 1px solid #cbd5e1;
+                border: 1px solid palette(mid);
                 border-radius: 6px;
-                background: rgba(255,255,255,0.6);
-                color: #0f172a;
+                min-width: 120px;
             }
             """
         )
@@ -138,20 +135,17 @@ class SessionInfoWidget(QWidget):
             """
             QPushButton {
                 padding: 4px 14px;
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
                 background: transparent;
                 font-size: 12px;
                 font-weight: 600;
-                color: #475569;
             }
             QPushButton:hover {
-                background: rgba(37, 99, 235, 0.08);
+                background: rgba(37, 99, 235, 0.12);
                 border-color: #2563eb;
                 color: #2563eb;
             }
             QPushButton:pressed {
-                background: rgba(37, 99, 235, 0.15);
+                background: rgba(37, 99, 235, 0.20);
             }
             """
         )
@@ -163,24 +157,8 @@ class SessionInfoWidget(QWidget):
         return """
             QPushButton {
                 padding: 4px 12px;
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
-                background: #ffffff;
                 font-size: 12px;
                 font-weight: 600;
-                color: #2563eb;
-            }
-            QPushButton:hover {
-                background: #eff6ff;
-                border-color: #2563eb;
-            }
-            QPushButton:pressed {
-                background: #dbeafe;
-            }
-            QPushButton:disabled {
-                color: #94a3b8;
-                background: #f8fafc;
-                border-color: #e2e8f0;
             }
         """
 

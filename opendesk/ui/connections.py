@@ -116,17 +116,13 @@ class ConnectionDialog(QDialog):
 
         # ── Title ──
         title = QLabel("Remote Desktop Connection")
-        title.setStyleSheet("""
-            font-size: 18px;
-            font-weight: 700;
-            color: #0f172a;
-        """)
+        title.setStyleSheet("font-size: 18px; font-weight: 700;")
         layout.addWidget(title)
 
         subtitle = QLabel(
             "Enter the remote computer's session ID and password."
         )
-        subtitle.setStyleSheet("font-size: 13px; color: #64748b;")
+        subtitle.setStyleSheet("font-size: 13px;")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
@@ -139,17 +135,9 @@ class ConnectionDialog(QDialog):
         self._peer_id_input.setPlaceholderText("e.g. 123 456 789")
         self._peer_id_input.setMinimumHeight(42)
         self._peer_id_input.setStyleSheet("""
-            QLineEdit {
-                padding: 10px 14px;
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                font-size: 16px;
-                font-weight: 600;
-                letter-spacing: 2px;
-            }
-            QLineEdit:focus {
-                border-color: #2563eb;
-            }
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 2px;
         """)
         self._peer_id_input.textChanged.connect(self._on_input_changed)
         form.addRow("Session ID:", self._peer_id_input)
@@ -158,17 +146,7 @@ class ConnectionDialog(QDialog):
         self._password_input.setPlaceholderText("One-time password")
         self._password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self._password_input.setMinimumHeight(42)
-        self._password_input.setStyleSheet("""
-            QLineEdit {
-                padding: 10px 14px;
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                font-size: 14px;
-            }
-            QLineEdit:focus {
-                border-color: #2563eb;
-            }
-        """)
+        self._password_input.setStyleSheet("font-size: 14px;")
         self._password_input.returnPressed.connect(self._on_connect)
         self._password_input.textChanged.connect(self._on_input_changed)
         form.addRow("Password:", self._password_input)
@@ -180,34 +158,12 @@ class ConnectionDialog(QDialog):
         btn_layout.setSpacing(10)
 
         self._cancel_btn = QPushButton("Cancel")
-        self._cancel_btn.setStyleSheet("""
-            QPushButton {
-                padding: 10px 24px;
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                background: #ffffff;
-                font-size: 14px;
-            }
-            QPushButton:hover { background: #f8fafc; }
-        """)
         self._cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(self._cancel_btn)
 
         self._connect_btn = QPushButton("Connect")
         self._connect_btn.setEnabled(False)
-        self._connect_btn.setStyleSheet("""
-            QPushButton {
-                padding: 10px 24px;
-                border: none;
-                border-radius: 8px;
-                background: #2563eb;
-                color: white;
-                font-size: 14px;
-                font-weight: 600;
-            }
-            QPushButton:hover { background: #1d4ed8; }
-            QPushButton:disabled { background: #94a3b8; }
-        """)
+        self._connect_btn.setObjectName("PrimaryButton")
         self._connect_btn.clicked.connect(self._on_connect)
         btn_layout.addWidget(self._connect_btn)
 
@@ -215,33 +171,11 @@ class ConnectionDialog(QDialog):
 
         # ── Recent connections (compact) ──
         self._recent_label = QLabel("Recent connections:")
-        self._recent_label.setStyleSheet("""
-            font-size: 12px;
-            color: #94a3b8;
-            margin-top: 8px;
-        """)
+        self._recent_label.setStyleSheet("font-size: 12px; margin-top: 8px;")
         layout.addWidget(self._recent_label)
 
         self._recent_list = QListWidget()
         self._recent_list.setMaximumHeight(100)
-        self._recent_list.setStyleSheet("""
-            QListWidget {
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                padding: 4px;
-            }
-            QListWidget::item {
-                padding: 6px 10px;
-                border-radius: 6px;
-            }
-            QListWidget::item:hover {
-                background: #f1f5f9;
-            }
-            QListWidget::item:selected {
-                background: #dbeafe;
-                color: #0f172a;
-            }
-        """)
         self._recent_list.itemClicked.connect(self._on_recent_selected)
         layout.addWidget(self._recent_list)
 
@@ -325,16 +259,15 @@ class SessionStatusWidget(QWidget):
         layout.setSpacing(8)
 
         self._indicator = QLabel("●")
-        self._indicator.setStyleSheet("color: #94a3b8; font-size: 16px;")
+        self._indicator.setStyleSheet("font-size: 16px;")
         layout.addWidget(self._indicator)
 
         self._label = QLabel("Disconnected")
-        self._label.setStyleSheet("font-size: 12px; color: #64748b;")
         layout.addWidget(self._label)
 
     @Slot(str)
     def set_status(self, status: str, connected: bool = False) -> None:
         """Update the displayed status."""
         self._label.setText(status)
-        color = "#22c55e" if connected else "#94a3b8"
+        color = "#22c55e" if connected else "#64748b"
         self._indicator.setStyleSheet(f"color: {color}; font-size: 16px;")
