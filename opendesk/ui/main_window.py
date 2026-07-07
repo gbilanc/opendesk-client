@@ -570,10 +570,18 @@ class MainWindow(QMainWindow):
         """Start screen capture and send frames to the client."""
         try:
             self._capture = ScreenCapture()
-            self._input_backend = create_input_backend()
             self._set_connected(True)
             self._show_viewer_window(peer_name="Host")
             self._status_text.setText("Streaming to remote client...")
+
+            # Input backend (remote injection) — non-critical, skip on failure
+            try:
+                self._input_backend = create_input_backend()
+            except Exception as e:
+                logger.warning(
+                    "Input backend unavailable (%s) — remote input disabled", e,
+                )
+                self._input_backend = None
 
             # Reset bandwidth estimator
             self._bw_measure_bytes = 0
