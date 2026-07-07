@@ -43,7 +43,7 @@ from opendesk.crypto.auth import AuthManager
 from opendesk.network.protocol import Message, MessageType
 from opendesk.network.relay_client import RelayClient, RelayRole
 from opendesk.ui.chat_panel import ChatPanel
-from opendesk.ui.connections import ConnectionDialog, SessionStatusWidget
+from opendesk.ui.connections import ConnectionPanel, SessionStatusWidget
 from opendesk.ui.file_transfer_ui import FileTransferDock
 from opendesk.ui.session_info import SessionInfoWidget
 from opendesk.ui.settings_dialog import SettingsDialog
@@ -136,9 +136,6 @@ class MainWindow(QMainWindow):
 
         # Device list from relay (cache)
         self._device_list_cache: list[dict] = []
-
-        # Connection dialog reference (for updating device list)
-        self._connection_dialog: ConnectionDialog | None = None
 
         # Viewer window (separate window for remote desktop)
         self._viewer_window: ViewerWindow | None = None
@@ -330,15 +327,10 @@ class MainWindow(QMainWindow):
                 self._session_info.password,
             )
 
-        # No embedded viewer — it opens in a separate ViewerWindow
-        # Placeholder label so the central area isn't empty
-        placeholder = QLabel(
-            "Usa Session → Connect per connetterti\n"
-            "a un dispositivo remoto."
-        )
-        placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        placeholder.setStyleSheet("font-size: 16px; color: #64748b;")
-        layout.addWidget(placeholder, 1)
+        # Connection panel (device list + manual entry)
+        self._connection_panel = ConnectionPanel(central)
+        self._connection_panel.connection_requested.connect(self._on_connection_requested)
+        layout.addWidget(self._connection_panel, 1)
 
         self.setCentralWidget(central)
 
@@ -505,14 +497,8 @@ class MainWindow(QMainWindow):
         self._device_list_cache = devices
         # Merge into local registry
         self._device_registry.merge_from_relay(devices)
-        # Update connection dialog if it's open
-        if hasattr(self, "_connection_dialog") and self._connection_dialog is not None:
-            try:
-                self._connection_dialog.update_device_list(
-                    self._device_registry.all()
-                )
-            except Exception:
-                pass
+        # Update connection panel
+        self._connection_panel.update_device_list(self._device_registry.all())
 
     @Slot(str)
     def _on_device_name_changed(self, new_name: str) -> None:
@@ -745,18 +731,9 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_connect(self) -> None:
-        """Open the connection dialog."""
-        self._connection_dialog = ConnectionDialog(
-            devices=self._device_registry.all(),
-            parent=self,
-        )
-        self._connection_dialog.connection_requested.connect(self._on_connection_requested)
-        self._connection_dialog.finished.connect(self._on_connection_dialog_finished)
-        self._connection_dialog.exec()
-
-    def _on_connection_dialog_finished(self) -> None:
-        """Clean up dialog reference."""
-        self._connection_dialog = None
+        """Focus the connection panel and device list."""
+        self._connection_panel.setVisible(True)
+        self._connection_panel.raise_()
 
     @Slot(str, str)
     def _on_connection_requested(self, peer_id: str, password: str) -> None:

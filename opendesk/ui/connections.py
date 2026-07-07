@@ -2,9 +2,8 @@
 Connection manager UI.
 
 Provides:
-- Connection dialog (enter remote ID + password)
-- Recent connections list (persisted)
-- Session status display
+- ConnectionPanel — widget embedded in MainWindow's central area
+- SessionStatusWidget — status display for the status bar
 """
 
 from __future__ import annotations
@@ -13,12 +12,10 @@ import logging
 
 from opendesk.core.device_registry import DeviceEntry
 
-from PySide6.QtCore import Qt, Signal, Slot, QSize
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
-    QDialog,
+    QFrame,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -31,80 +28,119 @@ from PySide6.QtWidgets import (
 
 logger = logging.getLogger(__name__)
 
+
 # ---------------------------------------------------------------------------
-# Connection dialog
+# Connection panel — embedded in MainWindow
 # ---------------------------------------------------------------------------
 
 
-class ConnectionDialog(QDialog):
-    """Dialog for connecting to a remote computer.
+class ConnectionPanel(QWidget):
+    """Embedded panel for connecting to remote devices.
 
-    Shows a list of known devices from the relay (with online/offline
-    status) alongside the manual session ID / password form.
-    Emits ``connection_requested(peer_id, password)`` when the user
-    clicks "Connect".
+    Shows a list of known devices (from registry) with online/offline
+    status, plus a manual entry section for new/unknown devices.
+
+    Emits ``connection_requested(session_id, password)`` when the user
+    initiates a connection.
     """
 
     connection_requested = Signal(str, str)  # session_id, password
 
-    WIDTH = 420
-    HEIGHT = 380
-
-    def __init__(
-        self,
-        devices: list[DeviceEntry] | None = None,
-        parent: QWidget | None = None,
-    ) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Connect to Remote Computer")
-        self.setFixedSize(self.WIDTH, self.HEIGHT)
-        self.setModal(True)
-
-        self._devices: list[DeviceEntry] = devices or []
-
+        self._devices: list[DeviceEntry] = []
         self._setup_ui()
-        self._populate_device_list()
 
     # ── UI setup ────────────────────────────────────────────────────
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 16, 24, 16)
         layout.setSpacing(12)
-        layout.setContentsMargins(24, 20, 24, 20)
 
         # ── Title ──
-        title = QLabel("Seleziona un dispositivo")
+        title = QLabel("Connessione remota")
         title.setStyleSheet("font-size: 18px; font-weight: 700;")
         layout.addWidget(title)
 
-        subtitle = QLabel(
-            "Scegli un dispositivo dalla lista per connetterti."
-        )
-        subtitle.setStyleSheet("font-size: 13px;")
-        subtitle.setWordWrap(True)
-        layout.addWidget(subtitle)
+        # ── Device list section ──
+        list_label = QLabel("Dispositivi conosciuti:")
+        list_label.setStyleSheet("font-size: 12px; font-weight: 600;")
+        layout.addWidget(list_label)
 
-        # ── Device list ──
         self._device_list = QListWidget()
+        self._device_list.setMinimumHeight(100)
         self._device_list.itemClicked.connect(self._on_device_selected)
         self._device_list.itemDoubleClicked.connect(self._on_device_double_clicked)
         layout.addWidget(self._device_list, 1)
 
-        # ── Buttons ──
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(10)
-
-        self._cancel_btn = QPushButton("Annulla")
-        self._cancel_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(self._cancel_btn)
+        # Connect button for selected device
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
 
         self._connect_btn = QPushButton("Connetti")
         self._connect_btn.setEnabled(False)
         self._connect_btn.setObjectName("PrimaryButton")
         self._connect_btn.clicked.connect(self._on_connect)
-        btn_layout.addWidget(self._connect_btn)
+        btn_row.addWidget(self._connect_btn)
 
-        layout.addLayout(btn_layout)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        # ── Manual entry section (collapsible) ──
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet("max-height: 1px;")
+        layout.addWidget(sep)
+
+        self._manual_toggle = QPushButton("➕ Connetti a nuovo dispositivo...")
+        self._manual_toggle.setFlat(True)
+        self._manual_toggle.setStyleSheet(
+            "QPushButton { font-size: 12px; color: #2563eb; text-align: left; "
+            "padding: 4px 0; }"
+            "QPushButton:hover { color: #1d4ed8; }"
+        )
+        self._manual_toggle.clicked.connect(self._toggle_manual)
+        layout.addWidget(self._manual_toggle)
+
+        # Manual form (hidden by default)
+        self._manual_form = QWidget(self)
+        manual_layout = QVBoxLayout(self._manual_form)
+        manual_layout.setContentsMargins(0, 4, 0, 0)
+        manual_layout.setSpacing(8)
+
+        fields = QHBoxLayout()
+        fields.setSpacing(8)
+
+        self._manual_id = QLineEdit()
+        self._manual_id.setPlaceholderText("ID sessione (es. 123 456 789)")
+        self._manual_id.setMinimumHeight(36)
+        self._manual_id.setStyleSheet("font-size: 14px; font-weight: 600; letter-spacing: 2px;")
+        fields.addWidget(self._manual_id, 2)
+
+        self._manual_pwd = QLineEdit()
+        self._manual_pwd.setPlaceholderText("Password")
+        self._manual_pwd.setEchoMode(QLineEdit.EchoMode.Password)
+        self._manual_pwd.setMinimumHeight(36)
+        self._manual_pwd.setStyleSheet("font-size: 14px;")
+        self._manual_pwd.returnPressed.connect(self._on_manual_connect)
+        fields.addWidget(self._manual_pwd, 1)
+
+        manual_layout.addLayout(fields)
+
+        self._manual_connect_btn = QPushButton("Connetti")
+        self._manual_connect_btn.setObjectName("PrimaryButton")
+        self._manual_connect_btn.setEnabled(False)
+        self._manual_connect_btn.clicked.connect(self._on_manual_connect)
+        manual_layout.addWidget(self._manual_connect_btn)
+
+        self._manual_id.textChanged.connect(self._on_manual_input_changed)
+        self._manual_pwd.textChanged.connect(self._on_manual_input_changed)
+
+        self._manual_form.setVisible(False)
+        layout.addWidget(self._manual_form)
+
+        layout.addStretch()
 
     # ── public API ──────────────────────────────────────────────────
 
@@ -113,7 +149,32 @@ class ConnectionDialog(QDialog):
         self._devices = devices
         self._populate_device_list()
 
-    # ── device list ────────────────────────────────────────────────
+    # ── slots ───────────────────────────────────────────────────────
+
+    def _toggle_manual(self) -> None:
+        """Show/hide the manual connection form."""
+        visible = not self._manual_form.isVisible()
+        self._manual_form.setVisible(visible)
+        self._manual_toggle.setText(
+            "✕ Nascondi form manuale" if visible
+            else "➕ Connetti a nuovo dispositivo..."
+        )
+        if visible:
+            self._manual_id.setFocus()
+
+    def _on_manual_input_changed(self) -> None:
+        """Enable/disable manual connect button."""
+        has_id = bool(self._manual_id.text().strip())
+        has_pwd = bool(self._manual_pwd.text().strip())
+        self._manual_connect_btn.setEnabled(has_id and has_pwd)
+
+    def _on_manual_connect(self) -> None:
+        """Connect using manually entered session ID + password."""
+        session_id = self._manual_id.text().strip()
+        password = self._manual_pwd.text().strip()
+        if not session_id or not password:
+            return
+        self.connection_requested.emit(session_id, password)
 
     def _populate_device_list(self) -> None:
         """Populate the device list with online/offline indicators."""
@@ -130,9 +191,9 @@ class ConnectionDialog(QDialog):
             status = "🟢" if dev.online else "🔴"
             display = f"{status}  {dev.device_name}"
             if dev.online:
-                display += f"  — in linea"
+                display += "  — in linea"
             else:
-                display += f"  — offline"
+                display += "  — offline"
 
             item = QListWidgetItem(display)
             item.setData(Qt.ItemDataRole.UserRole, dev.device_id)
@@ -155,7 +216,6 @@ class ConnectionDialog(QDialog):
         self._connect_btn.setEnabled(can_connect)
 
         if trusted and can_connect:
-            # Auto-connect for pre-authorized devices (no password needed)
             self._on_connect()
 
     @Slot(QListWidgetItem)
@@ -184,24 +244,17 @@ class ConnectionDialog(QDialog):
             )
             return
 
-        # Pre-authorized: use empty password (relay will skip auth)
         password = "" if trusted else self._prompt_password(device_id)
-        if password is None:  # user cancelled
-            return
-
-        self.connection_requested.emit(session_id, password)
-        self.accept()
+        if password is not None:
+            self.connection_requested.emit(session_id, password)
 
     def _prompt_password(self, device_id: str) -> str | None:
-        """Ask the user for the connection password.
-
-        Returns the password or ``None`` if cancelled.
-        """
+        """Ask for the connection password via input dialog."""
         from PySide6.QtWidgets import QInputDialog
 
         pwd, ok = QInputDialog.getText(
             self, "Password richiesta",
-            f"Inserisci la password per il dispositivo:\n{device_id[:8]}…",
+            f"Inserisci la password per:\n{device_id[:8]}…",
             QLineEdit.EchoMode.Password,
         )
         return pwd if ok else None
