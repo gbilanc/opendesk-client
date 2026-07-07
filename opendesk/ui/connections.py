@@ -129,10 +129,12 @@ class DeviceDelegate(QStyledItemDelegate):
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
         painter.save()
 
+        from PySide6.QtWidgets import QStyle
+        state = option.state
         # Background
-        if option.state & QStyleOptionViewItem.StateFlag.State_Selected:
+        if state & QStyle.StateFlag.State_Selected:
             painter.fillRect(option.rect, QColor("#dbeafe"))
-        elif option.state & QStyleOptionViewItem.StateFlag.State_MouseOver:
+        elif state & QStyle.StateFlag.State_MouseOver:
             painter.fillRect(option.rect, QColor("#f8fafc"))
         else:
             painter.fillRect(option.rect, QColor("#ffffff"))

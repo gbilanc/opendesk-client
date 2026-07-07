@@ -77,7 +77,7 @@ class ConnectionService(QObject):
 
         # Relay client
         self._relay = RelayClient(self)
-        self._relay.connected.connect(self._relay.on_relay_connected)
+        self._relay.connected.connect(self._on_relay_connected)
         self._relay.disconnected.connect(self._on_relay_disconnected)
         self._relay.peer_joined.connect(self.peer_joined.emit)
         self._relay.auth_requested.connect(self.auth_requested.emit)
@@ -210,7 +210,7 @@ class ConnectionService(QObject):
     # ── relay event handlers → forward as signals ───────────────────
 
     @Slot(str, str)
-    def _relay_on_relay_connected(self, role: str, session_id: str) -> None:
+    def _on_relay_connected(self, role: str, session_id: str) -> None:
         self._relay_retries = 0
         self.connected.emit(role, session_id)
 
