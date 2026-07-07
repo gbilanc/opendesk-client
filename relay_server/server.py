@@ -46,6 +46,8 @@ class RelayPeer:
     writer: asyncio.StreamWriter
     reader: asyncio.StreamReader
     session_id: str = ""
+    device_id: str = ""
+    device_name: str = ""
     last_activity: float = field(default_factory=time.time)
     authenticated: bool = False
     paired_peer_id: str | None = None  # the other peer in a session
@@ -75,6 +77,7 @@ class RelayServer:
         self._peers: dict[str, RelayPeer] = {}  # peer_id → peer
         self._sessions: dict[str, str] = {}  # session_id → host_peer_id
         self._server: asyncio.AbstractServer | None = None
+        self._devices: dict[str, RelayPeer] = {}  # device_id → peer (known hosts)
 
     # ── startup / shutdown ──────────────────────────────────────────
 
@@ -179,6 +182,15 @@ class RelayServer:
         """
         from opendesk.network.protocol import Message, MessageType
 
+        # Store device identity if provided
+        device_id = payload.get("device_id", "")
+        device_name = payload.get("device_name", "")
+        if device_id:
+            peer.device_id = device_id
+            peer.device_name = device_name
+            self._devices[device_id] = peer
+            logger.info("Device registered: %s (%s)", device_id, device_name)
+
         session_id = payload.get("session_id", "")
         if not session_id:
             # Legacy: relay generates session_id
@@ -190,6 +202,7 @@ class RelayServer:
                 Message(MessageType.RELAY_REGISTER, {"session_id": session_id}),
             )
             logger.info("Session created (legacy): %s for peer %s", session_id, peer.peer_id)
+            self._broadcast_device_list()
             return
 
         host_id = self._sessions.get(session_id)
@@ -229,6 +242,33 @@ class RelayServer:
             Message(MessageType.RELAY_REGISTER, {"session_id": session_id, "mode": "host"}),
         )
         logger.info("Session registered: %s for peer %s", session_id, peer.peer_id)
+        self._broadcast_device_list()
+
+    async def _broadcast_device_list(self) -> None:
+        """Send the current list of connected devices to all peers.
+
+        Only peers with a device_id (known hosts) are included.
+        """
+        from opendesk.network.protocol import Message, MessageType
+
+        devices = [
+            {
+                "device_id": p.device_id,
+                "device_name": p.device_name or p.device_id[:8],
+                "session_id": p.session_id,
+            }
+            for p in self._devices.values()
+            if p.device_id and p.writer and not p.writer.is_closing()
+        ]
+        msg = Message.relay_device_list(devices)
+        # Send to every connected peer
+        tasks = [
+            self._send(p, msg)
+            for p in self._peers.values()
+            if p.writer and not p.writer.is_closing()
+        ]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _handle_route(self, peer: RelayPeer, payload: dict) -> None:
         """Forward a message to the paired peer."""
@@ -270,6 +310,13 @@ class RelayServer:
         if peer is None:
             return
 
+        # Remove from device registry if present
+        was_device = False
+        if peer.device_id and self._devices.get(peer.device_id) is peer:
+            del self._devices[peer.device_id]
+            was_device = True
+            logger.info("Device went offline: %s (%s)", peer.device_id, peer.device_name)
+
         # Notify paired peer
         if peer.paired_peer_id:
             paired = self._peers.get(peer.paired_peer_id)
@@ -286,6 +333,10 @@ class RelayServer:
         # Remove session if host
         if peer.session_id and self._sessions.get(peer.session_id) == peer_id:
             del self._sessions[peer.session_id]
+
+        # Broadcast updated device list to remaining peers
+        if was_device:
+            asyncio.ensure_future(self._broadcast_device_list())
 
         logger.info("Peer removed: %s", peer_id)
 

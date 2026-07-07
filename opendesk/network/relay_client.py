@@ -73,6 +73,8 @@ class _RelaySession:
         password: str,
         role: RelayRole,
         inbox: queue.Queue,
+        device_id: str = "",
+        device_name: str = "",
     ) -> None:
         self.host = host
         self.port = port
@@ -80,6 +82,8 @@ class _RelaySession:
         self.password = password
         self.role = role
         self.inbox = inbox
+        self.device_id = device_id
+        self.device_name = device_name
 
         self._loop: asyncio.AbstractEventLoop | None = None
         self._reader: asyncio.StreamReader | None = None
@@ -166,8 +170,12 @@ class _RelaySession:
             self.inbox.put(("disconnected", None))
             return
 
-        # Register session
-        await self._send_async(Message.relay_register(session_id=self.session_id))
+        # Register session with device identity
+        await self._send_async(Message.relay_register(
+            session_id=self.session_id,
+            device_id=self.device_id,
+            device_name=self.device_name,
+        ))
 
         async for msg in self._read_loop():
             self.inbox.put(("message", msg))
@@ -180,6 +188,15 @@ class _RelaySession:
                 self.inbox.put(("peer_joined", None))
                 # Request auth from client
                 await self._send_async(Message.auth_request(self.session_id))
+
+            elif t == MessageType.RELAY_DEVICE_LIST:
+                devices = msg.payload.get("devices", [])
+                self.inbox.put(("device_list", devices))
+
+            elif t == MessageType.RELAY_DEVICE_UPDATE:
+                device = msg.payload.get("device", {})
+                online = msg.payload.get("online", False)
+                self.inbox.put(("device_update", (device, online)))
 
             elif t == MessageType.AUTH_RESPONSE:
                 client_pw = msg.payload.get("password", "")
@@ -231,6 +248,15 @@ class _RelaySession:
                 reason = msg.payload.get("reason", "Authentication failed")
                 self.inbox.put(("auth_result", (False, reason)))
                 break
+
+            elif t == MessageType.RELAY_DEVICE_LIST:
+                devices = msg.payload.get("devices", [])
+                self.inbox.put(("device_list", devices))
+
+            elif t == MessageType.RELAY_DEVICE_UPDATE:
+                device = msg.payload.get("device", {})
+                online = msg.payload.get("online", False)
+                self.inbox.put(("device_update", (device, online)))
 
             elif t == MessageType.VIDEO_FRAME:
                 payload = msg.payload
@@ -304,6 +330,7 @@ class RelayClient(QObject):
     frame_received = Signal(np.ndarray, int, int)  # rgb_data, width, height
     message_received = Signal(object)  # Message
     error = Signal(str)
+    device_list_received = Signal(list)  # list[dict] — devices from relay
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -317,12 +344,14 @@ class RelayClient(QObject):
 
     # ── public API ──────────────────────────────────────────────────
 
-    def start_hosting(self, host: str, port: int, session_id: str, password: str) -> None:
+    def start_hosting(self, host: str, port: int, session_id: str, password: str,
+                      device_id: str = "", device_name: str = "") -> None:
         """Connect to relay and register as host."""
         self._stop_session()
         self._role = RelayRole.HOST
         self._session = _RelaySession(
             host, port, session_id, password, RelayRole.HOST, self._inbox,
+            device_id=device_id, device_name=device_name,
         )
         self._start_thread()
 
@@ -415,3 +444,5 @@ class RelayClient(QObject):
                 self.message_received.emit(data)
             elif event == "error":
                 self.error.emit(data)
+            elif event == "device_list":
+                self.device_list_received.emit(data)

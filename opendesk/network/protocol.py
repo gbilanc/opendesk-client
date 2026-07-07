@@ -93,6 +93,8 @@ class MessageType(IntEnum):
     RELAY_REGISTER = 0x80  # Register with relay server
     RELAY_ROUTE = 0x81  # Route message through relay
     RELAY_PEER_LIST = 0x82  # List of connected peers
+    RELAY_DEVICE_LIST = 0x83  # List of connected devices (id, name, session_id)
+    RELAY_DEVICE_UPDATE = 0x84  # Device went online/offline
 
 
 # ---------------------------------------------------------------------------
@@ -268,11 +270,17 @@ class Message:
     @classmethod
     def relay_register(
         cls, session_id: str = "",
+        device_id: str = "",
+        device_name: str = "",
     ) -> Message:
         """Register with a relay server or create a new session."""
         return cls(
             MessageType.RELAY_REGISTER,
-            {"session_id": session_id},
+            {
+                "session_id": session_id,
+                "device_id": device_id,
+                "device_name": device_name,
+            },
         )
 
     @classmethod
@@ -281,4 +289,20 @@ class Message:
         return cls(
             MessageType.RELAY_ROUTE,
             {"inner_type": inner_type, "inner_payload": inner_payload},
+        )
+
+    @classmethod
+    def relay_device_list(cls, devices: list[dict]) -> Message:
+        """Report the current list of connected devices (relay → peers)."""
+        return cls(
+            MessageType.RELAY_DEVICE_LIST,
+            {"devices": devices},
+        )
+
+    @classmethod
+    def relay_device_update(cls, device: dict, online: bool) -> Message:
+        """Notify peers that a device went online or offline."""
+        return cls(
+            MessageType.RELAY_DEVICE_UPDATE,
+            {"device": device, "online": online},
         )
