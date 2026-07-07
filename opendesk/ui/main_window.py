@@ -105,11 +105,20 @@ class MainWindow(QMainWindow):
         self._stream_timer = QTimer(self)
         self._stream_timer.timeout.connect(self._capture_and_send_frame)
 
+        # Bandwidth adaptation timer
+        self._bw_timer = QTimer(self)
+        self._bw_timer.timeout.connect(self._update_bitrate)
+
         # Settings
         self._settings = QSettings("OpenDesk", "OpenDesk")
 
         # Relay retry counter (exponential backoff)
         self._relay_retries = 0
+
+        # Bandwidth estimation for adaptive bitrate
+        self._bw_measure_bytes: int = 0
+        self._bw_measure_time: float = 0.0
+        self._bw_estimated_kbps: float = 0.0
 
         # Build UI
         self._setup_actions()
@@ -491,6 +500,11 @@ class MainWindow(QMainWindow):
             self._set_connected(True)
             self._status_text.setText("Streaming to remote client...")
 
+            # Reset bandwidth estimator
+            self._bw_measure_bytes = 0
+            self._bw_measure_time = time.time()
+            self._bw_estimated_kbps = 0.0
+
             # Read settings before capture
             fps = int(self._settings.value("video/max_fps", 30))
             quality_name = self._settings.value("video/quality", "MEDIUM")
@@ -515,6 +529,7 @@ class MainWindow(QMainWindow):
 
             # Start streaming timer at target FPS
             self._stream_timer.start(int(1000 / fps))
+            self._bw_timer.start(3000)  # adaptive bitrate every 3s
             self._capture_running = True
             logger.info("Screen capture started at %d FPS", fps)
         except Exception as e:
@@ -528,6 +543,7 @@ class MainWindow(QMainWindow):
     def _stop_streaming(self) -> None:
         """Stop screen capture and streaming."""
         self._stream_timer.stop()
+        self._bw_timer.stop()
         self._capture_running = False
         if self._capture:
             self._capture.release()
@@ -559,8 +575,44 @@ class MainWindow(QMainWindow):
                     pts,
                     keyframe=pkt.is_keyframe,
                 )
+                # Track bandwidth
+                self._bw_measure_bytes += len(pkt.data)
+
         except Exception as e:
             logger.warning("Capture/encode error: %s", e)
+
+    def _update_bitrate(self) -> None:
+        """Periodically adjust encoder bitrate based on measured bandwidth."""
+        if not self._encoder or not self._capture_running:
+            return
+
+        now = time.time()
+        elapsed = now - self._bw_measure_time
+        if elapsed < 2.0 or self._bw_measure_bytes < 1024:
+            return
+
+        measured_kbps = (self._bw_measure_bytes * 8) / (elapsed * 1000)
+        self._bw_measure_bytes = 0
+        self._bw_measure_time = now
+
+        # Smooth with moving average
+        if self._bw_estimated_kbps == 0:
+            self._bw_estimated_kbps = measured_kbps
+        else:
+            self._bw_estimated_kbps = self._bw_estimated_kbps * 0.7 + measured_kbps * 0.3
+
+        # Set encoder bitrate to 80% of estimated bandwidth (leave headroom)
+        target_bitrate = int(self._bw_estimated_kbps * 1000 * 0.8)
+        target_bitrate = max(100_000, min(50_000_000, target_bitrate))
+
+        current = self._encoder.actual_bitrate
+        # Only adjust if change is > 20%
+        if abs(target_bitrate - current) > current * 0.2:
+            logger.info(
+                "Adaptive bitrate: %.0f kbps measured → %d kbps encoder",
+                self._bw_estimated_kbps, target_bitrate // 1000,
+            )
+            self._encoder.actual_bitrate = target_bitrate
 
     # ── Input injection (host) ──────────────────────────────────────
 
