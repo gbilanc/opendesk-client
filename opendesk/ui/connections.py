@@ -207,12 +207,12 @@ class ConnectionPanel(QWidget):
         layout.setSpacing(12)
 
         # ── Title ──
-        title = QLabel("Connessione remota")
+        title = QLabel("Remote Connection")
         title.setStyleSheet("font-size: 18px; font-weight: 700;")
         layout.addWidget(title)
 
         # ── Device list (Model-View) ──
-        list_label = QLabel("Dispositivi conosciuti:")
+        list_label = QLabel("Known devices:")
         list_label.setStyleSheet("font-size: 12px; font-weight: 600;")
         layout.addWidget(list_label)
 
@@ -230,8 +230,8 @@ class ConnectionPanel(QWidget):
         # ── Empty state (shown when list is empty) ──
         self._empty_widget = EmptyStateWidget(
             icon="🖥️",
-            title="Nessun dispositivo trovato",
-            description="I dispositivi connessi al relay appariranno qui.",
+            title="No devices found",
+            description="Devices connected to the relay will appear here.",
             action_text="",
         )
         self._empty_widget.setVisible(False)
@@ -241,7 +241,7 @@ class ConnectionPanel(QWidget):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
-        self._connect_btn = QPushButton("Connetti")
+        self._connect_btn = QPushButton("Connect")
         self._connect_btn.setProperty("class", "primary")
         self._connect_btn.setEnabled(False)
         self._connect_btn.clicked.connect(self._on_connect)
@@ -256,7 +256,7 @@ class ConnectionPanel(QWidget):
         sep.setStyleSheet("max-height: 1px; background: #e2e8f0;")
         layout.addWidget(sep)
 
-        self._manual_toggle = QPushButton("➕ Connetti a nuovo dispositivo...")
+        self._manual_toggle = QPushButton("➕ Connect to new device...")
         self._manual_toggle.setFlat(True)
         self._manual_toggle.setStyleSheet(
             "QPushButton { font-size: 12px; color: #2563eb; text-align: left; "
@@ -276,7 +276,7 @@ class ConnectionPanel(QWidget):
         fields.setSpacing(8)
 
         self._manual_id = QLineEdit()
-        self._manual_id.setPlaceholderText("ID dispositivo (es. ABC-12345)")
+        self._manual_id.setPlaceholderText("Device ID (e.g. ABC-12345)")
         self._manual_id.setMinimumHeight(36)
         self._manual_id.setStyleSheet("font-size: 14px; font-weight: 600; letter-spacing: 2px;")
         fields.addWidget(self._manual_id, 2)
@@ -291,7 +291,7 @@ class ConnectionPanel(QWidget):
 
         manual_layout.addLayout(fields)
 
-        self._manual_connect_btn = QPushButton("Connetti")
+        self._manual_connect_btn = QPushButton("Connect")
         self._manual_connect_btn.setProperty("class", "primary")
         self._manual_connect_btn.setEnabled(False)
         self._manual_connect_btn.clicked.connect(self._on_manual_connect)
@@ -354,8 +354,8 @@ class ConnectionPanel(QWidget):
         visible = not self._manual_form.isVisible()
         self._manual_form.setVisible(visible)
         self._manual_toggle.setText(
-            "✕ Nascondi form manuale" if visible
-            else "➕ Connetti a nuovo dispositivo..."
+            "✕ Hide manual form" if visible
+            else "➕ Connect to new device..."
         )
         if visible:
             self._manual_id.setFocus()
@@ -386,9 +386,9 @@ class ConnectionPanel(QWidget):
 
         if not session_id:
             QMessageBox.warning(
-                self, "Dispositivo offline",
-                "Questo dispositivo non è attualmente connesso al relay.\n"
-                "Riprova più tardi.",
+                self, "Device offline",
+                "This device is not currently connected to the relay.\n"
+                "Please try again later.",
             )
             return
 
@@ -399,8 +399,8 @@ class ConnectionPanel(QWidget):
 
     def _prompt_password(self, device_id: str) -> str | None:
         pwd, ok = QInputDialog.getText(
-            self, "Password richiesta",
-            f"Inserisci la password per:\n{device_id[:8]}…",
+            self, "Password Required",
+            f"Enter the password for:\n{device_id[:8]}…",
             QLineEdit.EchoMode.Password,
         )
         return pwd if ok else None

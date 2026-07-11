@@ -98,7 +98,7 @@ class TransferJob:
 class FileTransferManager:
     """Manages multiple concurrent file transfers.
 
-    Works with a ``P2PConnection`` to send/receive files via
+    Works with the relay client to send/receive files via
     the protocol's file-related message types.
     """
 

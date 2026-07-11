@@ -29,7 +29,8 @@ from PySide6.QtWidgets import (
 
 from opendesk.core.keyboard_state import caps_lock_active
 from opendesk.core.device_registry import DeviceRegistry
-# Imports moved to services/connection_service.py and services/stream_service.py
+from opendesk.core.file_transfer import FileTransferManager, TransferJob, TransferState
+from opendesk.core.clipboard_sync import ClipboardSync
 from opendesk.network.protocol import Message, MessageType
 from opendesk.network.relay_client import RelayRole
 from opendesk.services.connection_service import ConnectionService
@@ -106,6 +107,10 @@ class MainWindow(QMainWindow):
         # Viewer window (separate window for remote desktop)
         self._viewer_window: ViewerWindow | None = None
 
+        # File transfer manager
+        self._file_transfer = FileTransferManager()
+        self._file_transfer_send_fn = None  # set after connection
+
         # Build UI
         self._setup_actions()
         self._setup_menus()
@@ -181,6 +186,13 @@ class MainWindow(QMainWindow):
         self.act_settings.setStatusTip("Configure OpenDesk")
         self.act_settings.triggered.connect(self._on_settings)
 
+        # ── File ──
+        self.act_send_file = QAction("&Send File...", self)
+        self.act_send_file.setShortcut(QKeySequence("Ctrl+F"))
+        self.act_send_file.setStatusTip("Send a file to the remote peer")
+        self.act_send_file.setEnabled(False)
+        self.act_send_file.triggered.connect(self._on_send_file)
+
         # ── Window ──
         self.act_show_chat = QAction("&Chat Panel", self)
         self.act_show_chat.setCheckable(True)
@@ -227,6 +239,8 @@ class MainWindow(QMainWindow):
         # ── Tools ──
         tools_menu = menubar.addMenu("&Tools")
         tools_menu.addAction(self.act_settings)
+        tools_menu.addSeparator()
+        tools_menu.addAction(self.act_send_file)
 
         # ── Help ──
         help_menu = menubar.addMenu("&Help")
@@ -369,6 +383,9 @@ class MainWindow(QMainWindow):
     def _on_relay_disconnected(self) -> None:
         """Relay connection lost."""
         logger.info("Relay disconnected")
+        self._clipboard_sync.stop()
+        self.act_send_file.setEnabled(False)
+        self._file_transfer_send_fn = None
         self._stop_streaming()
         self._set_connected(False)
         self._status_text.setText("Disconnected")
@@ -394,6 +411,14 @@ class MainWindow(QMainWindow):
             else:
                 self._set_connected(True)
                 self._status_text.setText(f"Session active: {self._peer_id}")
+
+            # Enable file transfer
+            self.act_send_file.setEnabled(True)
+            self._file_transfer_send_fn = self._send_file_message_async
+
+            # Start clipboard sync if enabled in settings
+            if self._settings.value("general/clipboard_sync", False, type=bool):
+                self._clipboard_sync.start(self._send_clipboard_message)
         else:
             logger.warning("Authentication failed: %s", message)
             QMessageBox.warning(
@@ -432,6 +457,51 @@ class MainWindow(QMainWindow):
         elif msg.type == MessageType.CHAT_MESSAGE:
             text = msg.payload.get("text", "")
             self._chat_panel.add_message("Remote", text, is_remote=True)
+        elif msg.type in (MessageType.CLIPBOARD_TEXT, MessageType.CLIPBOARD_IMAGE):
+            if self._clipboard_sync.enabled:
+                import asyncio
+                asyncio.ensure_future(self._clipboard_sync.receive_from_remote(msg))
+        elif msg.type == MessageType.FILE_REQUEST:
+            # Auto-accept incoming file transfer
+            import asyncio
+            job_id = self._file_transfer.handle_file_request(msg)
+            if job_id:
+                self._relay.send_message(Message.file_accept(job_id))
+                job = self._file_transfer._jobs.get(job_id)
+                if job:
+                    self._transfer_dock.add_transfer(job)
+        elif msg.type == MessageType.FILE_CHUNK:
+            self._file_transfer.handle_chunk(msg)
+            job_id = msg.payload.get("job_id", "")
+            job = self._file_transfer._jobs.get(job_id)
+            if job:
+                self._transfer_dock.add_transfer(job)
+        elif msg.type == MessageType.FILE_ACCEPT:
+            job_id = msg.payload.get("job_id", "")
+            job = self._file_transfer._jobs.get(job_id)
+            if job and self._file_transfer_send_fn:
+                import asyncio
+                asyncio.ensure_future(
+                    self._file_transfer.send_chunks(job, self._file_transfer_send_fn)
+                )
+        elif msg.type == MessageType.FILE_REJECT:
+            job_id = msg.payload.get("job_id", "")
+            reason = msg.payload.get("reason", "Rejected by remote")
+            job = self._file_transfer._jobs.get(job_id)
+            if job:
+                job.state = TransferState.CANCELLED
+                job.error = reason
+                self._transfer_dock.add_transfer(job)
+        elif msg.type in (MessageType.FILE_COMPLETE, MessageType.FILE_ERROR):
+            job_id = msg.payload.get("job_id", "")
+            job = self._file_transfer._jobs.get(job_id)
+            if job:
+                if msg.type == MessageType.FILE_COMPLETE:
+                    job.state = TransferState.COMPLETED
+                else:
+                    job.state = TransferState.FAILED
+                    job.error = msg.payload.get("error", "Unknown error")
+                self._transfer_dock.add_transfer(job)
         elif msg.type == MessageType.DISCONNECT:
             self._on_disconnect()
 
@@ -593,6 +663,22 @@ class MainWindow(QMainWindow):
         logger.info("Theme switched to %s", theme)
 
     @Slot()
+    def _on_send_file(self) -> None:
+        """Open a file dialog and send the selected file(s)."""
+        from PySide6.QtWidgets import QFileDialog
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Select files to send", "",
+            "All files (*)",
+        )
+        if not paths or not self._file_transfer_send_fn:
+            return
+        import asyncio
+        jobs = asyncio.ensure_future(
+            self._file_transfer.send_files(paths, self._file_transfer_send_fn)
+        )
+        logger.info("File transfer initiated: %d files", len(paths))
+
+    @Slot()
     def _on_settings(self) -> None:
         """Open the settings dialog."""
         dialog = SettingsDialog(
@@ -622,6 +708,15 @@ class MainWindow(QMainWindow):
             self._transfer_dock.activateWindow()
         else:
             self._transfer_dock.hide()
+
+    async def _send_file_message_async(self, msg: Message) -> None:
+        """Async wrapper for relay.send_message (used by FileTransferManager)."""
+        self._relay.send_message(msg)
+
+    async def _send_clipboard_message(self, msg: Message) -> None:
+        """Send a clipboard sync message over the relay."""
+        if self._relay.is_connected:
+            self._relay.send_message(msg)
 
     @Slot(str)
     def _on_chat_message_sent(self, text: str) -> None:

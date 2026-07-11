@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon, QPalette, QColor
 from PySide6.QtWidgets import QApplication
 
 from opendesk.utils.logger import setup_logging
@@ -27,8 +28,52 @@ _QSS_DARK = Path(__file__).parent / "ui" / "resources" / "dark.qss"
 _current_theme: str = "light"
 
 
+# ── QPalette colour schemes ──────────────────────────────────────
+
+_LIGHT_PALETTE: dict[QPalette.ColorRole, str] = {
+    QPalette.ColorRole.Window: "#ffffff",
+    QPalette.ColorRole.WindowText: "#0f172a",
+    QPalette.ColorRole.Base: "#ffffff",
+    QPalette.ColorRole.AlternateBase: "#f8fafc",
+    QPalette.ColorRole.ToolTipBase: "#ffffff",
+    QPalette.ColorRole.ToolTipText: "#0f172a",
+    QPalette.ColorRole.Text: "#0f172a",
+    QPalette.ColorRole.Button: "#f1f5f9",
+    QPalette.ColorRole.ButtonText: "#0f172a",
+    QPalette.ColorRole.BrightText: "#dc2626",
+    QPalette.ColorRole.Link: "#2563eb",
+    QPalette.ColorRole.Highlight: "#2563eb",
+    QPalette.ColorRole.HighlightedText: "#ffffff",
+}
+
+_DARK_PALETTE: dict[QPalette.ColorRole, str] = {
+    QPalette.ColorRole.Window: "#1e293b",
+    QPalette.ColorRole.WindowText: "#e2e8f0",
+    QPalette.ColorRole.Base: "#0f172a",
+    QPalette.ColorRole.AlternateBase: "#1e293b",
+    QPalette.ColorRole.ToolTipBase: "#1e293b",
+    QPalette.ColorRole.ToolTipText: "#e2e8f0",
+    QPalette.ColorRole.Text: "#e2e8f0",
+    QPalette.ColorRole.Button: "#334155",
+    QPalette.ColorRole.ButtonText: "#e2e8f0",
+    QPalette.ColorRole.BrightText: "#ef4444",
+    QPalette.ColorRole.Link: "#60a5fa",
+    QPalette.ColorRole.Highlight: "#3b82f6",
+    QPalette.ColorRole.HighlightedText: "#ffffff",
+}
+
+
+def _apply_palette(app: QApplication, theme: str) -> None:
+    """Apply a QPalette for the given theme."""
+    palette = QPalette()
+    colors = _DARK_PALETTE if theme == "dark" else _LIGHT_PALETTE
+    for role, hex_color in colors.items():
+        palette.setColor(role, QColor(hex_color))
+    app.setPalette(palette)
+
+
 def load_stylesheet(app: QApplication, theme: str = "light") -> None:
-    """Load a QSS theme file.
+    """Load a QSS theme file and apply matching QPalette.
 
     Parameters
     ----------
@@ -41,8 +86,9 @@ def load_stylesheet(app: QApplication, theme: str = "light") -> None:
     qss_path = _QSS_DARK if theme == "dark" else _QSS_LIGHT
     if qss_path.exists():
         app.setStyleSheet(qss_path.read_text())
-        _current_theme = theme
-        logger.debug("Theme '%s' loaded from %s", theme, qss_path)
+    _apply_palette(app, theme)
+    _current_theme = theme
+    logger.debug("Theme '%s' applied (QSS + QPalette)", theme)
 
 
 def toggle_theme(app: QApplication) -> str:
@@ -69,6 +115,7 @@ def main() -> None:
     app.setApplicationName("OpenDesk")
     app.setOrganizationName("OpenDesk")
     app.setApplicationVersion(__import__("opendesk").__version__)
+    app.setWindowIcon(QIcon(str(_QSS_LIGHT.parent / "opendesk.svg")))
 
     app.setStyle("Fusion")
     load_stylesheet(app, "light")

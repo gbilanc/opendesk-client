@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from threading import Lock, RLock
 
+import av
 import numpy as np
 
 from opendesk.core.screen_capture import CapturedFrame
@@ -204,8 +205,6 @@ class VideoEncoder:
             if self._initialised:
                 return
 
-            import av
-
             self._container = av.open(
                 "pipe:", mode="w", format="h264",  # no file, just in-memory
             )
@@ -256,8 +255,6 @@ class VideoEncoder:
 
     def _make_av_frame(self, yuv_planes: np.ndarray) -> Any:  # noqa: ANN401
         """Build an av.VideoFrame from a YUV420P byte array."""
-        import av
-
         h, w = self._config.height, self._config.width
         frame = av.VideoFrame(w, h, "yuv420p")
         y_size = w * h
@@ -340,8 +337,6 @@ class VideoDecoder:
         np.ndarray or None
             RGB uint8 (H, W, 3) or ``None`` if not enough data yet.
         """
-        import av
-
         with self._lock:
             # ── Determine the payload to decode ──
             if self._needs_keyframe:

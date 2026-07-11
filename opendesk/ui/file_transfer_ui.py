@@ -277,7 +277,7 @@ class FileTransferDock(QDialog):
         layout.setSpacing(6)
 
         # Header
-        header = QLabel("Trasferimenti")
+        header = QLabel("Transfers")
         header.setStyleSheet("font-size: 14px; font-weight: 600;")
         layout.addWidget(header)
 
@@ -293,7 +293,7 @@ class FileTransferDock(QDialog):
         layout.addWidget(self._list, 1)
 
         # Bottom: clear completed
-        self._clear_btn = QPushButton("Pulisci completati")
+        self._clear_btn = QPushButton("Clear completed")
         self._clear_btn.setStyleSheet("font-size: 12px;")
         self._clear_btn.clicked.connect(self._clear_completed)
         layout.addWidget(self._clear_btn)

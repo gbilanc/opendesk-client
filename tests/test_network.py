@@ -20,13 +20,14 @@ class TestProtocol:
         assert not msg.encrypted
 
     def test_auth_messages(self) -> None:
-        req = Message.auth_request("123 456 789")
+        req = Message.auth_request("123 456 789", nonce="abc123nonce")
         assert req.type == MessageType.AUTH_REQUEST
         assert req.payload["session_id"] == "123 456 789"
+        assert req.payload["nonce"] == "abc123nonce"
 
-        resp = Message.auth_response("mypassword")
+        resp = Message.auth_response("myhashvalue")
         assert resp.type == MessageType.AUTH_RESPONSE
-        assert resp.payload["password"] == "mypassword"
+        assert resp.payload["nonce_hash"] == "myhashvalue"
 
         ok = Message.auth_ok()
         assert ok.type == MessageType.AUTH_OK

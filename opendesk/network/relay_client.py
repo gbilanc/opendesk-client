@@ -32,6 +32,7 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 from opendesk.network.protocol import Message, MessageType
 from opendesk.core.video_codec import VideoDecoder
+from opendesk.crypto.challenge import generate_nonce, compute_response, verify_response
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,8 @@ class RelayRole(Enum):
 # ---------------------------------------------------------------------------
 
 _POLL_INTERVAL_MS = 50  # poll inbox every 50 ms
+_CONNECT_TIMEOUT = 15.0  # max seconds to wait for TCP connection
+_STOP_JOIN_TIMEOUT = 8.0  # max seconds to wait for session thread to stop
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +98,7 @@ class _RelaySession:
         self._writer: asyncio.StreamWriter | None = None
         self._running = threading.Event()
         self._decoder: VideoDecoder | None = None
+        self._auth_nonce: str = ""  # challenge nonce for challenge-response auth
 
     # ── lifecycle ───────────────────────────────────────────────────
 
@@ -165,9 +169,16 @@ class _RelaySession:
     async def _run_host(self) -> None:
         logger.info("Host connecting to relay %s:%s", self.host, self.port)
         try:
-            self._reader, self._writer = await asyncio.open_connection(
-                self.host, self.port
+            self._reader, self._writer = await asyncio.wait_for(
+                asyncio.open_connection(self.host, self.port),
+                timeout=_CONNECT_TIMEOUT,
             )
+        except asyncio.TimeoutError:
+            err = f"Connection to relay {self.host}:{self.port} timed out ({_CONNECT_TIMEOUT}s)"
+            logger.error(err)
+            self.inbox.put(("error", err, self.session_seq))
+            self.inbox.put(("disconnected", None, self.session_seq))
+            return
         except OSError as e:
             logger.error("Host connection failed: %s", e)
             self.inbox.put(("error", str(e), self.session_seq))
@@ -190,8 +201,10 @@ class _RelaySession:
 
             elif t == MessageType.RELAY_PEER_LIST:
                 self.inbox.put(("peer_joined", None, self.session_seq))
-                # Request auth from client
-                await self._send_async(Message.auth_request(self.session_id))
+                # Challenge-response auth: generate nonce, send to client
+                nonce = generate_nonce()
+                self._auth_nonce = nonce
+                await self._send_async(Message.auth_request(self.session_id, nonce=nonce))
 
             elif t == MessageType.RELAY_DEVICE_LIST:
                 devices = msg.payload.get("devices", [])
@@ -203,14 +216,14 @@ class _RelaySession:
                 self.inbox.put(("device_update", (device, online), self.session_seq))
 
             elif t == MessageType.AUTH_RESPONSE:
-                client_pw = msg.payload.get("password", "")
-                success = client_pw == self.password
+                client_hash = msg.payload.get("nonce_hash", "")
+                success = verify_response(self._auth_nonce, self.password, client_hash)
                 if success:
                     await self._send_async(Message.auth_ok())
                     self.inbox.put(("auth_result", (True, "Authenticated"), self.session_seq))
                 else:
-                    await self._send_async(Message.auth_fail("Invalid password"))
-                    self.inbox.put(("auth_result", (False, "Invalid password"), self.session_seq))
+                    await self._send_async(Message.auth_fail("Invalid credentials"))
+                    self.inbox.put(("auth_result", (False, "Invalid credentials"), self.session_seq))
 
             elif t == MessageType.VIDEO_REQUEST_KEYFRAME:
                 logger.debug("Peer requested keyframe (host)")
@@ -226,9 +239,16 @@ class _RelaySession:
     async def _run_client(self) -> None:
         logger.info("Client connecting to relay %s:%s", self.host, self.port)
         try:
-            self._reader, self._writer = await asyncio.open_connection(
-                self.host, self.port
+            self._reader, self._writer = await asyncio.wait_for(
+                asyncio.open_connection(self.host, self.port),
+                timeout=_CONNECT_TIMEOUT,
             )
+        except asyncio.TimeoutError:
+            err = f"Connection to relay {self.host}:{self.port} timed out ({_CONNECT_TIMEOUT}s)"
+            logger.error(err)
+            self.inbox.put(("error", err, self.session_seq))
+            self.inbox.put(("disconnected", None, self.session_seq))
+            return
         except OSError as e:
             logger.error("Client connection failed: %s", e)
             self.inbox.put(("error", str(e), self.session_seq))
@@ -256,7 +276,9 @@ class _RelaySession:
                     break
 
             elif t == MessageType.AUTH_REQUEST:
-                await self._send_async(Message.auth_response(self.password))
+                nonce = msg.payload.get("nonce", "")
+                nonce_hash = compute_response(nonce, self.password) if nonce else ""
+                await self._send_async(Message.auth_response(nonce_hash))
                 self.inbox.put(("auth_requested", None, self.session_seq))
 
             elif t == MessageType.AUTH_OK:
@@ -467,10 +489,23 @@ class RelayClient(QObject):
     # ── internal ────────────────────────────────────────────────────
 
     def _start_thread(self) -> None:
-        """Start the background thread for the session."""
+        """Start the background thread for the session.
+
+        If the previous thread is still alive (e.g. a stuck TCP
+        connection), we leave it running as a daemon — it will
+        terminate when the process exits or when the socket timeout
+        fires.  We create a fresh thread for the new session.
+        """
         session = self._session
         if session is None:
             return
+        old_thread = self._thread
+        if old_thread and old_thread.is_alive():
+            logger.info(
+                "Previous relay thread still alive — "
+                "creating new thread for session %s",
+                getattr(session, 'session_id', '?'),
+            )
         self._thread = threading.Thread(target=session.start, daemon=True)
         self._thread.start()
 
@@ -480,16 +515,26 @@ class RelayClient(QObject):
         Signals the event loop to stop and waits for the background
         thread to finish (with a timeout) so that no stale coroutines
         are left running when a new session starts.
+
+        If the thread refuses to stop, we cannot safely terminate it
+        (daemon threads cannot be killed).  Instead we mark it as
+        stale — the next ``_start_thread()`` check will skip stale
+        threads and let them die on their own.
         """
         if self._session is None or self._thread is None:
             return
         self._session.stop()
         self._session = None
-        # Wait for the thread to actually finish so we don't race
-        # with a new session that may re-use the same inbox / seq.
-        self._thread.join(timeout=2.0)
+        # Wait for the thread to finish
+        self._thread.join(timeout=_STOP_JOIN_TIMEOUT)
         if self._thread.is_alive():
-            logger.warning("Relay thread did not stop within 2s")
+            logger.warning(
+                "Relay thread did not stop within %.1fs — "
+                "connection may be stuck.  A new session will create "
+                "a fresh thread; the old one will terminate when its "
+                "TCP socket timeout fires.",
+                _STOP_JOIN_TIMEOUT,
+            )
         self._thread = None
 
     @Slot()

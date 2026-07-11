@@ -128,11 +128,11 @@ class SettingsDialog(QDialog):
         auth_form = QFormLayout(auth_group)
         auth_form.setSpacing(8)
 
-        self._require_auth = QCheckBox("Richiedi password per connessioni in ingresso")
+        self._require_auth = QCheckBox("Require password for incoming connections")
         self._require_auth.setChecked(True)
         auth_form.addRow("", self._require_auth)
 
-        self._e2ee_check = QCheckBox("Abilita crittografia end-to-end")
+        self._e2ee_check = QCheckBox("Enable end-to-end encryption")
         self._e2ee_check.setChecked(True)
         auth_form.addRow("", self._e2ee_check)
 
@@ -143,8 +143,7 @@ class SettingsDialog(QDialog):
         auth_dev_layout = QVBoxLayout(auth_dev_group)
 
         desc = QLabel(
-            "I dispositivi in questa lista possono connettersi "
-            "senza inserire la password."
+            "Devices in this list can connect without entering a password."
         )
         desc.setWordWrap(True)
         desc.setStyleSheet("font-size: 12px;")
@@ -155,7 +154,7 @@ class SettingsDialog(QDialog):
         auth_dev_layout.addWidget(self._trusted_list)
 
         btn_row = QHBoxLayout()
-        self._remove_trusted_btn = QPushButton("Rimuovi")
+        self._remove_trusted_btn = QPushButton("Remove")
         self._remove_trusted_btn.clicked.connect(self._remove_trusted_device)
         btn_row.addWidget(self._remove_trusted_btn)
         btn_row.addStretch()
@@ -166,16 +165,31 @@ class SettingsDialog(QDialog):
 
         tabs.addTab(sec_tab, "Security")
 
-        # ── Tab 4: Audio ──
-        audio_tab = QWidget()
-        audio_layout = QFormLayout(audio_tab)
-        audio_layout.setSpacing(12)
+        # ── Tab 4: General (Clipboard, Audio, etc.) ──
+        general_tab = QWidget()
+        general_layout = QVBoxLayout(general_tab)
+        general_layout.setSpacing(12)
+
+        clipboard_group = QGroupBox("Clipboard")
+        clipboard_form = QFormLayout(clipboard_group)
+        clipboard_form.setSpacing(8)
+
+        self._enable_clipboard_sync = QCheckBox("Sync clipboard with remote peer")
+        self._enable_clipboard_sync.setChecked(False)
+        clipboard_form.addRow("", self._enable_clipboard_sync)
+        general_layout.addWidget(clipboard_group)
+
+        audio_group = QGroupBox("Audio")
+        audio_form = QFormLayout(audio_group)
+        audio_form.setSpacing(8)
 
         self._enable_audio = QCheckBox("Enable remote audio")
         self._enable_audio.setChecked(False)
-        audio_layout.addRow("", self._enable_audio)
+        audio_form.addRow("", self._enable_audio)
+        general_layout.addWidget(audio_group)
 
-        tabs.addTab(audio_tab, "Audio")
+        general_layout.addStretch()
+        tabs.addTab(general_tab, "General")
 
         layout.addWidget(tabs)
 
@@ -224,6 +238,9 @@ class SettingsDialog(QDialog):
             self._settings.value("security/e2ee", True, type=bool)
         )
 
+        self._enable_clipboard_sync.setChecked(
+            self._settings.value("general/clipboard_sync", False, type=bool)
+        )
         self._enable_audio.setChecked(
             self._settings.value("audio/enabled", False, type=bool)
         )
@@ -239,7 +256,7 @@ class SettingsDialog(QDialog):
 
         trusted = self._registry.trusted()
         if not trusted:
-            self._trusted_list.addItem("Nessun dispositivo pre-autorizzato")
+            self._trusted_list.addItem("No pre-authorized devices")
             return
 
         for dev in trusted:
@@ -276,6 +293,7 @@ class SettingsDialog(QDialog):
         self._settings.setValue("security/require_auth", self._require_auth.isChecked())
         self._settings.setValue("security/e2ee", self._e2ee_check.isChecked())
 
+        self._settings.setValue("general/clipboard_sync", self._enable_clipboard_sync.isChecked())
         self._settings.setValue("audio/enabled", self._enable_audio.isChecked())
 
         self._settings.sync()

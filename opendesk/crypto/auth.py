@@ -33,6 +33,8 @@ _SESSION_ID_BLOCKS = 3
 _SESSION_ID_BLOCK_SIZE = 3
 _OTP_LENGTH = 8
 _OTP_VALIDITY_SECONDS = 300  # 5 minutes
+_MAX_SESSIONS = 100  # max pending sessions before pruning oldest
+_SESSION_MAX_AGE = 86400  # 24 hours — discard sessions older than this
 
 # ---------------------------------------------------------------------------
 # Password hasher
@@ -230,6 +232,10 @@ class AuthManager:
         -------
         PendingSession
         """
+        # Clean up expired sessions before creating a new one
+        self.cleanup_expired()
+        self._enforce_max_sessions()
+
         session_id = generate_session_id()
         while session_id in self._pending_sessions:
             session_id = generate_session_id()
@@ -284,7 +290,11 @@ class AuthManager:
         self._pending_sessions.pop(session_id, None)
 
     def cleanup_expired(self) -> int:
-        """Remove all expired one-time sessions.
+        """Remove all expired one-time sessions and old non-OTP sessions.
+
+        Removes:
+        - One-time sessions past their expiry time.
+        - Non-OTP sessions older than ``_SESSION_MAX_AGE`` (24h).
 
         Returns
         -------
@@ -294,13 +304,35 @@ class AuthManager:
         now = time.time()
         expired = [
             sid for sid, s in self._pending_sessions.items()
-            if s.is_one_time and now > s.expires_at
+            if (s.is_one_time and now > s.expires_at)
+            or (not s.is_one_time and now - s.created_at > _SESSION_MAX_AGE)
         ]
         for sid in expired:
             del self._pending_sessions[sid]
         if expired:
-            logger.info("Cleaned up %d expired sessions", len(expired))
+            logger.info("Cleaned up %d expired/stale sessions", len(expired))
         return len(expired)
+
+    def _enforce_max_sessions(self) -> int:
+        """If we have more than ``_MAX_SESSIONS`` pending, remove the oldest.
+
+        Returns
+        -------
+        int
+            Number of sessions removed.
+        """
+        if len(self._pending_sessions) <= _MAX_SESSIONS:
+            return 0
+        # Sort by creation time (oldest first) and remove excess
+        sorted_ids = sorted(
+            self._pending_sessions.keys(),
+            key=lambda sid: self._pending_sessions[sid].created_at,
+        )
+        excess = len(sorted_ids) - _MAX_SESSIONS
+        for sid in sorted_ids[:excess]:
+            del self._pending_sessions[sid]
+        logger.info("Pruned %d oldest sessions (max %d)", excess, _MAX_SESSIONS)
+        return excess
 
     # ── persistence ─────────────────────────────────────────────────
 

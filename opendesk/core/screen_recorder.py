@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import av
 import numpy as np
 
 from opendesk.core.video_codec import VideoEncoder, EncoderConfig, QualityLevel
@@ -121,9 +122,7 @@ class ScreenRecorder:
         self._encoder = VideoEncoder(config)
 
         # Open the output file for writing
-        import av
         self._av_container = av.open(str(self._output_path), mode="w")
-        import av
         rate_int = max(1, int(round(fps)))
         self._av_stream = self._av_container.add_stream("h264", rate=rate_int)
         self._av_stream.width = width
@@ -159,8 +158,6 @@ class ScreenRecorder:
             return False
 
         try:
-            import av
-
             # Convert numpy RGB to av.VideoFrame
             av_frame = av.VideoFrame.from_ndarray(rgb_data, format="rgb24")
             av_frame.pts = self._frame_pts

@@ -76,7 +76,7 @@ class ToastNotification(QFrame):
         self._anim_in.setDuration(250)
         self._anim_in.setStartValue(0.0)
         self._anim_in.setEndValue(1.0)
-        self._anim_in.setEasing(QEasingCurve.Type.OutCubic)
+        self._anim_in.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
@@ -86,7 +86,7 @@ class ToastNotification(QFrame):
         self._anim_out.setDuration(250)
         self._anim_out.setStartValue(1.0)
         self._anim_out.setEndValue(0.0)
-        self._anim_out.setEasing(QEasingCurve.Type.InCubic)
+        self._anim_out.setEasingCurve(QEasingCurve.Type.InCubic)
         self._anim_out.finished.connect(self.deleteLater)
 
     # ── windowOpacity property for animation ────────────────────────

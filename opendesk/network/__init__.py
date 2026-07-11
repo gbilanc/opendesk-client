@@ -1,1 +1,1 @@
-"""Networking: protocol, P2P (WebRTC), relay client, NAT traversal."""
+"""Networking: protocol, relay client, NAT traversal."""

@@ -68,7 +68,7 @@ class SessionInfoWidget(QWidget):
         row1 = QHBoxLayout()
         row1.setSpacing(8)
 
-        device_label = QLabel("Dispositivo:")
+        device_label = QLabel("Device:")
         device_label.setStyleSheet(
             "font-size: 12px; font-weight: 700; color: #2563eb;"
         )
@@ -118,7 +118,7 @@ class SessionInfoWidget(QWidget):
         row2 = QHBoxLayout()
         row2.setSpacing(8)
 
-        id_label = QLabel("ID dispositivo:")
+        id_label = QLabel("Device ID:")
         id_label.setStyleSheet(
             "font-size: 12px; font-weight: 700; color: #2563eb;"
         )
@@ -142,7 +142,7 @@ class SessionInfoWidget(QWidget):
         )
         row2.addWidget(self._id_display)
 
-        self._copy_id_btn = QPushButton("Copia")
+        self._copy_id_btn = QPushButton("Copy")
         self._copy_id_btn.setFixedHeight(26)
         self._copy_id_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._copy_id_btn.setStyleSheet(self._button_style())
@@ -179,7 +179,7 @@ class SessionInfoWidget(QWidget):
         )
         row2.addWidget(self._pwd_display)
 
-        self._copy_pwd_btn = QPushButton("Copia")
+        self._copy_pwd_btn = QPushButton("Copy")
         self._copy_pwd_btn.setFixedHeight(26)
         self._copy_pwd_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._copy_pwd_btn.setStyleSheet(self._button_style())
@@ -189,7 +189,7 @@ class SessionInfoWidget(QWidget):
         row2.addStretch(1)
 
         # ── Refresh button (right-aligned) ──
-        self._refresh_btn = QPushButton("🔄 Nuova sessione")
+        self._refresh_btn = QPushButton("🔄 New Session")
         self._refresh_btn.setFixedHeight(26)
         self._refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._refresh_btn.setStyleSheet(
@@ -300,7 +300,7 @@ class SessionInfoWidget(QWidget):
         """Copy device ID to the clipboard."""
         clipboard = QApplication.clipboard()
         clipboard.setText(self._format_device_id())
-        self._flash_button(self._copy_id_btn, "Copiato!", self._button_style())
+        self._flash_button(self._copy_id_btn, "Copied!", self._button_style())
         logger.info("Device ID copied: %s", self._format_device_id())
 
     @Slot()
@@ -308,7 +308,7 @@ class SessionInfoWidget(QWidget):
         """Copy password to the clipboard."""
         clipboard = QApplication.clipboard()
         clipboard.setText(self._password)
-        self._flash_button(self._copy_pwd_btn, "Copiato!", self._button_style())
+        self._flash_button(self._copy_pwd_btn, "Copied!", self._button_style())
         logger.info("Password copied")
 
     # ── Helpers ─────────────────────────────────────────────────────

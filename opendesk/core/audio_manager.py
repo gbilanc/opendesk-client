@@ -15,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
+import av
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -70,8 +71,6 @@ class OpusCodec:
         self._decoder = None
 
     def setup_encoder(self) -> None:
-        import av
-
         self._encoder = av.CodecContext.create("libopus", "w")
         self._encoder.sample_rate = self._sample_rate
         self._encoder.channels = self._channels
@@ -80,8 +79,6 @@ class OpusCodec:
         logger.info("Opus encoder ready")
 
     def setup_decoder(self) -> None:
-        import av
-
         self._decoder = av.CodecContext.create("libopus", "r")
         self._decoder.sample_rate = self._sample_rate
         self._decoder.channels = self._channels
@@ -91,8 +88,6 @@ class OpusCodec:
         """Encode PCM float32 array to Opus packet."""
         if self._encoder is None:
             return None
-        import av
-
         frame = av.AudioFrame(format="fltp", layout="stereo", samples=len(pcm))
         frame.sample_rate = self._sample_rate
         frame.planes[0] = pcm[:, 0].tobytes()
@@ -108,8 +103,6 @@ class OpusCodec:
         """Decode Opus packet to PCM float32."""
         if self._decoder is None:
             return None
-        import av
-
         packet = av.Packet(data)
         frames = self._decoder.decode(packet)
         if not frames:

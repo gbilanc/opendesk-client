@@ -195,12 +195,35 @@ class Message:
         return cls(MessageType.KEY_EXCHANGE, {"public_key": public_key_b64})
 
     @classmethod
-    def auth_request(cls, session_id: str) -> Message:
-        return cls(MessageType.AUTH_REQUEST, {"session_id": session_id})
+    def auth_request(cls, session_id: str, nonce: str = "") -> Message:
+        """Request authentication from the remote peer.
+
+        Parameters
+        ----------
+        session_id : str
+            The session identifier.
+        nonce : str
+            Random challenge nonce (hex-encoded).  Used for
+            challenge-response auth to avoid sending the password
+            in plaintext over the wire.
+        """
+        return cls(MessageType.AUTH_REQUEST, {
+            "session_id": session_id,
+            "nonce": nonce,
+        })
 
     @classmethod
-    def auth_response(cls, password: str) -> Message:
-        return cls(MessageType.AUTH_RESPONSE, {"password": password})
+    def auth_response(cls, nonce_hash: str) -> Message:
+        """Respond to an authentication challenge.
+
+        Parameters
+        ----------
+        nonce_hash : str
+            HMAC-SHA256(nonce, password) hex digest, proving
+            knowledge of the shared secret without transmitting
+            the password itself.
+        """
+        return cls(MessageType.AUTH_RESPONSE, {"nonce_hash": nonce_hash})
 
     @classmethod
     def auth_ok(cls) -> Message:
@@ -248,6 +271,44 @@ class Message:
     @classmethod
     def clipboard_text(cls, text: str) -> Message:
         return cls(MessageType.CLIPBOARD_TEXT, {"text": text})
+
+    # ── file transfer factories ──
+
+    @classmethod
+    def file_request(cls, name: str, size: int, sha256: str = "") -> Message:
+        """Request permission to send a file."""
+        return cls(MessageType.FILE_REQUEST, {
+            "name": name, "size": size, "sha256": sha256,
+        })
+
+    @classmethod
+    def file_accept(cls, job_id: str) -> Message:
+        """Accept an incoming file transfer."""
+        return cls(MessageType.FILE_ACCEPT, {"job_id": job_id})
+
+    @classmethod
+    def file_reject(cls, job_id: str, reason: str = "") -> Message:
+        """Reject an incoming file transfer."""
+        return cls(MessageType.FILE_REJECT, {"job_id": job_id, "reason": reason})
+
+    @classmethod
+    def file_chunk(
+        cls, job_id: str, seq: int, data: bytes, is_last: bool = False,
+    ) -> Message:
+        """A chunk of file data."""
+        return cls(MessageType.FILE_CHUNK, {
+            "job_id": job_id, "seq": seq, "data": data, "is_last": is_last,
+        })
+
+    @classmethod
+    def file_complete(cls, job_id: str) -> Message:
+        """Signal that a file transfer completed successfully."""
+        return cls(MessageType.FILE_COMPLETE, {"job_id": job_id})
+
+    @classmethod
+    def file_error(cls, job_id: str, error: str) -> Message:
+        """Signal that a file transfer failed."""
+        return cls(MessageType.FILE_ERROR, {"job_id": job_id, "error": error})
 
     @classmethod
     def chat_message(cls, text: str) -> Message:

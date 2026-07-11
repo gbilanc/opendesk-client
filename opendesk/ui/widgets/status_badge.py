@@ -10,12 +10,12 @@ from PySide6.QtWidgets import QLabel, QSizePolicy
 _STATUS_PALETTE: dict[str, tuple[str, str, str]] = {
     "online":    ("#d1fae5", "#065f46", "Online"),
     "offline":   ("#fee2e2", "#991b1b", "Offline"),
-    "connected": ("#dbeafe", "#1e40af", "Connesso"),
-    "transfer":  ("#fef3c7", "#92400e", "Trasferimento"),
-    "error":     ("#fee2e2", "#991b1b", "Errore"),
-    "pending":   ("#f3f4f6", "#374151", "In attesa"),
-    "active":    ("#d1fae5", "#065f46", "Attivo"),
-    "idle":      ("#f3f4f6", "#374151", "Inattivo"),
+    "connected": ("#dbeafe", "#1e40af", "Connected"),
+    "transfer":  ("#fef3c7", "#92400e", "Transferring"),
+    "error":     ("#fee2e2", "#991b1b", "Error"),
+    "pending":   ("#f3f4f6", "#374151", "Pending"),
+    "active":    ("#d1fae5", "#065f46", "Active"),
+    "idle":      ("#f3f4f6", "#374151", "Idle"),
 }
 
 

@@ -498,6 +498,7 @@ class ViewerToolbar(QToolBar):
     zoom_out_requested = Signal()
     fit_requested = Signal()
     disconnect_requested = Signal()
+    ctrl_alt_del_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("Viewer Controls", parent)
@@ -536,6 +537,12 @@ class ViewerToolbar(QToolBar):
         self.addAction(fs_act)
 
         self.addSeparator()
+
+        # Ctrl+Alt+Del
+        cad_act = QAction("✱ Ctrl+Alt+Del", self)
+        cad_act.setToolTip("Send Ctrl+Alt+Del to the remote computer")
+        cad_act.triggered.connect(self.ctrl_alt_del_requested)
+        self.addAction(cad_act)
 
         # Disconnect
         disc_act = QAction("✕ Disconnect", self)
@@ -588,6 +595,7 @@ class ViewerWindow(QMainWindow):
         self._toolbar.zoom_in_requested.connect(self._viewer.zoom_in)
         self._toolbar.zoom_out_requested.connect(self._viewer.zoom_out)
         self._toolbar.fit_requested.connect(self._viewer.zoom_to_fit)
+        self._toolbar.ctrl_alt_del_requested.connect(self._on_ctrl_alt_del)
         self._toolbar.disconnect_requested.connect(self._on_disconnect_clicked)
         self.addToolBar(self._toolbar)
 
@@ -642,6 +650,15 @@ class ViewerWindow(QMainWindow):
             self.showFullScreen()
             self._toolbar.hide()
             self._status.hide()
+
+    def _on_ctrl_alt_del(self) -> None:
+        """Send Ctrl+Alt+Del to the remote peer."""
+        # Send Ctrl down, Alt down, Delete down, Delete up, Alt up, Ctrl up
+        if hasattr(self._viewer, 'remote_key_event'):
+            import itertools
+            for key, pressed in [("ctrl", True), ("alt", True), ("delete", True),
+                                  ("delete", False), ("alt", False), ("ctrl", False)]:
+                self._viewer.remote_key_event.emit(key, pressed)
 
     def _on_disconnect_clicked(self) -> None:
         """User clicked disconnect."""

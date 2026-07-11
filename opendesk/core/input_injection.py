@@ -244,6 +244,9 @@ class WaylandInputBackend(InputBackend):
             ) from exc
 
         self._e = e
+        self._virtual_x: int = 0
+        self._virtual_y: int = 0
+        self._virtual_inited: bool = False
         try:
             capabilities = {
                 e.EV_KEY: (
@@ -313,18 +316,23 @@ class WaylandInputBackend(InputBackend):
 
     def move_mouse(self, x: int, y: int, absolute: bool = True) -> None:
         if absolute:
-            # uinput absolute positioning requires ABS_X/ABS_Y capability
-            # plus knowledge of the current cursor position, which is
-            # not exposed by Wayland compositors.  We would need to
-            # maintain a virtual absolute coordinate space and convert
-            # to relative deltas.  For now, log once and skip.
-            logger.warning(
-                "Wayland absolute mouse positioning is not yet supported. "
-                "Cursor will not move to the requested absolute coordinates."
-            )
-            return
-        self._ui.write(self._e.EV_REL, self._e.REL_X, x)
-        self._ui.write(self._e.EV_REL, self._e.REL_Y, y)
+            if not self._virtual_inited:
+                logger.info(
+                    "Wayland absolute mouse: virtual cursor tracking enabled. "
+                    "Initial position is (0, 0).  Convert absolute→relative."
+                )
+                self._virtual_inited = True
+            # Convert absolute → relative delta
+            dx = x - self._virtual_x
+            dy = y - self._virtual_y
+            self._virtual_x = x
+            self._virtual_y = y
+        else:
+            dx, dy = x, y
+            self._virtual_x += dx
+            self._virtual_y += dy
+        self._ui.write(self._e.EV_REL, self._e.REL_X, dx)
+        self._ui.write(self._e.EV_REL, self._e.REL_Y, dy)
         self._ui.syn()
 
     def click_mouse(self, button: MouseButton, state: KeyState) -> None:
