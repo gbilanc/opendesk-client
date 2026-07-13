@@ -385,14 +385,27 @@ class MainWindow(QMainWindow):
     @Slot()
     def _on_relay_disconnected(self) -> None:
         """Relay connection lost."""
-        logger.info("Relay disconnected")
+        was_host = self._relay.role == RelayRole.HOST
+        logger.info(
+            "Relay disconnected (was_host=%s, host_session=%s)",
+            was_host, self._host_session_id,
+        )
         self._clipboard_sync.stop()
         self.act_send_file.setEnabled(False)
         self._file_transfer_send_fn = None
         self._stop_streaming()
         self._set_connected(False)
-        self._status_text.setText("Disconnected")
         self._peer_id = ""
+
+        if was_host and self._host_session_id:
+            # Host connection dropped unexpectedly — auto-retry
+            # instead of leaving the session in "Disconnected" state.
+            self._status_text.setText("⚠ Relay disconnected — reconnecting...")
+            self._connection.schedule_retry(
+                lambda m: self._status_text.setText(m)
+            )
+        else:
+            self._status_text.setText("Disconnected")
 
     @Slot()
     def _on_peer_joined(self) -> None:
