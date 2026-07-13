@@ -82,6 +82,7 @@ class _RelaySession:
         device_id: str = "",
         device_name: str = "",
         session_seq: int = 0,
+        trusted_device_ids: set[str] | None = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -92,6 +93,7 @@ class _RelaySession:
         self.device_id = device_id
         self.device_name = device_name
         self.session_seq = session_seq
+        self._trusted_device_ids: set[str] = trusted_device_ids or set()
 
         self._loop: asyncio.AbstractEventLoop | None = None
         self._reader: asyncio.StreamReader | None = None
@@ -219,12 +221,27 @@ class _RelaySession:
 
                 elif t == MessageType.AUTH_RESPONSE:
                     client_hash = msg.payload.get("nonce_hash", "")
+                    client_device_id = msg.payload.get("device_id", "")
+
+                    # Trusted device bypass: skip password verification
+                    if client_device_id and client_device_id in self._trusted_device_ids:
+                        logger.info(
+                            "Trusted device '%s' authenticated without password",
+                            client_device_id[:8],
+                        )
+                        await self._send_async(Message.auth_ok())
+                        self.inbox.put((
+                            "auth_result",
+                            (True, "Authenticated (trusted device)"),
+                            self.session_seq,
+                        ))
+                        continue
+
                     success = verify_response(self._auth_nonce, self.password, client_hash)
                     if success:
                         await self._send_async(Message.auth_ok())
                         self.inbox.put(("auth_result", (True, "Authenticated"), self.session_seq))
                         logger.debug("Host auth OK sent — continuing loop")
-                        msg_type = t  # keep ref for post-auth logging
                     else:
                         await self._send_async(Message.auth_fail("Invalid credentials"))
                         self.inbox.put(("auth_result", (False, "Invalid credentials"), self.session_seq))
@@ -290,7 +307,9 @@ class _RelaySession:
                 elif t == MessageType.AUTH_REQUEST:
                     nonce = msg.payload.get("nonce", "")
                     nonce_hash = compute_response(nonce, self.password) if nonce else ""
-                    await self._send_async(Message.auth_response(nonce_hash))
+                    await self._send_async(Message.auth_response(
+                        nonce_hash, device_id=self.device_id,
+                    ))
                     self.inbox.put(("auth_requested", None, self.session_seq))
 
                 elif t == MessageType.AUTH_OK:
@@ -452,7 +471,8 @@ class RelayClient(QObject):
                 break
 
     def start_hosting(self, host: str, port: int, session_id: str, password: str,
-                      device_id: str = "", device_name: str = "") -> None:
+                      device_id: str = "", device_name: str = "",
+                      trusted_device_ids: set[str] | None = None) -> None:
         """Connect to relay and register as host."""
         self._stop_session()
         self._drain_inbox()
@@ -462,10 +482,12 @@ class RelayClient(QObject):
             host, port, session_id, password, RelayRole.HOST, self._inbox,
             device_id=device_id, device_name=device_name,
             session_seq=self._current_seq,
+            trusted_device_ids=trusted_device_ids,
         )
         self._start_thread()
 
-    def join_session(self, host: str, port: int, session_id: str, password: str) -> None:
+    def join_session(self, host: str, port: int, session_id: str, password: str,
+                     device_id: str = "") -> None:
         """Connect to relay and join a session as client."""
         self._stop_session()
         self._drain_inbox()
@@ -473,6 +495,7 @@ class RelayClient(QObject):
         self._role = RelayRole.CLIENT
         self._session = _RelaySession(
             host, port, session_id, password, RelayRole.CLIENT, self._inbox,
+            device_id=device_id,
             session_seq=self._current_seq,
         )
         self._start_thread()

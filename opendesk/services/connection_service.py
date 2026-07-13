@@ -155,10 +155,13 @@ class ConnectionService(QObject):
         host, port = self._get_relay_config()
         self._host_session_id = self._session_id.replace(" ", "")
         logger.info("Starting host on relay %s:%s with session %s", host, port, self._host_session_id)
+        # Passa gli ID dei dispositivi trusted per l'auto-auth
+        trusted_ids = {d.device_id for d in self._device_registry.trusted()}
         self._relay.start_hosting(
             host, port, self._host_session_id, self._password,
             device_id=self._device_id,
             device_name=self._device_name,
+            trusted_device_ids=trusted_ids,
         )
 
     def join_session(self, peer_id: str, password: str) -> None:
@@ -166,7 +169,10 @@ class ConnectionService(QObject):
         clean_id = peer_id.replace(" ", "")
         host, port = self._get_relay_config()
         logger.info("Joining session %s on relay %s:%s", clean_id, host, port)
-        self._relay.join_session(host, port, clean_id, password)
+        self._relay.join_session(
+            host, port, clean_id, password,
+            device_id=self._device_id,
+        )
 
     def disconnect(self) -> None:
         """Disconnetti dal relay."""
@@ -206,10 +212,12 @@ class ConnectionService(QObject):
             return
         host, port = self._get_relay_config()
         status_callback("Reconnecting to relay...")
+        trusted_ids = {d.device_id for d in self._device_registry.trusted()}
         self._relay.start_hosting(
             host, port, self._host_session_id, self._password,
             device_id=self._device_id,
             device_name=self._device_name,
+            trusted_device_ids=trusted_ids,
         )
 
     # ── relay event handlers → forward as signals ───────────────────

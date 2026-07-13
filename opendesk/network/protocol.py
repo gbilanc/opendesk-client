@@ -213,7 +213,7 @@ class Message:
         })
 
     @classmethod
-    def auth_response(cls, nonce_hash: str) -> Message:
+    def auth_response(cls, nonce_hash: str, device_id: str = "") -> Message:
         """Respond to an authentication challenge.
 
         Parameters
@@ -222,8 +222,14 @@ class Message:
             HMAC-SHA256(nonce, password) hex digest, proving
             knowledge of the shared secret without transmitting
             the password itself.
+        device_id : str
+            The client's device ID, used by the host to check
+            for pre-authorized (trusted) devices.
         """
-        return cls(MessageType.AUTH_RESPONSE, {"nonce_hash": nonce_hash})
+        return cls(MessageType.AUTH_RESPONSE, {
+            "nonce_hash": nonce_hash,
+            "device_id": device_id,
+        })
 
     @classmethod
     def auth_ok(cls) -> Message:
