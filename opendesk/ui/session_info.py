@@ -99,7 +99,10 @@ class SessionInfoWidget(QWidget):
         self._device_id_label.setStyleSheet(
             "font-size: 11px; color: palette(shadow); padding: 0 4px;"
         )
-        self._device_id_label.setToolTip(f"ID: {self._device_id}")
+        self._device_id_label.setToolTip(
+            f"UUID: {self._device_id}\n"
+            "Usa questo UUID per pre-autorizzare il dispositivo in Settings → Security"
+        )
         row1.addWidget(self._device_id_label)
 
         # Name editor (hidden by default)
@@ -297,11 +300,11 @@ class SessionInfoWidget(QWidget):
 
     @Slot()
     def _copy_device_id(self) -> None:
-        """Copy device ID to the clipboard."""
+        """Copy the full device UUID to the clipboard."""
         clipboard = QApplication.clipboard()
-        clipboard.setText(self._format_device_id())
+        clipboard.setText(self._device_id)
         self._flash_button(self._copy_id_btn, "Copied!", self._button_style())
-        logger.info("Device ID copied: %s", self._format_device_id())
+        logger.info("Device UUID copied: %s", self._device_id)
 
     @Slot()
     def _copy_password(self) -> None:

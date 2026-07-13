@@ -271,31 +271,62 @@ class SettingsDialog(QDialog):
     @Slot()
     def _add_trusted_device(self) -> None:
         """Aggiunge manualmente un dispositivo alla lista trusted."""
-        from PySide6.QtWidgets import QInputDialog, QLineEdit
+        from PySide6.QtWidgets import QInputDialog, QLineEdit, QMessageBox
 
-        device_id, ok = QInputDialog.getText(
+        if not self._registry:
+            return
+
+        raw, ok = QInputDialog.getText(
             self, "Aggiungi dispositivo pre-autorizzato",
-            "Inserisci l'ID del dispositivo:\n(puoi trovarlo nel pannello Connessioni "
-            "o chiederlo al proprietario del dispositivo remoto)",
+            "Incolla l'UUID del dispositivo remoto.\n\n"
+            "Il proprietario del dispositivo remoto deve:\n"
+            "  1. Aprire OpenDesk → cliccare 'Copy' accanto a 'Device ID'\n"
+            "     nella barra in alto\n"
+            "  2. Condividere con te l'UUID copiato\n"
+            "     (es. 550e8400-e29b-41d4-a716-446655440000)\n\n"
+            "Oppure cerca per nome dispositivo o ID abbreviato (prime 8 cifre):",
             QLineEdit.EchoMode.Normal,
         )
-        if not ok or not device_id.strip():
+        if not ok or not raw.strip():
             return
-        device_id = device_id.strip()
+        raw = raw.strip()
 
-        # Se il dispositivo esiste già nel registry, impostalo come trusted
-        existing = self._registry.get(device_id) if self._registry else None
-        if existing:
-            self._registry.set_trusted(device_id, True)
-        else:
-            # Altrimenti crea un nuovo entry con solo l'ID
+        # Cerca nel registry (UUID esatto, prefisso, nome)
+        matches = self._registry.find(raw)
+        if matches:
+            for dev in matches:
+                if not dev.trusted:
+                    self._registry.set_trusted(dev.device_id, True)
+            self._populate_trusted_devices()
+            n = len(matches)
+            self._flash_status(f"✅ {n} dispositivo{'i' if n > 1 else ''} pre-autorizzato{'i' if n > 1 else ''}")
+            return
+
+        # Non trovato — chiedi conferma prima di creare un nuovo entry
+        reply = QMessageBox.question(
+            self, "Dispositivo sconosciuto",
+            f"Nessun dispositivo '{raw}' trovato nel registry.\n"
+            f"Vuoi creare un nuovo entry e pre-autorizzarlo comunque?\n\n"
+            f"Assicurati di aver incollato l'UUID corretto (non l'ID sessione).",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
             self._registry.upsert(
-                device_id,
-                device_name=device_id[:8],
+                raw,
+                device_name=raw[:8],
                 trusted=True,
                 online=False,
             )
-        self._populate_trusted_devices()
+            self._populate_trusted_devices()
+
+    # ── helpers ─────────────────────────────────────────────────────
+
+    def _flash_status(self, msg: str) -> None:
+        """Mostra un messaggio temporaneo nella parent dialog (se possibile)."""
+        parent = self.parentWidget()
+        if parent and hasattr(parent, 'statusBar'):
+            sb = parent.statusBar()
+            sb.showMessage(msg, 3000)
 
     @Slot()
     def _remove_trusted_device(self) -> None:

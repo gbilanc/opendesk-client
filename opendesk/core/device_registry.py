@@ -74,6 +74,46 @@ class DeviceRegistry:
         entry = self._devices.get(device_id)
         return entry is not None and entry.trusted
 
+    def find(self, query: str) -> list[DeviceEntry]:
+        """Cerca dispositivi per UUID (anche parziale) o nome.
+
+        Parameters
+        ----------
+        query : str
+            UUID completo, prefisso UUID, o parte del nome.
+
+        Returns
+        -------
+        list[DeviceEntry]
+            Dispositivi che matchano (ordinati per rilevanza).
+        """
+        q = query.lower().strip()
+        if not q:
+            return []
+
+        results: list[tuple[DeviceEntry, int]] = []
+
+        for d in self._devices.values():
+            did = d.device_id.lower()
+            dname = d.device_name.lower()
+
+            # Match esatto UUID → priorità massima
+            if did == q:
+                results.append((d, 0))
+            # Match prefisso UUID
+            elif did.startswith(q):
+                results.append((d, 1))
+            # Match nome contiene
+            elif q in dname:
+                results.append((d, 2))
+            # Match nome inizia con
+            elif dname.startswith(q):
+                results.append((d, 3))
+
+        # Ordina per rilevanza (priorità crescente)
+        results.sort(key=lambda x: x[1])
+        return [entry for entry, _ in results]
+
     # ── write ───────────────────────────────────────────────────────
 
     def upsert(self, device_id: str, *, _save: bool = True, **kwargs: Any) -> DeviceEntry:

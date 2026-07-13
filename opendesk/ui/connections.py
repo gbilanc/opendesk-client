@@ -338,17 +338,25 @@ class ConnectionPanel(QWidget):
 
         menu = QMenu(self)
         if trusted:
-            action = menu.addAction("❌ Revoca pre-autorizzazione")
+            action_toggle = menu.addAction("❌ Revoca pre-autorizzazione")
         else:
-            action = menu.addAction("✅ Pre-autorizza dispositivo")
+            action_toggle = menu.addAction("✅ Pre-autorizza dispositivo")
+
+        menu.addSeparator()
+        action_copy_id = menu.addAction("📋 Copia UUID dispositivo")
 
         selected = menu.exec(self._list_view.viewport().mapToGlobal(pos))
-        if selected == action and self._registry:
+
+        if selected == action_copy_id:
+            from PySide6.QtWidgets import QApplication
+            QApplication.clipboard().setText(device_id)
+            return
+
+        if selected == action_toggle and self._registry:
             self._registry.set_trusted(device_id, not trusted)
-            # Aggiorna la visualizzazione
-            if hasattr(self, '_model'):
-                devices = self._registry.all()
-                self._model.set_devices(devices)
+            # Aggiorna la visualizzazione dalla fonte ufficiale
+            devices = self._registry.all()
+            self._model.set_devices(devices)
 
     @property
     def model(self) -> DeviceListModel:
