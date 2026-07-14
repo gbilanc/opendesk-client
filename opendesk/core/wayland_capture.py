@@ -254,7 +254,8 @@ class WaylandScreenCast:
     async def _wait_for_response(self, request_path: str, timeout: float = 30.0) -> tuple[int, dict]:
         """Wait for a portal ``Response`` signal on *request_path*.
 
-        Returns a ``(response_code, results)`` tuple.
+        Returns a ``(response_code, results)`` tuple where *results*
+        is a plain ``dict`` with Python-native values (Variants unwrapped).
         ``response_code``: 0 = success, 1 = cancelled, 2 = other error.
         """
         loop = asyncio.get_running_loop()
@@ -267,7 +268,11 @@ class WaylandScreenCast:
                msg.member == "Response" and \
                msg.path == request_path:
                 code = msg.body[0] if msg.body else 2
-                results = msg.body[1] if len(msg.body) > 1 else {}
+                raw = msg.body[1] if len(msg.body) > 1 else {}
+                # Unwrap Variant values to plain Python
+                results = {}
+                for k, v in raw.items():
+                    results[k] = v.value if hasattr(v, "value") else v
                 future.set_result((code, results))
 
         self._bus.add_message_handler(_handler)
@@ -283,8 +288,9 @@ class WaylandScreenCast:
     async def _create_session(self) -> None:
         """Create a ScreenCast session via D-Bus.
 
-        CreateSession returns the session handle directly in the
-        method reply — no signal handling needed.
+        On GNOME 48 the portal uses the async request pattern:
+        ``CreateSession`` returns a *request* path immediately;
+        the real session handle arrives via a ``Response`` signal.
         """
         await self._ensure_bus()
 
@@ -301,13 +307,29 @@ class WaylandScreenCast:
             }],
         )
         response = await self._bus.call(msg)
-        if response.body:
-            self._session = WaylandCaptureSession(
-                session_handle=response.body[0],
+        if not response.body:
+            raise RuntimeError("CreateSession returned empty body")
+
+        request_path = response.body[0]
+        logger.debug("CreateSession request path: %s", request_path)
+
+        # Wait for the Response signal — the session handle is in results
+        code, results = await self._wait_for_response(request_path)
+        if code != 0:
+            raise RuntimeError(
+                f"CreateSession rejected (response={code})"
             )
-            logger.info("ScreenCast session created: %s", self._session.session_handle)
-        else:
-            raise RuntimeError("Failed to create ScreenCast session")
+
+        session_handle = results.get("session_handle")
+        if not session_handle:
+            raise RuntimeError(
+                f"CreateSession response missing session_handle: {results}"
+            )
+
+        self._session = WaylandCaptureSession(
+            session_handle=str(session_handle),
+        )
+        logger.info("ScreenCast session created: %s", self._session.session_handle)
 
     async def _select_sources(self) -> None:
         """Select which monitor(s) to capture.
@@ -348,18 +370,15 @@ class WaylandScreenCast:
         logger.debug("ScreenCast sources selected")
 
     async def _start_session(self) -> None:
-        """Start the screencast session, receive PipeWire fd, launch helper.
+        """Start the screencast session and launch the GStreamer helper.
 
-        Called on the main portal object with the session handle
-        as the first argument (per the xdg-desktop-portal API).
-
-        After Start returns a request handle, calls OpenPipeWireRemote
-        to obtain the actual PipeWire file descriptor.
+        Called on the main portal object.  The ``Start`` response
+        contains ``streams`` — each stream has a PipeWire node ID
+        that we pass to ``pipewiresrc`` via its ``path`` property.
         """
         if self._session is None:
             raise RuntimeError("No session")
 
-        # 1) Start the session
         msg = self._make_msg(
             "/org/freedesktop/portal/desktop",
             "org.freedesktop.portal.ScreenCast",
@@ -367,7 +386,7 @@ class WaylandScreenCast:
             "osa{sv}",
             [
                 self._session.session_handle,
-                "",  # parent_window (empty = no parent)
+                "",  # parent_window
                 {},
             ],
         )
@@ -383,36 +402,30 @@ class WaylandScreenCast:
             raise RuntimeError(
                 f"ScreenCast Start rejected (response={code})"
             )
-        logger.debug("Start response: %s", results)
 
-        # 2) Open the PipeWire remote to get the fd
-        msg2 = self._make_msg(
-            "/org/freedesktop/portal/desktop",
-            "org.freedesktop.portal.ScreenCast",
-            "OpenPipeWireRemote",
-            "oa{sv}",
-            [
-                self._session.session_handle,
-                {},
-            ],
+        # Extract streams: a(sa{sv}) → list of (node_id, properties)
+        streams = results.get("streams", [])
+        if not streams:
+            raise RuntimeError("Start returned no streams")
+
+        # First stream: (uint32 node_id, dict properties)
+        pw_node_id = streams[0][0] if isinstance(streams[0], (list, tuple)) else streams[0]
+        properties = streams[0][1] if isinstance(streams[0], (list, tuple)) and len(streams[0]) > 1 else {}
+
+        # Extract resolution from properties
+        size = properties.get("size")
+        if size and isinstance(size, (list, tuple)) and len(size) == 2:
+            self._session.width, self._session.height = int(size[0]), int(size[1])
+
+        self._session.pipewire_node = int(pw_node_id)
+        logger.info(
+            "PipeWire node: %d, resolution: %dx%d",
+            self._session.pipewire_node,
+            self._session.width,
+            self._session.height,
         )
-        response2 = await self._bus.call(msg2)
 
-        # The fd comes as ancillary data (unix_fds)
-        if not (hasattr(response2, "unix_fds") and response2.unix_fds):
-            raise RuntimeError("OpenPipeWireRemote did not return a file descriptor")
-
-        # Dup the fd so it survives the D-Bus message being freed.
-        # We'll pass the dup'd fd to the child via pass_fds.
-        raw_fd = response2.unix_fds[0]
-        pw_fd = os.dup(raw_fd)
-        os.close(raw_fd)  # close the message-owned fd, keep our dup
-
-        self._session.pipewire_node = 0
-        self._session.pipewire_fd = pw_fd
-        logger.info("PipeWire fd obtained: %d (duped from %d)", pw_fd, raw_fd)
-
-        # Launch the GStreamer helper with the portal-issued fd
+        # Launch the GStreamer helper — uses pipewiresrc path=<node_id>
         await self._launch_pipewire_helper()
 
     # ── GStreamer helper subprocess ─────────────────────────────────
@@ -420,11 +433,11 @@ class WaylandScreenCast:
     async def _launch_pipewire_helper(self) -> None:
         """Launch ``_pipewire_helper.py`` subprocess to capture frames.
 
-        Passes the portal-issued PipeWire fd so GStreamer reuses the
-        existing session instead of opening a new one.
+        Passes the PipeWire node ID from the portal so GStreamer's
+        ``pipewiresrc`` connects directly to the correct stream.
         """
-        if self._session is None or self._session.pipewire_fd < 0:
-            raise RuntimeError("No PipeWire fd available")
+        if self._session is None or self._session.pipewire_node <= 0:
+            raise RuntimeError("No PipeWire node available")
 
         from opendesk.core.screen_capture import _find_system_python
 
@@ -436,25 +449,19 @@ class WaylandScreenCast:
             )
 
         helper = Path(__file__).parent / "_pipewire_helper.py"
-        fd_num = self._session.pipewire_fd
-        logger.info("Launching PipeWire helper: %s with fd=%d", helper, fd_num)
+        node_id = self._session.pipewire_node
+        logger.info("Launching PipeWire helper: %s with node=%d", helper, node_id)
 
+        # Use pipewiresrc path=<node_id> to connect to the portal stream
         self._helper_process = subprocess.Popen(
             [
                 system_python, str(helper),
-                "--fd", str(fd_num),
+                "--node-id", str(node_id),
                 "--fps", "30",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            pass_fds=(fd_num,),
         )
-
-        # Close our copy of the fd — the child has its own now
-        try:
-            os.close(fd_num)
-        except OSError:
-            pass
 
         # Read header: 8 bytes → width, height (uint32 LE)
         header = b""

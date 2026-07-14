@@ -43,15 +43,17 @@ def main() -> None:
     parser.add_argument("--height", type=int, default=0, help="Target height (0 = auto)")
     parser.add_argument("--fps", type=int, default=30, help="Target framerate")
     parser.add_argument("--fd", type=int, default=0, help="PipeWire fd from xdg-desktop-portal (optional)")
+    parser.add_argument("--node-id", type=int, default=0, help="PipeWire node ID from portal Start() response (preferred)")
     args = parser.parse_args()
 
     # Build pipeline
-    # pipewiresrc captures the screen via PipeWire.
-    # If the caller passes an fd (from xdg-desktop-portal), we set it on
-    # pipewiresrc so GStreamer uses the existing portal session instead of
-    # opening its own.
+    # Prefer --node-id (from D-Bus portal Start) over --fd.
+    # pipewiresrc path=<node_id> connects directly to the stream
+    # created by the portal, without needing a pre-opened fd.
     pipewire_extra = ""
-    if args.fd and args.fd > 0:
+    if args.node_id and args.node_id > 0:
+        pipewire_extra = f" path={args.node_id}"
+    elif args.fd and args.fd > 0:
         pipewire_extra = f" fd={args.fd}"
 
     pipeline_str = f"pipewiresrc{pipewire_extra} ! videoconvert ! video/x-raw,format=RGB"
