@@ -254,6 +254,11 @@ class _RelaySession:
                     logger.debug("Peer requested keyframe (host)")
                     self.inbox.put(("keyframe_requested", None, self.session_seq))
 
+                elif t == MessageType.ERROR:
+                    err = msg.payload.get("message", "Unknown relay error")
+                    logger.warning("Host received ERROR from relay: %s", err)
+                    self.inbox.put(("error", err, self.session_seq))
+
                 elif t == MessageType.DISCONNECT:
                     logger.debug("Host received DISCONNECT — breaking loop")
                     break
