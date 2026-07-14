@@ -42,6 +42,9 @@ wayland = [
     "dbus-next>=0.2.3",
     "evdev>=1.6.0",
 ]
+# Wayland also needs SYSTEM packages (apt / dnf):
+#   gstreamer1.0-pipewire  python3-gi  xdg-desktop-portal  pipewire
+#   ydotool (optional — for absolute mouse positioning)
 win = []
 macos = [
     "pyobjc-framework-Quartz>=9.0",

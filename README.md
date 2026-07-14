@@ -51,6 +51,36 @@ uv sync --extra audio
 uv sync --extra macos
 ```
 
+### Wayland setup (Linux)
+
+Wayland requires both **Python packages** and **system packages**:
+
+```bash
+# 1. Python dependencies
+uv sync --extra wayland      # installs dbus-next, evdev
+
+# 2. System packages (Ubuntu/Debian)
+sudo apt install gstreamer1.0-pipewire python3-gi       \
+                 xdg-desktop-portal pipewire
+
+# Optional: accurate absolute mouse positioning
+sudo apt install ydotool
+
+# Required: uinput permissions for remote input
+sudo usermod -aG input $USER
+# (log out and back in)
+```
+
+**Supported backends** (auto-detected in order):
+
+| Backend | Capture | Input | Notes |
+|---------|---------|-------|-------|
+| **PORTAL** | D-Bus + GStreamer | — | Reuses portal session, no double dialog |
+| **PIPEWIRE** | GStreamer pipewiresrc | — | Shows its own screen-selection dialog |
+| **MSS** | X11 | X11 (Xlib) | Fallback via XWayland |
+| **uinput** | — | evdev uinput | Requires `input` group |
+| **ydotool** | — | ydotool | Absolute mouse on Wayland |
+
 ## Architecture
 
 ```

@@ -42,16 +42,22 @@ def main() -> None:
     parser.add_argument("--width", type=int, default=0, help="Target width (0 = auto)")
     parser.add_argument("--height", type=int, default=0, help="Target height (0 = auto)")
     parser.add_argument("--fps", type=int, default=30, help="Target framerate")
-    parser.add_argument("--fd", type=int, default=None, help="PipeWire FD (optional)")
+    parser.add_argument("--fd", type=int, default=0, help="PipeWire fd from xdg-desktop-portal (optional)")
     args = parser.parse_args()
 
     # Build pipeline
-    # pipewiresrc captures the screen via PipeWire
-    # If we have a node path from the portal, use it
-    pipeline_str = "pipewiresrc ! videoconvert ! video/x-raw,format=RGB "
+    # pipewiresrc captures the screen via PipeWire.
+    # If the caller passes an fd (from xdg-desktop-portal), we set it on
+    # pipewiresrc so GStreamer uses the existing portal session instead of
+    # opening its own.
+    pipewire_extra = ""
+    if args.fd and args.fd > 0:
+        pipewire_extra = f" fd={args.fd}"
+
+    pipeline_str = f"pipewiresrc{pipewire_extra} ! videoconvert ! video/x-raw,format=RGB"
     if args.width and args.height:
-        pipeline_str += f",width={args.width},height={args.height} "
-    pipeline_str += "! appsink name=sink max-buffers=1 drop=true"
+        pipeline_str += f",width={args.width},height={args.height}"
+    pipeline_str += " ! appsink name=sink max-buffers=1 drop=true"
 
     pipeline = Gst.parse_launch(pipeline_str)
     sink = pipeline.get_by_name("sink")
@@ -60,10 +66,17 @@ def main() -> None:
         print("ERROR: Could not create appsink", file=sys.stderr)
         sys.exit(1)
 
-    # Set PipeWire path if provided via FD or portal
+    # Verify the source element was created (if fd was given, it's already
+    # configured via the pipeline string above).
     src = pipeline.get_by_name("pipewiresrc0")
-    if src and args.fd is not None:
-        src.set_property("fd", args.fd)
+    if src is None:
+        # GStreamer may name it differently depending on version
+        for elem in pipeline.iterate_all_by_name("pipewiresrc0"):
+            src = elem
+            break
+    if src is not None:
+        logger_fd = args.fd if args.fd else 0
+        print(f"INFO: pipewiresrc ready (fd={logger_fd})", file=sys.stderr)
 
     pipeline.set_state(Gst.State.PLAYING)
 

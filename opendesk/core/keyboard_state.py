@@ -2,8 +2,8 @@
 Caps Lock / keyboard modifier state detection.
 
 Provides a cross-platform helper to check whether Caps Lock is
-currently active.  Uses Xlib on X11, Win32 API on Windows, and
-falls back to a subprocess call on other platforms.
+currently active.  Uses Xlib on X11, /sys/class/leds on Linux
+Wayland, Win32 API on Windows.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import platform
 import subprocess
+from pathlib import Path
 from typing import Callable
 
 logger = logging.getLogger(__name__)
@@ -30,11 +31,32 @@ def _check_x11() -> bool:
         d = xdisplay.Display()
         state = d.get_keyboard_control()._data["led_mask"]  # noqa: SLF001
         d.close()
-        # Bit 0 → Caps Lock, Bit 1 → Num Lock, Bit 2 → Scroll Lock
         return bool(state & 1)
     except Exception:
         logger.debug("Xlib Caps Lock check failed, falling back", exc_info=True)
-        return _check_subprocess()
+        return _check_sys_leds()
+
+
+def _check_sys_leds() -> bool:
+    """Check Caps Lock via /sys/class/leds (Linux, works on Wayland too).
+
+    Reads the brightness file of the capslock LED.  This is the
+    simplest cross-display-server approach on Linux.
+    """
+    try:
+        base = Path("/sys/class/leds")
+        if not base.exists():
+            return False
+        for entry in base.iterdir():
+            if "capslock" in entry.name.lower():
+                brightness = entry / "brightness"
+                if brightness.exists():
+                    val = brightness.read_text().strip()
+                    return val == "1"
+        return False
+    except (OSError, PermissionError):
+        logger.debug("/sys/class/leds Caps Lock check failed", exc_info=True)
+        return False
 
 
 def _check_win32() -> bool:
@@ -48,7 +70,7 @@ def _check_win32() -> bool:
 
 
 def _check_subprocess() -> bool:
-    """Fallback: parse ``xset -q`` output (X11)."""
+    """Fallback: parse ``xset -q`` output (X11 only)."""
     try:
         out = subprocess.check_output(
             ["xset", "-q"], stderr=subprocess.STDOUT, timeout=2, text=True,
@@ -66,18 +88,31 @@ def _init_checker() -> _Checker:
     system = platform.system()
     if system == "Windows":
         return _check_win32
-    # Linux / X11 — try Xlib first, fall back to xset
+
+    # Linux — try /sys/class/leds first (works on both X11 and Wayland)
+    try:
+        base = Path("/sys/class/leds")
+        if base.exists():
+            for entry in base.iterdir():
+                if "capslock" in entry.name.lower():
+                    return _check_sys_leds
+    except (OSError, PermissionError):
+        pass
+
+    # X11 fallback
     try:
         from Xlib import display  # noqa: F401
         return _check_x11
     except ImportError:
         pass
-    # Fallback: subprocess
+
+    # Last resort: subprocess
     try:
         subprocess.check_output(["xset", "-q"], stderr=subprocess.DEVNULL, timeout=1)
         return _check_subprocess
     except Exception:
         pass
+
     logger.warning("No Caps Lock detection available on this platform")
     return None
 

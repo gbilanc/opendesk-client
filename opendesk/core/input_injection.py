@@ -223,8 +223,16 @@ class WaylandInputBackend(InputBackend):
     Creates a virtual uinput device that the compositor accepts as
     a trusted input source.
 
+    **Mouse limitation**: Wayland compositors do not expose a
+    ``warp_pointer`` protocol.  This backend converts absolute
+    mouse coordinates into relative deltas using virtual cursor
+    tracking.  The virtual position is estimated and may drift
+    over time.  For accurate absolute positioning, install
+    ``ydotool`` (``sudo apt install ydotool``) — the backend
+    detects it automatically.
+
     Requires:
-        - ``python-evdev`` (pip install evdev)
+        - ``python-evdev`` (``pip install evdev``)
         - ``uinput`` kernel module loaded
         - The user must have write access to ``/dev/uinput``
           (usually via the ``input`` group)
@@ -247,6 +255,12 @@ class WaylandInputBackend(InputBackend):
         self._virtual_x: int = 0
         self._virtual_y: int = 0
         self._virtual_inited: bool = False
+
+        # Check for ydotool (alternative absolute positioning)
+        self._ydotool = _find_ydotool()
+        if self._ydotool:
+            logger.info("Wayland: ydotool detected — absolute mouse supported")
+
         try:
             capabilities = {
                 e.EV_KEY: (
@@ -315,14 +329,35 @@ class WaylandInputBackend(InputBackend):
         return 0
 
     def move_mouse(self, x: int, y: int, absolute: bool = True) -> None:
+        """Move the mouse cursor.
+
+        On Wayland, *absolute* positioning is emulated via relative
+        deltas because compositors do not expose a warp-pointer API.
+
+        If ``ydotool`` is installed, absolute positioning uses it
+        for accurate cursor placement.  Otherwise, the virtual
+        position is tracked and converted to relative deltas — this
+        may drift over time.
+        """
+        if absolute and self._ydotool:
+            # ydotool supports absolute positioning
+            import subprocess
+            subprocess.run(
+                [self._ydotool, "mousemove", "--absolute", str(x), str(y)],
+                capture_output=True, timeout=1,
+            )
+            self._virtual_x = x
+            self._virtual_y = y
+            return
+
         if absolute:
             if not self._virtual_inited:
                 logger.info(
                     "Wayland absolute mouse: virtual cursor tracking enabled. "
-                    "Initial position is (0, 0).  Convert absolute→relative."
+                    "Initial position is (0,0).  Convert absolute to relative. "
+                    "Install ydotool for accurate absolute positioning."
                 )
                 self._virtual_inited = True
-            # Convert absolute → relative delta
             dx = x - self._virtual_x
             dy = y - self._virtual_y
             self._virtual_x = x
@@ -331,6 +366,7 @@ class WaylandInputBackend(InputBackend):
             dx, dy = x, y
             self._virtual_x += dx
             self._virtual_y += dy
+
         self._ui.write(self._e.EV_REL, self._e.REL_X, dx)
         self._ui.write(self._e.EV_REL, self._e.REL_Y, dy)
         self._ui.syn()
@@ -625,6 +661,21 @@ class MacOSInputBackend(InputBackend):
         if len(lower) == 1:
             return ord(lower.upper()) - 0x41 if lower.isalpha() else 0
         return 0
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _find_ydotool() -> str | None:
+    """Find ydotool binary for absolute mouse positioning on Wayland."""
+    import shutil
+    for name in ("ydotool", "ydotoold"):
+        path = shutil.which(name)
+        if path:
+            return path
+    return None
 
 
 # ---------------------------------------------------------------------------

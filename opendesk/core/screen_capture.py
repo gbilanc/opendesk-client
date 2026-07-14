@@ -29,7 +29,8 @@ class CaptureMethod(Enum):
 
     AUTO = auto()  # Auto-detect
     MSS = auto()  # Cross-platform (DXGI / CoreGraphics / X11)
-    PIPEWIRE = auto()  # Linux Wayland via PipeWire + xdg-desktop-portal
+    PIPEWIRE = auto()  # Linux Wayland via PipeWire + xdg-desktop-portal (GStreamer subprocess)
+    PORTAL = auto()  # Linux Wayland via D-Bus portal + GStreamer (reuses portal session)
     DUMMY = auto()  # Test pattern for development
 
 
@@ -334,9 +335,19 @@ class PipeWireCapture:
 def _detect_capture_method() -> CaptureMethod:
     plat = current_platform()
     if plat == Platform.LINUX and is_wayland():
+        # 1) Prefer D-Bus portal if available (avoids double dialog)
+        try:
+            from opendesk.core.wayland_capture import WaylandScreenCast
+            wsc = WaylandScreenCast()
+            if wsc.is_available():
+                logger.info("Capture backend: PORTAL (Wayland D-Bus + GStreamer)")
+                return CaptureMethod.PORTAL
+        except Exception:
+            pass
+        # 2) Fall back to GStreamer pipewiresrc (shows its own portal dialog)
         pw = PipeWireCapture()
         if pw.is_available():
-            logger.info("Capture backend: PIPEWIRE (native Wayland)")
+            logger.info("Capture backend: PIPEWIRE (GStreamer pipewiresrc)")
             return CaptureMethod.PIPEWIRE
         logger.info("Capture backend: MSS (XWayland fallback)")
     return CaptureMethod.MSS
@@ -360,6 +371,7 @@ class ScreenCapture:
         self._lock = Lock()
         self._sct: mss.mss | None = None
         self._pw: PipeWireCapture | None = None
+        self._portal = None  # WaylandScreenCast — created lazily
         self._prev_frames: dict[int, np.ndarray] = {}
         self._fps_target: float = 30.0
         self._fps_adaptive: bool = True
@@ -392,6 +404,15 @@ class ScreenCapture:
     def monitors(self) -> list[MonitorInfo]:
         if self._method == CaptureMethod.PIPEWIRE:
             return self._get_pw().monitors()
+        if self._method == CaptureMethod.PORTAL:
+            # PORTAL captures full desktop — single virtual monitor
+            pw = self._get_pw()
+            return pw.monitors() if pw.is_available() else [
+                MonitorInfo(
+                    index=0, name="Wayland Desktop",
+                    left=0, top=0, width=1920, height=1080, is_primary=True,
+                )
+            ]
         sct = self._get_sct()
         return [
             MonitorInfo(
@@ -407,6 +428,8 @@ class ScreenCapture:
     # ── single capture ──────────────────────────────────────────────
 
     def capture_one(self, monitor_index: int = 0) -> CapturedFrame:
+        if self._method == CaptureMethod.PORTAL:
+            return self._capture_portal(monitor_index)
         if self._method == CaptureMethod.PIPEWIRE:
             pw = self._get_pw()
             try:
@@ -429,7 +452,9 @@ class ScreenCapture:
     # ── capture loop ────────────────────────────────────────────────
 
     def capture_loop(self, monitor_index: int = 0) -> Iterator[CapturedFrame]:
-        if self._method == CaptureMethod.PIPEWIRE:
+        if self._method == CaptureMethod.PORTAL:
+            yield from self._loop_portal(monitor_index)
+        elif self._method == CaptureMethod.PIPEWIRE:
             yield from self._loop_pipewire(monitor_index)
         else:
             yield from self._loop_mss(monitor_index)
@@ -444,6 +469,8 @@ class ScreenCapture:
             if self._pw is not None:
                 self._pw.release()
                 self._pw = None
+            if self._portal is not None:
+                self._release_portal()
             self._prev_frames.clear()
 
     def __enter__(self) -> ScreenCapture:
@@ -528,6 +555,123 @@ class ScreenCapture:
             sleep_needed = max(0.0, (1.0 / self._compute_fps(diff)) - elapsed)
             if sleep_needed > 0:
                 time.sleep(sleep_needed)
+
+    # ── internal: PORTAL (WaylandScreenCast D-Bus + GStreamer) ─────
+
+    def _get_portal(self):
+        """Lazy-init the WaylandScreenCast and set up the session.
+
+        The D-Bus setup + portal dialog is synchronous-blocking because
+        we run ``asyncio.run()`` internally.  Called once on first
+        capture.
+        """
+        if self._portal is not None:
+            return self._portal
+
+        from opendesk.core.wayland_capture import WaylandScreenCast
+        import asyncio
+
+        wsc = WaylandScreenCast()
+        if not wsc.is_available():
+            raise RuntimeError("WaylandScreenCast not available")
+
+        # Run async setup in a synchronous context
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop is not None:
+            # Already inside an event loop — delegate to a thread
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(lambda: asyncio.run(wsc.setup()))
+                ok = future.result(timeout=60)
+        else:
+            ok = asyncio.run(wsc.setup())
+
+        if not ok:
+            raise RuntimeError("WaylandScreenCast setup failed")
+
+        self._portal = wsc
+        return wsc
+
+    def _capture_portal(self, monitor_index: int = 0) -> CapturedFrame:
+        """Capture a single frame via the PORTAL backend."""
+        try:
+            wsc = self._get_portal()
+        except Exception as e:
+            logger.warning("PORTAL init failed: %s — falling back to PIPEWIRE", e)
+            self._method = CaptureMethod.PIPEWIRE
+            return self.capture_one(monitor_index)
+
+        rgb = wsc.capture_frame_sync()
+        if rgb is None:
+            # Helper may have exited — try MSS fallback
+            logger.warning("PORTAL capture returned None")
+            raise RuntimeError("PORTAL frame capture failed")
+
+        w, h = wsc.width, wsc.height
+        return CapturedFrame(
+            data=rgb,
+            monitor_index=monitor_index,
+            timestamp=time.time(),
+            region=(0, 0, w, h),
+        )
+
+    def _loop_portal(self, monitor_index: int = 0) -> Iterator[CapturedFrame]:
+        """Continuous capture via PORTAL (WaylandScreenCast)."""
+        try:
+            wsc = self._get_portal()
+        except Exception as e:
+            logger.warning("PORTAL init failed: %s — falling back to PIPEWIRE", e)
+            self._method = CaptureMethod.PIPEWIRE
+            yield from self._loop_pipewire(monitor_index)
+            return
+
+        w = wsc.width
+        h = wsc.height
+        while True:
+            t0 = time.perf_counter()
+            rgb = wsc.capture_frame_sync()
+            if rgb is None:
+                logger.warning("PORTAL stream ended, falling back to PIPEWIRE")
+                self._release_portal()
+                self._method = CaptureMethod.PIPEWIRE
+                yield from self._loop_pipewire(monitor_index)
+                return
+
+            prev = self._prev_frames.get(monitor_index)
+            diff = frame_diff_ratio(rgb, prev, threshold=12)
+            self._prev_frames[monitor_index] = rgb
+            yield CapturedFrame(
+                data=rgb,
+                monitor_index=monitor_index,
+                timestamp=t0,
+                region=(0, 0, w, h),
+            )
+            elapsed = time.perf_counter() - t0
+            sleep_needed = max(0.0, (1.0 / self._compute_fps(diff)) - elapsed)
+            if sleep_needed > 0:
+                time.sleep(sleep_needed)
+
+    def _release_portal(self) -> None:
+        """Shut down the portal session synchronously."""
+        if self._portal is None:
+            return
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop is not None:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(lambda: asyncio.run(self._portal.shutdown()))
+                future.result(timeout=10)
+        else:
+            asyncio.run(self._portal.shutdown())
+        self._portal = None
 
     # ── FPS helper ──────────────────────────────────────────────────
 

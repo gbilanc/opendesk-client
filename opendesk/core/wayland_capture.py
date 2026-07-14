@@ -2,14 +2,16 @@
 Full Wayland screen capture via xdg-desktop-portal D-Bus API.
 
 Implements the complete ScreenCast portal protocol:
-1. CreateSession → selects monitor(s) → Start → receives PipeWire fd
-2. Reads frames from PipeWire via PyAV
+1. CreateSession -> selects monitor(s) -> Start -> receives PipeWire fd
+2. Delegates actual frame capture to ``_pipewire_helper.py`` (GStreamer
+   subprocess), passing the portal-issued fd so GStreamer reuses the
+   existing session.
 
 Requires:
     - ``dbus-next`` (pure Python D-Bus client)
-    - ``PyAV`` (FFmpeg bindings)
     - ``xdg-desktop-portal`` + compositor-specific backend
-    - PipeWire
+    - PipeWire + GStreamer with pipewire plugin
+    - A system Python with ``gi`` (GObject Introspection) bindings
 
 Usage::
 
@@ -24,8 +26,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import select
 import struct
-from dataclasses import dataclass, field
+import subprocess
+import time
+from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -61,6 +68,10 @@ class WaylandScreenCast:
         self._bus = None
         self._request_token: int = 0
         self._available: bool | None = None
+        # Subprocess-based GStreamer reader
+        self._helper_process: subprocess.Popen | None = None
+        self._helper_width: int = 0
+        self._helper_height: int = 0
 
     # ── availability ────────────────────────────────────────────────
 
@@ -131,11 +142,48 @@ class WaylandScreenCast:
             logger.warning("Wayland frame capture failed: %s", e)
             return None
 
+    def capture_frame_sync(self) -> np.ndarray | None:
+        """Synchronous variant for use in non-async contexts.
+
+        Reads the next raw RGB frame from the GStreamer subprocess stdout.
+        """
+        if self._helper_process is None:
+            return None
+        if self._helper_height == 0 or self._helper_width == 0:
+            return None
+
+        frame_size = self._helper_width * self._helper_height * 3
+        stdout = self._helper_process.stdout
+        if stdout is None:
+            return None
+
+        data = stdout.read(frame_size)
+        if len(data) < frame_size:
+            logger.warning(
+                "Wayland: incomplete frame %d / %d bytes",
+                len(data), frame_size,
+            )
+            return None
+
+        return np.frombuffer(data, dtype=np.uint8).reshape(
+            self._helper_height, self._helper_width, 3,
+        ).copy()
+
+    @property
+    def width(self) -> int:
+        return self._helper_width
+
+    @property
+    def height(self) -> int:
+        return self._helper_height
+
     async def shutdown(self) -> None:
         """Close the screencast session."""
+        # Stop the GStreamer helper first
+        self._stop_helper()
+
         if self._session and self._session.session_handle:
             try:
-                # Close the D-Bus session
                 msg = self._make_msg(
                     self._session.session_handle,
                     "org.freedesktop.portal.Session",
@@ -147,7 +195,6 @@ class WaylandScreenCast:
 
         if self._session and self._session.pipewire_fd >= 0:
             try:
-                import os
                 os.close(self._session.pipewire_fd)
             except Exception:
                 pass
@@ -157,6 +204,22 @@ class WaylandScreenCast:
             self._bus.disconnect()
             self._bus = None
         logger.info("Wayland screencast shutdown")
+
+    def _stop_helper(self) -> None:
+        """Terminate the GStreamer helper subprocess."""
+        if self._helper_process is None:
+            return
+        try:
+            self._helper_process.terminate()
+            self._helper_process.wait(timeout=3)
+        except Exception:
+            try:
+                self._helper_process.kill()
+            except Exception:
+                pass
+        self._helper_process = None
+        self._helper_width = 0
+        self._helper_height = 0
 
     # ── internal D-Bus protocol ─────────────────────────────────────
 
@@ -242,7 +305,7 @@ class WaylandScreenCast:
         logger.debug("ScreenCast sources selected")
 
     async def _start_session(self) -> None:
-        """Start the screencast session and receive PipeWire fd."""
+        """Start the screencast session, receive PipeWire fd, launch helper."""
         if self._session is None:
             raise RuntimeError("No session")
 
@@ -251,49 +314,100 @@ class WaylandScreenCast:
             "org.freedesktop.portal.ScreenCast",
             "Start",
             "a{sv}",
-            [{  # no options needed
-                "handle_token": ("s", "start"),
-            }],
+            [{"handle_token": ("s", "start")}],
         )
         response = await self._bus.call(msg)
-        if response.body:
-            # Response is (results_dict,)
-            results = response.body[0]
-            # The PipeWire node ID and fd are in the results
-            pw_node_id = results.get("pipewire_node_id", ("u", 0))[1]
-            pw_fd = results.get("pipewire_fd", ("h", -1))[1]
-
-            if hasattr(response, "unix_fds") and response.unix_fds:
-                pw_fd = response.unix_fds[0]
-
-            self._session.pipewire_node = pw_node_id
-            self._session.pipewire_fd = pw_fd
-            logger.info("PipeWire node: %d, fd: %d", pw_node_id, pw_fd)
-        else:
+        if not response.body:
             raise RuntimeError("Failed to start ScreenCast session")
 
-    async def _read_pipewire_frame(self) -> np.ndarray | None:
-        """Read a single frame from the PipeWire stream.
+        results = response.body[0]
+        pw_node_id = results.get("pipewire_node_id", ("u", 0))[1]
+        pw_fd = results.get("pipewire_fd", ("h", -1))[1]
 
-        This is a simplified reader.  In production, this would
-        use the PipeWire client library to properly negotiate
-        stream parameters and read buffers.
+        # Prefer the fd passed as ancillary data
+        if hasattr(response, "unix_fds") and response.unix_fds:
+            pw_fd = response.unix_fds[0]
 
-        For now, returns a test pattern when PipeWire fd is not
-        available (until the full PipeWire client is implemented).
+        self._session.pipewire_node = pw_node_id
+        self._session.pipewire_fd = pw_fd
+        logger.info("PipeWire node: %d, fd: %d", pw_node_id, pw_fd)
+
+        # ------------------------------------------------------------------
+        # Launch the GStreamer helper subprocess with the portal-issued fd.
+        # This reuses the existing portal session so the user does NOT need
+        # to approve a second screen-selection dialog.
+        # ------------------------------------------------------------------
+        await self._launch_pipewire_helper()
+
+    # ── GStreamer helper subprocess ─────────────────────────────────
+
+    async def _launch_pipewire_helper(self) -> None:
+        """Launch ``_pipewire_helper.py`` subprocess to capture frames.
+
+        Passes the portal-issued PipeWire fd so GStreamer reuses the
+        existing session instead of opening a new one.
         """
         if self._session is None or self._session.pipewire_fd < 0:
-            # Generate a test pattern instead
-            frame = np.zeros((720, 1280, 3), dtype=np.uint8)
-            frame[:, :, 0] = 64  # slight blue tint for Wayland
-            frame[340:380, 540:740] = (255, 200, 100)  # orange indicator
-            return frame
+            raise RuntimeError("No PipeWire fd available")
 
-        # TODO: Full PipeWire stream reader
-        # This requires the libpipewire C library or a Python binding.
-        # For now, we signal that PipeWire streaming is active.
-        logger.debug("PipeWire frame reader active (fd=%d)", self._session.pipewire_fd)
-        return None
+        from opendesk.core.screen_capture import _find_system_python
+
+        system_python = _find_system_python()
+        if not system_python:
+            raise RuntimeError(
+                "No system Python with GStreamer gi bindings found. "
+                "Install python3-gi and gstreamer1.0-pipewire."
+            )
+
+        helper = Path(__file__).parent / "_pipewire_helper.py"
+        logger.info("Launching PipeWire helper: %s with fd=%d", helper, self._session.pipewire_fd)
+
+        self._helper_process = subprocess.Popen(
+            [
+                system_python, str(helper),
+                "--fd", str(self._session.pipewire_fd),
+                "--fps", "30",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            pass_fds=(self._session.pipewire_fd,),
+        )
+
+        # Read header: 8 bytes → width, height (uint32 LE)
+        header = b""
+        deadline = time.monotonic() + 30.0
+        while len(header) < 8 and time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            r, _, _ = select.select(
+                [self._helper_process.stdout], [], [], min(remaining, 1.0),
+            )
+            if r:
+                chunk = self._helper_process.stdout.read(8 - len(header))
+                if not chunk:
+                    break
+                header += chunk
+
+        if len(header) < 8:
+            self._stop_helper()
+            stderr = self._helper_process and self._helper_process.stderr
+            if stderr:
+                err = stderr.read().decode(errors="replace")
+                logger.warning("PipeWire helper stderr: %s", err)
+            raise RuntimeError("PipeWire helper did not produce a frame header")
+
+        self._helper_width, self._helper_height = struct.unpack("<II", header)
+        logger.info(
+            "PipeWire helper stream: %dx%d",
+            self._helper_width, self._helper_height,
+        )
+
+    async def _read_pipewire_frame(self) -> np.ndarray | None:
+        """Read a single RGB frame from the GStreamer helper stdout."""
+        # Offload to a thread so we don't block the event loop on I/O
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self.capture_frame_sync)
 
 
 # ---------------------------------------------------------------------------
