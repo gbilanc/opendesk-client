@@ -290,7 +290,11 @@ class StreamService(QObject):
                       sum(len(p.data) for p in packets))
 
     def _send_changed_tiles(self, current: np.ndarray, w: int, h: int, pts: int) -> None:
-        """Compare current frame with previous, encode and send changed tiles."""
+        """Compare current frame with previous, encode and send changed tiles.
+
+        Uses full-frame diff (vectorised) before iterating tiles, avoiding
+        the N×M per-tile astype() cost that dominated CPU usage.
+        """
         prev = self._prev_frame
         if prev is None or prev.shape != current.shape:
             self._send_full_keyframe(current, w, h, pts)
@@ -306,23 +310,23 @@ class StreamService(QObject):
         changed_tiles: list[tuple[bytes, int, int, int, int]] = []
         total_tiles = 0
 
+        # ── 1. Full-frame diff (vectorised, single astype call) ──
+        diff = np.abs(current.astype(np.int16) - prev.astype(np.int16))
+        frame_changed = diff > threshold  # bool mask (H, W, 3)
+        any_changed = np.any(frame_changed, axis=2)  # 2D bool mask (H, W)
+
+        # ── 2. Iterate tiles on the bool mask only ──
         for y in range(0, h, tile_size):
             th = min(tile_size, h - y)
             for x in range(0, w, tile_size):
                 tw = min(tile_size, w - x)
                 total_tiles += 1
 
-                # Extract tile from current and previous frame
-                cur_tile = current[y:y+th, x:x+tw]
-                prev_tile = prev[y:y+th, x:x+tw]
-
-                # Fast path: skip identical tiles
-                diff = np.abs(cur_tile.astype(np.int16) - prev_tile.astype(np.int16))
-                changed = np.any(diff > threshold, axis=2)
-                change_ratio = float(changed.sum()) / changed.size
+                tile_mask = any_changed[y:y + th, x:x + tw]
+                change_ratio = tile_mask.sum() / tile_mask.size
 
                 if change_ratio > 0.005:  # 0.5% of pixels changed
-                    # Encode tile as PNG (lossless — no drift accumulation)
+                    cur_tile = current[y:y + th, x:x + tw]
                     tile_bgr = cv2.cvtColor(cur_tile, cv2.COLOR_RGB2BGR)
                     success, encoded = cv2.imencode(
                         '.png', tile_bgr,

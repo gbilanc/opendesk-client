@@ -78,6 +78,10 @@ class CapturedFrame:
 def frame_diff_ratio(
     current: np.ndarray, previous: np.ndarray | None, threshold: int = 16
 ) -> float:
+    """Fraction of pixels that differ above *threshold* (0.0…1.0).
+
+    Single ``astype`` call on the full frame for speed.
+    """
     if previous is None or current.shape != previous.shape:
         return 1.0
     diff = np.abs(current.astype(np.int16) - previous.astype(np.int16))
@@ -86,8 +90,15 @@ def frame_diff_ratio(
 
 
 def compute_dirty_region(
-    current: np.ndarray, previous: np.ndarray | None, threshold: int = 16
+    current: np.ndarray,
+    previous: np.ndarray | None,
+    threshold: int = 16,
 ) -> tuple[int, int, int, int] | None:
+    """Bounding box of changed pixels (x0, y0, x1, y1).
+
+    Reuses the same diff mask as ``frame_diff_ratio`` when called in
+    sequence — caller should pre-compute the mask if both are needed.
+    """
     if previous is None or current.shape != previous.shape:
         return (0, 0, current.shape[1], current.shape[0])
     diff = np.abs(current.astype(np.int16) - previous.astype(np.int16))

@@ -57,6 +57,9 @@ class ClipboardSync(QObject):
         self._last_image_hash: int = 0
         self._send_fn = None
 
+        # Track async tasks to avoid untracked fire-and-forget leaks
+        self._pending_tasks: set = set()
+
         # Local clipboard (Qt's built-in clipboard)
         self._clipboard: QClipboard = QGuiApplication.clipboard()
 
@@ -88,6 +91,11 @@ class ClipboardSync(QObject):
         """Disable clipboard syncing."""
         self._enabled = False
         self._timer.stop()
+        # Cancel pending tasks
+        for task in self._pending_tasks:
+            if not task.done():
+                task.cancel()
+        self._pending_tasks.clear()
         self.sync_toggled.emit(False)
         logger.info("Clipboard sync stopped")
 
@@ -147,6 +155,9 @@ class ClipboardSync(QObject):
         if not self._enabled or self._send_fn is None:
             return
 
+        # Clean up completed tasks
+        self._pending_tasks = {t for t in self._pending_tasks if not t.done()}
+
         mime: QMimeData | None = self._clipboard.mimeData()
         if mime is None:
             return
@@ -157,9 +168,10 @@ class ClipboardSync(QObject):
             if text and text != self._last_text:
                 self._last_text = text
                 import asyncio
-                asyncio.ensure_future(
+                task = asyncio.ensure_future(
                     self._send_fn(Message.clipboard_text(text))
                 )
+                self._pending_tasks.add(task)
                 logger.debug("Clipboard text synced: %d chars", len(text))
 
         # Check image (less frequently - skip every other poll)
@@ -190,5 +202,6 @@ class ClipboardSync(QObject):
                     {"data": img_data},
                 )
                 import asyncio
-                asyncio.ensure_future(self._send_fn(msg))
+                task = asyncio.ensure_future(self._send_fn(msg))
+                self._pending_tasks.add(task)
                 logger.debug("Clipboard image synced: %d bytes", len(img_data))
