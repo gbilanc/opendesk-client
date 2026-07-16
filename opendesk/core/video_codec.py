@@ -85,19 +85,28 @@ def _try_open_codec(name: str, fps: int = 30) -> bool:
 
 
 class QualityLevel(Enum):
-    """Predefined quality / bandwidth trade-off levels."""
+    """Predefined quality / bandwidth trade-off levels.
+
+    Higher quality = lower CRF value (0-51 scale where 0=lossless).
+    For remote desktop with text, SHARP (CRF 18) is the sweet spot
+    between readability and bandwidth.
+    """
 
     LOW = auto()  # CRF 32 / ~0.5 Mbps — good for slow connections
     MEDIUM = auto()  # CRF 27 / ~2 Mbps — balanced
     HIGH = auto()  # CRF 23 / ~8 Mbps — good image quality
+    SHARP = auto()  # CRF 18 / ~15 Mbps — sharp text, great for reading
     LOSSLESS = auto()  # CRF 16 / ~20+ Mbps — near-lossless (LAN)
 
 
 # CRF values per quality level (used when crf_mode is True)
+# Lower CRF = better quality = larger bitstream.
+# For text readability, CRF 18 (SHARP) is recommended.
 _QUALITY_CRF: dict[QualityLevel, int] = {
     QualityLevel.LOW: 32,
     QualityLevel.MEDIUM: 27,
     QualityLevel.HIGH: 23,
+    QualityLevel.SHARP: 18,
     QualityLevel.LOSSLESS: 16,
 }
 
@@ -106,6 +115,7 @@ _QUALITY_BITRATE: dict[QualityLevel, int] = {
     QualityLevel.LOW: 500_000,
     QualityLevel.MEDIUM: 2_000_000,
     QualityLevel.HIGH: 8_000_000,
+    QualityLevel.SHARP: 15_000_000,
     QualityLevel.LOSSLESS: 20_000_000,
 }
 
@@ -127,6 +137,12 @@ class EncoderConfig:
         Sets ``bitrate`` to a target bps.  The encoder will try to
         stay close to this bitrate, potentially sacrificing quality
         on complex scenes and wasting bits on simple ones.
+
+    Pixel format:
+        ``yuv420p`` — standard, widely compatible (chroma subsampled).
+        ``yuv444p`` — full chroma resolution, much sharper text, but
+        requires more bandwidth (~30% more).  Not all encoders support
+        it; falls back to yuv420p automatically.
     """
 
     width: int
@@ -137,7 +153,7 @@ class EncoderConfig:
     codec: str = ""  # auto-detect if empty
     crf: int | None = None  # None = use bitrate, int = CRF mode
     gop_size: int = 60  # keyframe interval (in frames)
-    pixel_format: str = "yuv420p"
+    pixel_format: str = "yuv420p"  # "yuv420p" or "yuv444p"
     options: dict[str, str] = field(default_factory=lambda: {
         "preset": "veryfast",
     })
@@ -383,10 +399,29 @@ class VideoEncoder:
             self._stream = self._container.add_stream(codec, rate=self._config.fps)
             self._stream.width = width
             self._stream.height = height
-            self._stream.pix_fmt = "yuv420p"
+
+            # ── Pixel format: prefer yuv444p for sharp text, fallback to yuv420p ──
+            requested_pix_fmt = self._config.pixel_format
+            try:
+                self._stream.pix_fmt = requested_pix_fmt
+            except Exception:
+                logger.info(
+                    "Pixel format %s not supported by %s, falling back to yuv420p",
+                    requested_pix_fmt, codec,
+                )
+                self._stream.pix_fmt = "yuv420p"
 
             # ── Options base ──
             opts = dict(self._config.options)
+
+            # Adjust preset based on quality level
+            quality = self._config.quality
+            if quality == QualityLevel.LOSSLESS:
+                opts["preset"] = opts.get("preset", "medium")
+            elif quality == QualityLevel.SHARP or quality == QualityLevel.HIGH:
+                opts["preset"] = opts.get("preset", "fast")
+            else:
+                opts["preset"] = opts.get("preset", "veryfast")
 
             # Low-latency tuning
             if "h264" in codec and codec not in ("h264_nvenc",):
@@ -421,8 +456,9 @@ class VideoEncoder:
             self._config.height = height
             self._initialised = True
             logger.info(
-                "Encoder initialised: %s  %dx%d @ %.1f fps%s",
+                "Encoder initialised: %s  %dx%d @ %.1f fps  pix_fmt=%s%s",
                 codec, width, height, self._config.fps,
+                self._stream.pix_fmt,
                 f", crf={self._actual_crf}" if use_crf else
                 f", bitrate={self._actual_bitrate:,} bps",
             )

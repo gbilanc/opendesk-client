@@ -39,6 +39,7 @@ _DEFAULT_BITRATES = {
     QualityLevel.LOW: 500_000,
     QualityLevel.MEDIUM: 2_000_000,
     QualityLevel.HIGH: 8_000_000,
+    QualityLevel.SHARP: 15_000_000,
     QualityLevel.LOSSLESS: 20_000_000,
 }
 
@@ -159,6 +160,14 @@ class StreamService(QObject):
             # CRF mode: mappa qualita' a CRF
             crf = _QUALITY_CRF.get(quality)
 
+            # Pixel format: yuv444p per testo nitido (full chroma)
+            pixel_format = self._settings.value("video/pixel_format", "yuv420p")
+            if pixel_format not in ("yuv420p", "yuv444p"):
+                pixel_format = "yuv420p"
+
+            # Encoder preset: empty = auto by quality level
+            encoder_preset = self._settings.value("video/encoder_preset", "")
+
             # Crea configurazione della pipeline
             config = PipelineConfig(
                 fps=fps,
@@ -168,6 +177,8 @@ class StreamService(QObject):
                 monitor_index=0,
                 codec=codec,
                 crf=crf,
+                pixel_format=pixel_format,
+                encoder_preset=encoder_preset,
             )
 
             # Callback per tracciare i byte inviati (bandwidth estimation)

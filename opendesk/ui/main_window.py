@@ -630,6 +630,9 @@ class MainWindow(QMainWindow):
                 parent=self,
             )
             self._viewer_window.frame_timeout.connect(self._on_frame_timeout)
+            # Apply sharp text mode from settings
+            sharp_text = self._settings.value("video/sharp_text_viewer", True, type=bool)
+            self._viewer_window.set_sharp_text(sharp_text)
         self._viewer_window.set_connection_active(True, peer_name)
         self._viewer_window.show()
         self._viewer_window.raise_()

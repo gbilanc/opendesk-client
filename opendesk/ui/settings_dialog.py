@@ -100,6 +100,18 @@ class SettingsDialog(QDialog):
         self._adaptive_fps.setChecked(True)
         video_layout.addRow("", self._adaptive_fps)
 
+        # ── Pixel format ──
+        self._pixel_format = QComboBox()
+        self._pixel_format.addItem("Standard (yuv420p)", "yuv420p")
+        self._pixel_format.addItem("Full color (yuv444p — sharper text)", "yuv444p")
+        self._pixel_format.setCurrentIndex(0)
+        video_layout.addRow("Pixel format:", self._pixel_format)
+
+        # ── Sharp text in viewer ──
+        self._sharp_text_viewer = QCheckBox("Sharp text mode in viewer (nearest-neighbour)")
+        self._sharp_text_viewer.setChecked(True)
+        video_layout.addRow("", self._sharp_text_viewer)
+
         # ── Codec / encoder ──
         codec_group = QGroupBox("Encoder")
         codec_form = QFormLayout(codec_group)
@@ -120,6 +132,18 @@ class SettingsDialog(QDialog):
         self._hw_check = QCheckBox("Prefer hardware acceleration")
         self._hw_check.setChecked(True)
         codec_form.addRow("", self._hw_check)
+
+        # ── Preset ──
+        self._encoder_preset = QComboBox()
+        self._encoder_preset.addItem("Auto (by quality)", "")
+        self._encoder_preset.addItem("ultrafast (low CPU)", "ultrafast")
+        self._encoder_preset.addItem("veryfast", "veryfast")
+        self._encoder_preset.addItem("faster", "faster")
+        self._encoder_preset.addItem("fast (balanced)", "fast")
+        self._encoder_preset.addItem("medium (better quality)", "medium")
+        self._encoder_preset.addItem("slow (best quality)", "slow")
+        self._encoder_preset.setCurrentIndex(0)
+        codec_form.addRow("Preset:", self._encoder_preset)
 
         # Etichetta informativa sui codec HW disponibili
         hw_list = VideoEncoder.available_hw_encoders()
@@ -279,6 +303,20 @@ class SettingsDialog(QDialog):
             self._settings.value("video/hw_encoding", True, type=bool)
         )
 
+        pixel_fmt = self._settings.value("video/pixel_format", "yuv420p")
+        pf_idx = self._pixel_format.findData(pixel_fmt)
+        if pf_idx >= 0:
+            self._pixel_format.setCurrentIndex(pf_idx)
+
+        self._sharp_text_viewer.setChecked(
+            self._settings.value("video/sharp_text_viewer", True, type=bool)
+        )
+
+        encoder_preset = self._settings.value("video/encoder_preset", "")
+        ep_idx = self._encoder_preset.findData(encoder_preset)
+        if ep_idx >= 0:
+            self._encoder_preset.setCurrentIndex(ep_idx)
+
         self._stun_server.setText(
             self._settings.value("network/stun_server", "stun:stun.l.google.com:19302")
         )
@@ -416,6 +454,18 @@ class SettingsDialog(QDialog):
         self._settings.setValue(
             "video/hw_encoding",
             self._hw_check.isChecked(),
+        )
+        self._settings.setValue(
+            "video/pixel_format",
+            self._pixel_format.currentData(),
+        )
+        self._settings.setValue(
+            "video/sharp_text_viewer",
+            self._sharp_text_viewer.isChecked(),
+        )
+        self._settings.setValue(
+            "video/encoder_preset",
+            self._encoder_preset.currentData(),
         )
 
         self._settings.setValue("network/stun_server", self._stun_server.text())

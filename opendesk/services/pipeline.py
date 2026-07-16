@@ -50,6 +50,8 @@ class PipelineConfig:
     monitor_index: int = 0
     codec: str = ""  # auto-detect if empty
     crf: int | None = None  # None = use bitrate, int = CRF mode
+    pixel_format: str = "yuv420p"  # "yuv420p" or "yuv444p"
+    encoder_preset: str = ""  # empty = auto by quality level
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -108,11 +110,14 @@ class CaptureWorker(threading.Thread):
                 # ── Resolution scaling ──
                 scale = self._config.resolution_scale
                 data = frame.data
-                if scale < 1.0:
+                if scale != 1.0:
                     h, w = data.shape[:2]
                     nw, nh = int(w * scale), int(h * scale)
                     if nw > 0 and nh > 0:
-                        data = cv2.resize(data, (nw, nh), interpolation=cv2.INTER_LINEAR)
+                        # INTER_AREA produces sharper results than INTER_LINEAR
+                        # when downscaling — much better for text readability.
+                        interpolation = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
+                        data = cv2.resize(data, (nw, nh), interpolation=interpolation)
 
                 # ── Invia all'encoder (non bloccante) ──
                 try:
@@ -211,6 +216,9 @@ class EncoderWorker(threading.Thread):
                     crf = self._config.crf
                     if crf is None:
                         crf = _QUALITY_CRF.get(self._config.quality)
+                    # Build options with optional preset override
+                    enc_opts = {"preset": self._config.encoder_preset} if self._config.encoder_preset else {"preset": "veryfast"}
+
                     self._encoder = VideoEncoder(
                         EncoderConfig(
                             width=w,
@@ -220,6 +228,8 @@ class EncoderWorker(threading.Thread):
                             quality=self._config.quality,
                             codec=self._config.codec,
                             crf=crf,
+                            pixel_format=self._config.pixel_format,
+                            options=enc_opts,
                         )
                     )
                     if self._encoder.codec_name:
@@ -285,6 +295,7 @@ class EncoderWorker(threading.Thread):
             QualityLevel.LOW: 50,
             QualityLevel.MEDIUM: 65,
             QualityLevel.HIGH: 80,
+            QualityLevel.SHARP: 95,
             QualityLevel.LOSSLESS: 95,
         }[quality]
 

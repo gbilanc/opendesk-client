@@ -38,6 +38,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QFrame,
+    QGraphicsPixmapItem,
     QGraphicsScene,
     QGraphicsView,
     QHBoxLayout,
@@ -117,12 +118,12 @@ class RemoteViewer(QGraphicsView):
         self.setBackgroundBrush(QBrush(QColor("#0f172a")))  # dark background
 
         # ── State ──
-        from PySide6.QtWidgets import QGraphicsPixmapItem
         self._pixmap_item: QGraphicsPixmapItem | None = None
         self._remote_resolution: tuple[int, int] = (1280, 720)
         self._fit_mode = self.FitMode.FIT_WINDOW
         self._zoom_level: float = 1.0
         self._connection_active: bool = False
+        self._sharp_text: bool = True  # sharp text mode (default on)
 
         # ── Ring buffer for frame data (avoids per-frame allocation)
         self._frame_buffers: deque[bytearray] = deque(maxlen=3)
@@ -151,6 +152,29 @@ class RemoteViewer(QGraphicsView):
         self._show_placeholder()
 
     # ── Public API ──────────────────────────────────────────────────
+
+    def set_sharp_text(self, enabled: bool) -> None:
+        """Toggle sharp text mode.
+
+        When enabled (default), removes smooth pixmap transformation so
+        text remains crisp and pixel-accurate.  Bilinear interpolation
+        is disabled in favour of nearest-neighbour scaling.
+        """
+        self._sharp_text = enabled
+        self._apply_sharp_text()
+
+    def _apply_sharp_text(self) -> None:
+        """Apply or remove sharp-text rendering hints."""
+        if self._sharp_text:
+            self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
+        else:
+            self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        if self._pixmap_item is not None:
+            self._pixmap_item.setTransformationMode(
+                Qt.TransformationMode.FastTransformation
+                if self._sharp_text
+                else Qt.TransformationMode.SmoothTransformation
+            )
 
     def display_frame(self, rgb_data: np.ndarray | bytes, width: int, height: int) -> None:
         """Display a decoded video frame.
@@ -193,6 +217,11 @@ class RemoteViewer(QGraphicsView):
         # Update or create scene pixmap
         if self._pixmap_item is None:
             self._pixmap_item = self._scene.addPixmap(pixmap)
+            self._pixmap_item.setTransformationMode(
+                Qt.TransformationMode.FastTransformation
+                if self._sharp_text
+                else Qt.TransformationMode.SmoothTransformation
+            )
             self._remote_resolution = (width, height)
             self._apply_fit_mode()
         else:
@@ -527,6 +556,7 @@ class ViewerToolbar(QToolBar):
     zoom_in_requested = Signal()
     zoom_out_requested = Signal()
     fit_requested = Signal()
+    sharp_toggled = Signal(bool)
     disconnect_requested = Signal()
     ctrl_alt_del_requested = Signal()
 
@@ -560,6 +590,14 @@ class ViewerToolbar(QToolBar):
 
         self.addSeparator()
 
+        # Sharp text toggle (checkable)
+        self._sharp_act = QAction("⬡ Sharp", self)
+        self._sharp_act.setToolTip("Toggle sharp text mode (nearest-neighbour scaling)")
+        self._sharp_act.setCheckable(True)
+        self._sharp_act.setChecked(True)
+        self._sharp_act.triggered.connect(self._on_sharp_toggled)
+        self.addAction(self._sharp_act)
+
         # Fullscreen
         fs_act = QAction("⛶ Fullscreen", self)
         fs_act.setToolTip("Toggle fullscreen (F11)")
@@ -579,6 +617,10 @@ class ViewerToolbar(QToolBar):
         disc_act.setToolTip("End current session")
         disc_act.triggered.connect(self.disconnect_requested)
         self.addAction(disc_act)
+
+    def _on_sharp_toggled(self, checked: bool) -> None:
+        """Forward sharp toggle to the signal."""
+        self.sharp_toggled.emit(checked)
 
 
 # ---------------------------------------------------------------------------
@@ -625,6 +667,7 @@ class ViewerWindow(QMainWindow):
         self._toolbar.zoom_in_requested.connect(self._viewer.zoom_in)
         self._toolbar.zoom_out_requested.connect(self._viewer.zoom_out)
         self._toolbar.fit_requested.connect(self._viewer.zoom_to_fit)
+        self._toolbar.sharp_toggled.connect(self._viewer.set_sharp_text)
         self._toolbar.ctrl_alt_del_requested.connect(self._on_ctrl_alt_del)
         self._toolbar.disconnect_requested.connect(self._on_disconnect_clicked)
         self.addToolBar(self._toolbar)
@@ -667,6 +710,11 @@ class ViewerWindow(QMainWindow):
         else:
             self._status_label.setText("Disconnected")
             self.setWindowTitle(self.WINDOW_TITLE)
+
+    def set_sharp_text(self, enabled: bool) -> None:
+        """Toggle sharp text mode in the viewer."""
+        self._toolbar._sharp_act.setChecked(enabled)
+        self._viewer.set_sharp_text(enabled)
 
     # ── slots ───────────────────────────────────────────────────────
 
