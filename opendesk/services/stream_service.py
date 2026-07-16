@@ -22,6 +22,10 @@ from opendesk.core.input_injection import (
     KeyState,
     create_input_backend,
 )
+from opendesk.services.pipeline import (
+    StreamingPipeline,
+    PipelineConfig,
+)
 import cv2
 import numpy as np
 
@@ -63,11 +67,11 @@ _TILE_JPEG_QUALITY: dict[QualityLevel, int] = {
 
 
 class StreamService(QObject):
-    """Servizio di streaming video con tile grid differenziale.
+    """Servizio di streaming video con pipeline multi-thread.
 
-    Usa una griglia di tile (default 64×64 px) per inviare solo le
-    aree dello schermo che cambiano. Periodicamente invia un full
-    keyframe H.264 per risincronizzazione.
+    Usa ``StreamingPipeline`` (3 thread: capture, encode, network)
+    per mantenere la UI fluida e massimizzare il frame rate.
+    Periodicamente invia un full keyframe H.264 per risincronizzazione.
 
     Signals::
 
@@ -86,15 +90,13 @@ class StreamService(QObject):
         self._relay = relay
         self._settings = QSettings("OpenDesk", "OpenDesk")
 
-        # Capture
-        self._capture: ScreenCapture | None = None
-        self._capture_running = False
-        self._encoder: VideoEncoder | None = None
+        # Capture (solo per input backend, non per streaming)
         self._input_backend: InputBackend | None = None
 
-        # Timers
-        self._stream_timer = QTimer(self)
-        self._stream_timer.timeout.connect(self._capture_and_send)
+        # Pipeline multi-thread
+        self._pipeline: StreamingPipeline | None = None
+
+        # Timer per bandwidth adaptation (solo lettura contatori)
         self._bw_timer = QTimer(self)
         self._bw_timer.timeout.connect(self._update_bitrate)
 
@@ -106,56 +108,29 @@ class StreamService(QObject):
         # React when the remote peer requests a keyframe
         self._relay.host_keyframe_requested.connect(self._force_keyframe)
 
-        # Tile grid state
-        self._prev_frame: np.ndarray | None = None
-        self._frame_count: int = 0
-        self._force_full_keyframe: bool = False
-
     # ── properties ──────────────────────────────────────────────────
 
     @property
     def is_streaming(self) -> bool:
-        return self._capture_running
+        return self._pipeline is not None
 
     @property
     def input_backend(self) -> InputBackend | None:
         return self._input_backend
 
     @property
-    def capture(self) -> ScreenCapture | None:
-        return self._capture
+    def capture(self):
+        return None  # pipeline gestisce la cattura internamente
 
     # ── streaming lifecycle ─────────────────────────────────────────
 
-    def _lazy_init_encoder(self, width: int, height: int) -> bool:
-        """Create the encoder on first successful capture, if not already done."""
-        if self._encoder is not None:
-            return True
-        try:
-            fps = int(self._settings.value("video/max_fps", 30))
-            quality_name = self._settings.value("video/quality", "MEDIUM")
-            quality = getattr(QualityLevel, quality_name, QualityLevel.MEDIUM)
-            self._encoder = VideoEncoder(
-                EncoderConfig(
-                    width=width,
-                    height=height,
-                    fps=fps,
-                    bitrate=_DEFAULT_BITRATES[quality],
-                    quality=quality,
-                )
-            )
-            logger.info("Encoder lazy-init: %dx%d @ %s", width, height, quality_name)
-            return True
-        except Exception as e:
-            logger.warning("Encoder init failed: %s", e)
-            return False
-
     def start_streaming(self) -> None:
-        """Avvia la cattura schermo, encoding e streaming."""
-        try:
-            self._capture = ScreenCapture()
-            self._capture_running = True
+        """Avvia la pipeline multi-thread (capture + encode + send)."""
+        if self._pipeline is not None:
+            logger.warning("Pipeline already running — ignoring start")
+            return
 
+        try:
             # Input backend (non bloccante)
             try:
                 self._input_backend = create_input_backend()
@@ -169,55 +144,53 @@ class StreamService(QObject):
             self._bw_measure_time = time.time()
             self._bw_estimated_kbps = 0.0
 
-            # Tile grid state
-            self._prev_frame = None
-            self._frame_count = 0
-            self._force_full_keyframe = False
-
-            # Settings
+            # Leggi impostazioni
             fps = int(self._settings.value("video/max_fps", 30))
             quality_name = self._settings.value("video/quality", "HIGH")
             quality = getattr(QualityLevel, quality_name, QualityLevel.HIGH)
+            resolution_scale = float(self._settings.value("video/resolution_scale", 1.0))
 
-            # Capture first frame — if it succeeds, init encoder immediately
-            first = self._capture.capture_one(0)
-            if first is not None:
-                self._lazy_init_encoder(first.width, first.height)
-            else:
-                logger.warning(
-                    "First capture returned None — encoder will be initialised "
-                    "lazily on the first successful capture"
-                )
+            # Crea configurazione della pipeline
+            config = PipelineConfig(
+                fps=fps,
+                quality=quality,
+                bitrate=_DEFAULT_BITRATES[quality],
+                resolution_scale=resolution_scale,
+                monitor_index=0,
+            )
 
-            # Start timers (always, even if encoder not yet ready)
-            self._stream_timer.start(int(1000 / fps))
-            self._bw_timer.start(1000)  # bandwidth adaptation every 1s (was 3s)
-            logger.info("Streaming started at %d FPS (tile grid: %dx%d tiles)", fps,
-                        _TILE_SIZE, _TILE_SIZE)
+            # Callback per tracciare i byte inviati (bandwidth estimation)
+            def _on_send(data: bytes) -> None:
+                self._bw_measure_bytes += len(data)
+
+            # Crea e avvia la pipeline
+            self._pipeline = StreamingPipeline(config, self._relay.send_frame, self._relay.send_tile)
+            self._pipeline.on_keyframe_sent = lambda data, w, h, pts, kf: _on_send(data)
+            self._pipeline.on_tile_sent = lambda data, x, y, tw, th, pts: _on_send(data)
+            self._pipeline.start()
+
+            # Timer per bandwidth adaptation (1s)
+            self._bw_timer.start(1000)
+
+            logger.info(
+                "Streaming started: pipeline 3-thread, %d FPS, %s, scale=%.2f",
+                fps, quality_name, resolution_scale,
+            )
         except Exception as e:
             logger.exception("Failed to start streaming: %s", e)
             self.error.emit(str(e))
             self.stop_streaming()
 
     def stop_streaming(self) -> None:
-        """Ferma cattura, encoding e timer."""
-        if not self._capture_running and self._capture is None and self._encoder is None:
-            return  # already stopped
-        self._stream_timer.stop()
+        """Ferma la pipeline e rilascia le risorse."""
         self._bw_timer.stop()
-        self._capture_running = False
-        if self._capture:
-            self._capture.release()
-            self._capture = None
-        if self._encoder:
-            self._encoder.release()
-            self._encoder = None
+        if self._pipeline:
+            self._pipeline.stop()
+            self._pipeline = None
         if self._input_backend:
             self._input_backend.release()
             self._input_backend = None
-        self._prev_frame = None
         self._bw_measure_bytes = 0
-        self._frame_count = 0
         logger.info("Streaming stopped")
 
     @Slot()
@@ -227,161 +200,23 @@ class StreamService(QObject):
         Called when the remote peer signals that it needs a fresh
         keyframe to re-sync the video decoder.
         """
-        self._force_full_keyframe = True
-        if self._encoder is not None:
-            self._encoder.request_keyframe()
+        if self._pipeline:
+            self._pipeline.request_keyframe()
             logger.info("Forcing full keyframe on next frame per peer request")
-
-    # ── capture / encoder ───────────────────────────────────────────
-
-    @Slot()
-    def _capture_and_send(self) -> None:
-        """Cattura un frame, confronta con il precedente e invia
-        solo i tile modificati. Periodicamente invia un full keyframe.
-        """
-        if not self._capture_running or self._capture is None:
-            return
-        try:
-            frame = self._capture.capture_one(0)
-            if frame is None:
-                return
-
-            # ── Resolution scaling ──
-            scale = float(self._settings.value("video/resolution_scale", 1.0))
-            current = frame.data  # (H, W, 3) RGB
-            if scale < 1.0:
-                h, w = current.shape[:2]
-                nw, nh = int(w * scale), int(h * scale)
-                if nw > 0 and nh > 0:
-                    current = cv2.resize(current, (nw, nh), interpolation=cv2.INTER_LINEAR)
-
-            h, w = current.shape[:2]
-            pts = int(frame.timestamp * 1000)
-            self._frame_count += 1
-
-            # Lazy encoder initialisation (uses scaled resolution)
-            if self._encoder is None:
-                if not self._lazy_init_encoder(w, h):
-                    return
-
-            # Decide whether to send a full keyframe or tiles
-            send_full = (
-                self._prev_frame is None
-                or self._force_full_keyframe
-                or self._frame_count >= _KEYFRAME_INTERVAL
-            )
-
-            if send_full:
-                self._send_full_keyframe(current, w, h, pts)
-                self._prev_frame = current.copy()
-                self._frame_count = 0
-                self._force_full_keyframe = False
-                return
-
-            # Tile grid: find and send changed tiles
-            self._send_changed_tiles(current, w, h, pts)
-
-        except Exception as e:
-            logger.warning("Capture/encode error: %s", e)
-
-    def _send_full_keyframe(self, rgb: np.ndarray, w: int, h: int, pts: int) -> None:
-        """Send a full H.264 keyframe for sync."""
-        if self._encoder is None:
-            return
-        self._encoder.request_keyframe()
-        packets = self._encoder.encode(rgb)
-        for pkt in packets:
-            self._relay.send_frame(
-                pkt.data, pkt.width, pkt.height, pts, keyframe=pkt.is_keyframe,
-            )
-            self._bw_measure_bytes += len(pkt.data)
-        logger.debug("Full keyframe sent: %dx%d (%d bytes)", w, h,
-                      sum(len(p.data) for p in packets))
-
-    def _send_changed_tiles(self, current: np.ndarray, w: int, h: int, pts: int) -> None:
-        """Compare current frame with previous, encode and send changed tiles.
-
-        Uses full-frame diff (vectorised) before iterating tiles, avoiding
-        the N×M per-tile astype() cost that dominated CPU usage.
-        """
-        prev = self._prev_frame
-        if prev is None or prev.shape != current.shape:
-            self._send_full_keyframe(current, w, h, pts)
-            self._prev_frame = current.copy()
-            return
-
-        tile_size = _TILE_SIZE
-        threshold = _TILE_THRESHOLD
-        quality_name = self._settings.value("video/quality", "HIGH")
-        quality = getattr(QualityLevel, quality_name, QualityLevel.HIGH)
-        jpeg_quality = _TILE_JPEG_QUALITY[quality]
-
-        changed_tiles: list[tuple[bytes, int, int, int, int]] = []
-        total_tiles = 0
-
-        # ── 1. Full-frame diff (vectorised, single astype call) ──
-        diff = np.abs(current.astype(np.int16) - prev.astype(np.int16))
-        frame_changed = diff > threshold  # bool mask (H, W, 3)
-        any_changed = np.any(frame_changed, axis=2)  # 2D bool mask (H, W)
-
-        # ── 2. Iterate tiles on the bool mask only ──
-        for y in range(0, h, tile_size):
-            th = min(tile_size, h - y)
-            for x in range(0, w, tile_size):
-                tw = min(tile_size, w - x)
-                total_tiles += 1
-
-                tile_mask = any_changed[y:y + th, x:x + tw]
-                change_ratio = tile_mask.sum() / tile_mask.size
-
-                if change_ratio > 0.005:  # 0.5% of pixels changed
-                    cur_tile = current[y:y + th, x:x + tw]
-                    tile_bgr = cv2.cvtColor(cur_tile, cv2.COLOR_RGB2BGR)
-                    success, encoded = cv2.imencode(
-                        '.jpg', tile_bgr,
-                        [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality],
-                    )
-                    if success:
-                        changed_tiles.append((encoded.tobytes(), x, y, tw, th))
-
-        # Update previous frame
-        self._prev_frame = current.copy()
-
-        # If too many tiles changed, send a full keyframe instead (more efficient)
-        if total_tiles > 0:
-            change_ratio = len(changed_tiles) / total_tiles
-            if change_ratio > _TILE_MAX_CHANGED_RATIO:
-                logger.debug(
-                    "%.0f%% tiles changed — sending full keyframe instead",
-                    change_ratio * 100,
-                )
-                self._send_full_keyframe(current, w, h, pts)
-                self._frame_count = 0
-                return
-
-        # Send all changed tiles
-        for tile_data, tx, ty, tw, th in changed_tiles:
-            self._relay.send_tile(tile_data, tx, ty, tw, th, pts)
-            self._bw_measure_bytes += len(tile_data)
-
-        if changed_tiles:
-            logger.debug(
-                "Sent %d/%d tiles (%.1f KB)",
-                len(changed_tiles), total_tiles,
-                sum(len(t[0]) for t in changed_tiles) / 1024,
-            )
 
     # ── bandwidth adaptation ────────────────────────────────────────
 
     @Slot()
     def _update_bitrate(self) -> None:
-        """Aggiorna il bitrate in base alla banda misurata."""
-        if not self._encoder or not self._capture_running:
-            return
+        """Aggiorna il bitrate in base alla banda misurata.
 
+        La pipeline usa i bitrate dalla config; per ora logghiamo
+        la banda stimata.  In futuro si puo' aggiornare la config
+        della pipeline a caldo.
+        """
         now = time.time()
         elapsed = now - self._bw_measure_time
-        if elapsed < 2.0 or self._bw_measure_bytes < 1024:
+        if elapsed < 1.0 or self._bw_measure_bytes < 1024:
             return
 
         measured_kbps = (self._bw_measure_bytes * 8) / (elapsed * 1000)
@@ -393,14 +228,8 @@ class StreamService(QObject):
         else:
             self._bw_estimated_kbps = self._bw_estimated_kbps * 0.7 + measured_kbps * 0.3
 
-        target_bitrate = int(self._bw_estimated_kbps * 1000 * 0.8)
-        target_bitrate = max(100_000, min(50_000_000, target_bitrate))
-
-        current = self._encoder.actual_bitrate
-        if abs(target_bitrate - current) > current * 0.2:
-            logger.info("Adaptive bitrate: %.0f kbps → %d kbps", self._bw_estimated_kbps, target_bitrate // 1000)
-            self._encoder.actual_bitrate = target_bitrate
-            self.bitrate_changed.emit(self._bw_estimated_kbps)
+        self.bitrate_changed.emit(self._bw_estimated_kbps)
+        logger.debug("Estimated bandwidth: %.0f kbps", self._bw_estimated_kbps)
 
     # ── input injection ─────────────────────────────────────────────
 
