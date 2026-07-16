@@ -24,7 +24,7 @@ import cv2
 import numpy as np
 
 from opendesk.core.screen_capture import ScreenCapture, CapturedFrame
-from opendesk.core.video_codec import VideoEncoder, EncoderConfig, QualityLevel
+from opendesk.core.video_codec import VideoEncoder, EncoderConfig, QualityLevel, _QUALITY_CRF
 from opendesk.network.protocol import Message
 
 logger = logging.getLogger(__name__)
@@ -48,6 +48,8 @@ class PipelineConfig:
     bitrate: int = 8_000_000
     resolution_scale: float = 1.0
     monitor_index: int = 0
+    codec: str = ""  # auto-detect if empty
+    crf: int | None = None  # None = use bitrate, int = CRF mode
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -179,6 +181,10 @@ class EncoderWorker(threading.Thread):
 
             # Lazy init encoder
             if self._encoder is None:
+                # Determina CRF: per qualità HIGH usa CRF 23
+                crf = self._config.crf
+                if crf is None:
+                    crf = _QUALITY_CRF.get(self._config.quality)
                 self._encoder = VideoEncoder(
                     EncoderConfig(
                         width=w,
@@ -186,8 +192,13 @@ class EncoderWorker(threading.Thread):
                         fps=self._config.fps,
                         bitrate=self._config.bitrate,
                         quality=self._config.quality,
+                        codec=self._config.codec,
+                        crf=crf,
                     )
                 )
+                if self._encoder.codec_name:
+                    logger.info("EncoderWorker: using %s CRF=%s",
+                                self._encoder.codec_name, crf or "(bitrate)")
 
             # Decidi se inviare full keyframe o tile
             send_full = (

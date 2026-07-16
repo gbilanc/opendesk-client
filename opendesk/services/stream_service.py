@@ -15,7 +15,7 @@ import time
 from PySide6.QtCore import QObject, QSettings, QTimer, Signal, Slot
 
 from opendesk.core.screen_capture import ScreenCapture, CapturedFrame
-from opendesk.core.video_codec import VideoEncoder, EncoderConfig, QualityLevel
+from opendesk.core.video_codec import VideoEncoder, EncoderConfig, QualityLevel, _QUALITY_CRF
 from opendesk.core.input_injection import (
     InputBackend,
     MouseButton,
@@ -150,6 +150,15 @@ class StreamService(QObject):
             quality = getattr(QualityLevel, quality_name, QualityLevel.HIGH)
             resolution_scale = float(self._settings.value("video/resolution_scale", 1.0))
 
+            # Codice video: preferisci HEVC HW se disponibile, altrimenti H.264
+            codec = self._settings.value("video/codec", "")  # auto-detect
+            prefer_hw = self._settings.value("video/hw_encoding", True, type=bool)
+            if not codec:
+                codec = VideoEncoder.default_codec(prefer_hw=prefer_hw)
+
+            # CRF mode: mappa qualita' a CRF
+            crf = _QUALITY_CRF.get(quality)
+
             # Crea configurazione della pipeline
             config = PipelineConfig(
                 fps=fps,
@@ -157,6 +166,8 @@ class StreamService(QObject):
                 bitrate=_DEFAULT_BITRATES[quality],
                 resolution_scale=resolution_scale,
                 monitor_index=0,
+                codec=codec,
+                crf=crf,
             )
 
             # Callback per tracciare i byte inviati (bandwidth estimation)

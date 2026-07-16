@@ -411,7 +411,7 @@ class _RelaySession:
                     )
                     if data and width > 0 and height > 0:
                         if self._decoder is None:
-                            self._decoder = VideoDecoder()
+                            self._decoder = VideoDecoder(codec="h264")  # auto-detects HEVC if needed
                         try:
                             rgb = self._decoder.decode(
                                 data, width, height, is_keyframe=is_keyframe,

@@ -100,6 +100,43 @@ class SettingsDialog(QDialog):
         self._adaptive_fps.setChecked(True)
         video_layout.addRow("", self._adaptive_fps)
 
+        # ── Codec / encoder ──
+        codec_group = QGroupBox("Encoder")
+        codec_form = QFormLayout(codec_group)
+        codec_form.setSpacing(8)
+
+        self._codec_combo = QComboBox()
+        self._codec_combo.addItem("Auto (best available)", "")
+        self._codec_combo.addItem("H.264 (SW)", "h264")
+        self._codec_combo.addItem("H.265/HEVC (SW)", "hevc")
+        # HW encoders (if available)
+        from opendesk.core.video_codec import VideoEncoder
+        for hw in VideoEncoder.available_hw_encoders():
+            label = hw.replace("_", " ").upper()
+            self._codec_combo.addItem(f"{label}", hw)
+        self._codec_combo.setCurrentIndex(0)
+        codec_form.addRow("Codec:", self._codec_combo)
+
+        self._hw_check = QCheckBox("Prefer hardware acceleration")
+        self._hw_check.setChecked(True)
+        codec_form.addRow("", self._hw_check)
+
+        # Etichetta informativa sui codec HW disponibili
+        hw_list = VideoEncoder.available_hw_encoders()
+        if hw_list:
+            hw_label = QLabel(
+                f"<small>HW encoders detected: {', '.join(hw_list)}</small>"
+            )
+            hw_label.setStyleSheet("color: #22c55e;")
+        else:
+            hw_label = QLabel(
+                "<small>No HW encoder detected — using software encoding</small>"
+            )
+            hw_label.setStyleSheet("color: #f59e0b;")
+        codec_form.addRow("", hw_label)
+
+        video_layout.addRow(codec_group)
+
         tabs.addTab(video_tab, "Video")
 
         # ── Tab 2: Network ──
@@ -234,6 +271,14 @@ class SettingsDialog(QDialog):
             self._settings.value("video/adaptive_fps", True, type=bool)
         )
 
+        codec = self._settings.value("video/codec", "")
+        codec_idx = self._codec_combo.findData(codec)
+        if codec_idx >= 0:
+            self._codec_combo.setCurrentIndex(codec_idx)
+        self._hw_check.setChecked(
+            self._settings.value("video/hw_encoding", True, type=bool)
+        )
+
         self._stun_server.setText(
             self._settings.value("network/stun_server", "stun:stun.l.google.com:19302")
         )
@@ -364,6 +409,14 @@ class SettingsDialog(QDialog):
         )
         self._settings.setValue("video/max_fps", self._fps_spin.value())
         self._settings.setValue("video/adaptive_fps", self._adaptive_fps.isChecked())
+        self._settings.setValue(
+            "video/codec",
+            self._codec_combo.currentData(),
+        )
+        self._settings.setValue(
+            "video/hw_encoding",
+            self._hw_check.isChecked(),
+        )
 
         self._settings.setValue("network/stun_server", self._stun_server.text())
         self._settings.setValue("network/relay_host", self._relay_host.text())
