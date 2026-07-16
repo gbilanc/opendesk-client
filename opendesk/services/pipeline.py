@@ -97,6 +97,9 @@ class CaptureWorker(threading.Thread):
             return
         interval = 1.0 / max(self._config.fps, 1)
 
+        consec_errors = 0
+        max_consec_errors = 10
+
         while not self._stop_event.is_set():
             t0 = time.perf_counter()
 
@@ -106,6 +109,9 @@ class CaptureWorker(threading.Thread):
                     # PipeWire ancora in fase di startup
                     time.sleep(0.01)
                     continue
+
+                # Successo — resetta contatore errori
+                consec_errors = 0
 
                 # ── Resolution scaling ──
                 scale = self._config.resolution_scale
@@ -131,7 +137,20 @@ class CaptureWorker(threading.Thread):
                     logger.debug("CaptureWorker: frame queue full, dropping frame")
 
             except Exception as e:
-                logger.warning("CaptureWorker error: %s", e)
+                consec_errors += 1
+                if consec_errors >= max_consec_errors:
+                    msg = f"CaptureWorker: {consec_errors} errori consecutivi — arresto"
+                    logger.error(msg)
+                    if self._on_error:
+                        self._on_error(f"Screen capture fallita: {e}")
+                    break
+                if consec_errors == 1:
+                    logger.warning("CaptureWorker error: %s", e)
+                elif consec_errors <= 3:
+                    logger.warning("CaptureWorker error (%d/10): %s", consec_errors, e)
+                # dopo 3 errori logga solo in debug per non spammare
+                elif consec_errors <= max_consec_errors:
+                    logger.debug("CaptureWorker error (%d/10): %s", consec_errors, e)
 
             # Mantieni il frame rate target
             elapsed = time.perf_counter() - t0
@@ -139,7 +158,8 @@ class CaptureWorker(threading.Thread):
             if sleep > 0.001:
                 time.sleep(sleep)
 
-        self._capture.release()
+        if self._capture:
+            self._capture.release()
         logger.info("CaptureWorker stopped")
 
     def stop(self) -> None:
