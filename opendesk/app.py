@@ -7,9 +7,15 @@ and launches the main window.  Supports light/dark theme switching.
 
 from __future__ import annotations
 
+import faulthandler
 import logging
+import signal
 import sys
 from pathlib import Path
+
+# Enable crash diagnostics — on segfault, prints a traceback to stderr
+faulthandler.enable()
+faulthandler.register(signal.SIGSEGV)
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QPalette, QColor

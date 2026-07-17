@@ -915,15 +915,15 @@ class FileBrowserDock(QDialog):
         """Connect internal signals."""
         # Local tree: double-click to enter directory / select files
         self._local_tree.doubleClicked.connect(self._on_local_double_clicked)
-        self._local_tree.selectionModel().selectionChanged.connect(
-            self._on_local_selection_changed
-        )
+        local_sel = self._local_tree.selectionModel()
+        if local_sel is not None:
+            local_sel.selectionChanged.connect(self._on_local_selection_changed)
 
         # Remote tree: double-click to enter directory / select files
         self._remote_tree.doubleClicked.connect(self._on_remote_double_clicked)
-        self._remote_tree.selectionModel().selectionChanged.connect(
-            self._on_remote_selection_changed
-        )
+        remote_sel = self._remote_tree.selectionModel()
+        if remote_sel is not None:
+            remote_sel.selectionChanged.connect(self._on_remote_selection_changed)
 
         # Path bars
         self._local_path_bar.returnPressed.connect(self._on_local_path_entered)
@@ -1099,8 +1099,12 @@ class FileBrowserDock(QDialog):
 
     def _update_action_buttons(self) -> None:
         """Enable/disable upload/download buttons based on selections."""
+        # Guard: selectionModel might be None during initialization
+        local_sel = self._local_tree.selectionModel()
+        remote_sel = self._remote_tree.selectionModel()
+
         # Upload: needs local files selected
-        local_indexes = self._local_tree.selectionModel().selectedIndexes()
+        local_indexes = local_sel.selectedIndexes() if local_sel else []
         has_local_files = any(
             not self._local_model.isDir(idx) and idx.column() == 0
             for idx in local_indexes
@@ -1108,7 +1112,7 @@ class FileBrowserDock(QDialog):
         self._upload_btn.setEnabled(has_local_files)
 
         # Download: needs remote files selected
-        remote_indexes = self._remote_tree.selectionModel().selectedIndexes()
+        remote_indexes = remote_sel.selectedIndexes() if remote_sel else []
         has_remote_files = False
         for idx in remote_indexes:
             if idx.column() == 0:
