@@ -160,11 +160,6 @@ class MainWindow(QMainWindow):
     def _setup_actions(self) -> None:
         """Create reusable QAction objects."""
         # ── Session ──
-        self.act_connect = QAction("&Connect...", self)
-        self.act_connect.setShortcut(QKeySequence("Ctrl+N"))
-        self.act_connect.setStatusTip("Connect to a remote computer")
-        self.act_connect.triggered.connect(self._on_connect)
-
         self.act_disconnect = QAction("&Disconnect", self)
         self.act_disconnect.setShortcut(QKeySequence("Ctrl+D"))
         self.act_disconnect.setStatusTip("End current session")
@@ -222,7 +217,6 @@ class MainWindow(QMainWindow):
 
         # ── Session ──
         session_menu = menubar.addMenu("&Session")
-        session_menu.addAction(self.act_connect)
         session_menu.addAction(self.act_disconnect)
         session_menu.addSeparator()
         session_menu.addAction(self.act_quit)
@@ -275,7 +269,6 @@ class MainWindow(QMainWindow):
             }
         """)
 
-        toolbar.addAction(self.act_connect)
         toolbar.addAction(self.act_disconnect)
         toolbar.addSeparator()
         toolbar.addAction(self.act_fit)
@@ -699,7 +692,6 @@ class MainWindow(QMainWindow):
         """
         logger.info("Host streaming: auth succeeded, client connected")
         self._connected = True
-        self.act_connect.setEnabled(False)
         self.act_disconnect.setEnabled(True)
         self._session_status.set_status(
             f"Streaming to client", connected=True,
@@ -738,12 +730,6 @@ class MainWindow(QMainWindow):
 
     # ── Slots: session ──────────────────────────────────────────────
 
-    @Slot()
-    def _on_connect(self) -> None:
-        """Focus the connection panel and device list."""
-        self._connection_panel.setVisible(True)
-        self._connection_panel.raise_()
-
     @Slot(str, str)
     def _on_connection_requested(self, peer_id: str, password: str) -> None:
         """Handle a connection request from the dialog."""
@@ -771,7 +757,8 @@ class MainWindow(QMainWindow):
         - If a CLIENT session is active (we're viewing a remote screen),
           only that session is disconnected; hosting persists.
         - If we're HOSTING with a remote client connected,
-          stop streaming; the host session stays alive for future connections.
+          stop hosting to disconnect the remote peer; the host session
+          auto-retries to accept new connections.
         - If neither, this is a no-op.
         """
         if not self._connected and not self._relay.is_connected:
@@ -788,8 +775,11 @@ class MainWindow(QMainWindow):
                 logger.info("Disconnecting client session: %s", self._peer_id)
                 self._connection.disconnect_client()
             elif self._connection.is_hosting and self._connected:
-                # We're hosting and a client was connected
-                logger.info("Stopping host stream (client was connected)")
+                # We're hosting and a client was connected — stop hosting
+                # so the relay disconnects the remote peer, then auto-retry
+                # reconnects the host session for new clients.
+                logger.info("Stopping host session to disconnect remote client")
+                self._connection.stop_hosting()
 
             self._set_connected(False)
             self._status_text.setText("Disconnected")
@@ -1016,7 +1006,6 @@ class MainWindow(QMainWindow):
         self._connected = connected
 
         # Enable/disable actions
-        self.act_connect.setEnabled(not connected)
         self.act_disconnect.setEnabled(connected)
 
         # Show/hide viewer window
