@@ -412,6 +412,7 @@ class MainWindow(QMainWindow):
         self.act_send_file.setEnabled(False)
         self._file_transfer_send_fn = None
         self._transfer_dock.set_connected(False)
+        self._transfer_dock.set_status("Disconnected — remote browsing unavailable")
         self._stop_streaming()
         self._set_connected(False)
         self._peer_id = ""
@@ -452,7 +453,7 @@ class MainWindow(QMainWindow):
 
             # Enable file transfer
             self.act_send_file.setEnabled(True)
-            self._file_transfer_send_fn = self._send_file_message_async
+            self._file_transfer_send_fn = self._send_file_message
             self._transfer_dock.set_connected(True)
 
             # Start clipboard sync if enabled in settings
@@ -477,7 +478,7 @@ class MainWindow(QMainWindow):
 
             # Enable file transfer
             self.act_send_file.setEnabled(True)
-            self._file_transfer_send_fn = self._send_file_message_async
+            self._file_transfer_send_fn = self._send_file_message
             self._transfer_dock.set_connected(True)
 
             # Start clipboard sync if enabled in settings
@@ -541,31 +542,24 @@ class MainWindow(QMainWindow):
             self._chat_panel.add_message("Remote", text, is_remote=True)
         elif msg.type in (MessageType.CLIPBOARD_TEXT, MessageType.CLIPBOARD_IMAGE):
             if self._clipboard_sync.enabled:
-                import asyncio
-                asyncio.ensure_future(self._clipboard_sync.receive_from_remote(msg))
+                self._clipboard_sync.receive_from_remote(msg)
         elif msg.type == MessageType.FILE_REQUEST:
             # Auto-accept incoming file transfer
-            import asyncio
             job_id = self._file_transfer.handle_file_request(msg)
             if job_id:
                 self._relay.send_message(Message.file_accept(job_id))
-                job = self._file_transfer.get_job(job_id)
-                if job:
-                    self._transfer_dock.add_transfer(job)
         elif msg.type == MessageType.FILE_CHUNK:
             self._file_transfer.handle_chunk(msg)
             job_id = msg.payload.get("job_id", "")
-            job = self._file_transfer.get_job(job_id)
-            if job:
-                self._transfer_dock.add_transfer(job)
+            if job_id:
+                job = self._file_transfer.get_job(job_id)
+                if job:
+                    self._transfer_dock.add_transfer(job)
         elif msg.type == MessageType.FILE_ACCEPT:
             job_id = msg.payload.get("job_id", "")
             job = self._file_transfer.get_job(job_id)
             if job and self._file_transfer_send_fn:
-                import asyncio
-                asyncio.ensure_future(
-                    self._file_transfer.send_chunks(job, self._file_transfer_send_fn)
-                )
+                self._file_transfer.send_chunks(job, self._file_transfer_send_fn)
         elif msg.type == MessageType.FILE_REJECT:
             job_id = msg.payload.get("job_id", "")
             reason = msg.payload.get("reason", "Rejected by remote")
@@ -586,10 +580,9 @@ class MainWindow(QMainWindow):
                 self._transfer_dock.add_transfer(job)
         elif msg.type == MessageType.FILE_LIST_REQUEST:
             # Remote peer wants a directory listing — respond
-            import asyncio
             response = self._file_transfer.handle_list_request(msg)
             if self._file_transfer_send_fn:
-                asyncio.ensure_future(self._file_transfer_send_fn(response))
+                self._file_transfer_send_fn(response)
         elif msg.type == MessageType.FILE_LIST_RESPONSE:
             # Remote directory listing received
             self._file_transfer.handle_list_response(msg)
@@ -821,10 +814,7 @@ class MainWindow(QMainWindow):
         )
         if not paths or not self._file_transfer_send_fn:
             return
-        import asyncio
-        jobs = asyncio.ensure_future(
-            self._file_transfer.send_files(paths, self._file_transfer_send_fn)
-        )
+        self._file_transfer.send_files(paths, self._file_transfer_send_fn)
         logger.info("File transfer initiated: %d files", len(paths))
 
     @Slot()
@@ -858,11 +848,15 @@ class MainWindow(QMainWindow):
         else:
             self._transfer_dock.hide()
 
-    async def _send_file_message_async(self, msg: Message) -> None:
-        """Async wrapper for relay.send_message (used by FileTransferManager)."""
+    def _send_file_message(self, msg: Message) -> None:
+        """Send a message via the relay (used as send_fn by FileTransferManager).
+
+        This is a synchronous wrapper — ``RelayClient.send_message`` is
+        thread-safe and uses ``run_coroutine_threadsafe`` internally.
+        """
         self._relay.send_message(msg)
 
-    async def _send_clipboard_message(self, msg: Message) -> None:
+    def _send_clipboard_message(self, msg: Message) -> None:
         """Send a clipboard sync message over the relay."""
         if self._relay.is_connected:
             self._relay.send_message(msg)
@@ -880,10 +874,7 @@ class MainWindow(QMainWindow):
         """Upload selected local files to the remote peer."""
         if not paths or not self._file_transfer_send_fn:
             return
-        import asyncio
-        asyncio.ensure_future(
-            self._file_transfer.send_files(paths, self._file_transfer_send_fn)
-        )
+        self._file_transfer.send_files(paths, self._file_transfer_send_fn)
         logger.info("Upload requested: %d files", len(paths))
 
     @Slot(list)
@@ -891,11 +882,8 @@ class MainWindow(QMainWindow):
         """Download selected remote files to local."""
         if not remote_paths or not self._file_transfer_send_fn:
             return
-        import asyncio
         for rpath in remote_paths:
-            asyncio.ensure_future(
-                self._file_transfer.request_download(rpath, self._file_transfer_send_fn)
-            )
+            self._file_transfer.request_download(rpath, self._file_transfer_send_fn)
         logger.info("Download requested: %d files", len(remote_paths))
 
     @Slot(str)
@@ -905,12 +893,21 @@ class MainWindow(QMainWindow):
             self._file_transfer.request_remote_listing(path, self._file_transfer_send_fn)
 
     def _on_transfer_update(self, job: TransferJob) -> None:
-        """Callback from FileTransferManager when a transfer job updates."""
-        self._transfer_dock.add_transfer(job)
+        """Callback from FileTransferManager when a transfer job updates.
+
+        Called from the background thread — bounce to the main thread
+        before updating Qt widgets.
+        """
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, lambda: self._transfer_dock.add_transfer(job))
 
     def _on_remote_listing(self, path: str, entries: list[dict], error: str) -> None:
-        """Callback from FileTransferManager when remote listing arrives."""
-        self._transfer_dock.set_remote_listing(path, entries, error)
+        """Callback from FileTransferManager when remote listing arrives.
+
+        Called from the background thread — bounce to the main thread.
+        """
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, lambda: self._transfer_dock.set_remote_listing(path, entries, error))
 
     # ── Slots: help ─────────────────────────────────────────────────
 

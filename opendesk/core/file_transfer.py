@@ -6,6 +6,12 @@ Protocol:
   - Files are split into chunks (64 KiB)
   - Each chunk is optionally E2E encrypted
   - Progress is reported back
+
+Architecture:
+  FileTransferManager runs its own asyncio event loop in a background
+  daemon thread.  All async operations (chunk transfers, hashing) are
+  scheduled on that loop via ``run_coroutine_threadsafe``.  This avoids
+  depending on a running event loop in the Qt main thread.
 """
 
 from __future__ import annotations
@@ -14,6 +20,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -91,6 +98,59 @@ class TransferJob:
 
 
 # ---------------------------------------------------------------------------
+# Background event loop
+# ---------------------------------------------------------------------------
+
+
+class _BgEventLoop:
+    """A daemon thread running an asyncio event loop forever.
+
+    Used by ``FileTransferManager`` to schedule async operations
+    (chunk transfers, SHA computation) without needing a running
+    loop in the Qt main thread.
+    """
+
+    def __init__(self) -> None:
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        """Create and start the background event loop thread."""
+        if self._thread and self._thread.is_alive():
+            return
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(
+            target=self._loop.run_forever,
+            daemon=True,
+            name="file-transfer-loop",
+        )
+        self._thread.start()
+        logger.debug("Background event loop started")
+
+    def stop(self) -> None:
+        """Stop the background event loop."""
+        if self._loop and self._thread and self._thread.is_alive():
+            self._loop.call_soon_threadsafe(self._loop.stop)
+            self._thread.join(timeout=2.0)
+            self._loop.close()
+        self._loop = None
+        self._thread = None
+
+    def run(self, coro) -> asyncio.Future:
+        """Schedule a coroutine on the background loop.
+
+        Returns an ``asyncio.Future`` that can be awaited or polled.
+        """
+        if self._loop is None or not self._loop.is_running():
+            raise RuntimeError("Background event loop not running")
+        return asyncio.run_coroutine_threadsafe(coro, self._loop)
+
+    @property
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+
+# ---------------------------------------------------------------------------
 # File transfer manager
 # ---------------------------------------------------------------------------
 
@@ -98,19 +158,31 @@ class TransferJob:
 class FileTransferManager:
     """Manages multiple concurrent file transfers.
 
-    Works with the relay client to send/receive files via
-    the protocol's file-related message types.
+    Uses its own background event loop for async operations so that
+    it works correctly even when the Qt main thread has no running
+    asyncio event loop.
+
+    All public methods are thread-safe and can be called from any thread.
     """
 
     def __init__(self, max_concurrent: int = _MAX_CONCURRENT) -> None:
         self._max_concurrent = max_concurrent
         self._jobs: dict[str, TransferJob] = {}
         self._active_count: int = 0
-        self._current_chunk_transfer: asyncio.Task | None = None
 
-        # Callbacks for async events
+        # Background event loop for async operations
+        self._bg_loop = _BgEventLoop()
+        self._bg_loop.start()
+
+        # Callbacks for async events (called from the background thread)
         self.on_remote_listing: Callable | None = None  # fn(path, entries, error)
         self.on_transfer_update: Callable | None = None  # fn(job)
+
+    # ── lifecycle ───────────────────────────────────────────────────
+
+    def shutdown(self) -> None:
+        """Stop the background event loop. Call on application exit."""
+        self._bg_loop.stop()
 
     # ── properties ──────────────────────────────────────────────────
 
@@ -132,27 +204,31 @@ class FileTransferManager:
         """Look up a transfer job by ID."""
         return self._jobs.get(job_id)
 
-    # ── sending ─────────────────────────────────────────────────────
+    # ── sending (upload) ────────────────────────────────────────────
 
-    async def send_files(
+    def send_files(
         self,
         paths: list[str | Path],
         send_fn: Callable,
-    ) -> list[TransferJob]:
+    ) -> None:
         """Initiate file transfers for the given paths.
 
         Parameters
         ----------
         paths : list of str or Path
             Local file paths to send.
-        send_fn : async callable
-            Function to send a ``Message`` to the remote peer.
-
-        Returns
-        -------
-        list[TransferJob]
-            Created job objects.
+        send_fn : callable
+            Function to send a ``Message`` to the remote peer
+            (e.g. ``lambda msg: relay.send_message(msg)``).
         """
+        self._bg_loop.run(self._send_files_async(paths, send_fn))
+
+    async def _send_files_async(
+        self,
+        paths: list[str | Path],
+        send_fn: Callable,
+    ) -> None:
+        """Async implementation of send_files."""
         jobs: list[TransferJob] = []
         for path in paths:
             path_obj = Path(path)
@@ -176,28 +252,34 @@ class FileTransferManager:
 
         # Send file request messages
         for job in jobs:
-            await send_fn(Message.file_request(
+            send_fn(Message.file_request(
                 job.file_info.name,
                 job.file_info.size,
                 job.file_info.sha256,
             ))
 
-        return jobs
-
-    async def send_chunks(
+    def send_chunks(
         self,
         job: TransferJob,
-        send_fn,
+        send_fn: Callable,
     ) -> None:
-        """Send file chunks one by one.
+        """Send file chunks one by one in the background.
 
         Parameters
         ----------
         job : TransferJob
             The job to send (must be accepted).
-        send_fn : async callable
+        send_fn : callable
             Function to send a ``Message``.
         """
+        self._bg_loop.run(self._send_chunks_async(job, send_fn))
+
+    async def _send_chunks_async(
+        self,
+        job: TransferJob,
+        send_fn: Callable,
+    ) -> None:
+        """Async implementation of send_chunks."""
         path = Path(job.file_info.path)
         if not path.exists():
             self._fail_job(job, "File missing")
@@ -217,18 +299,20 @@ class FileTransferManager:
                     job.id, seq, chunk,
                     is_last=len(chunk) < _CHUNK_SIZE,
                 )
-                await send_fn(msg)
+                send_fn(msg)
 
                 job.bytes_transferred += len(chunk)
                 job.progress = job.bytes_transferred / job.file_info.size
                 seq += 1
 
-                # Yield control to the event loop between chunks
+                # Yield control between chunks
                 await asyncio.sleep(0)
 
         job.state = TransferState.COMPLETED
         job.completed_at = time.time()
         logger.info("File sent: %s (%d chunks)", job.file_info.name, seq)
+        if self.on_transfer_update:
+            self.on_transfer_update(job)
 
     # ── receiving ───────────────────────────────────────────────────
 
@@ -252,6 +336,8 @@ class FileTransferManager:
         job.state = TransferState.ACCEPTED
         job.started_at = time.time()
         logger.info("Incoming file: %s (%d bytes)", name, size)
+        if self.on_transfer_update:
+            self.on_transfer_update(job)
         return job_id
 
     def handle_chunk(self, msg: Message) -> None:
@@ -291,6 +377,8 @@ class FileTransferManager:
             return False
         job.state = TransferState.CANCELLED
         logger.info("Job cancelled: %s", job_id)
+        if self.on_transfer_update:
+            self.on_transfer_update(job)
         return True
 
     def pause_job(self, job_id: str) -> bool:
@@ -299,6 +387,8 @@ class FileTransferManager:
         if job is None or job.state != TransferState.IN_PROGRESS:
             return False
         job.state = TransferState.PAUSED
+        if self.on_transfer_update:
+            self.on_transfer_update(job)
         return True
 
     # ── internal ────────────────────────────────────────────────────
@@ -307,6 +397,8 @@ class FileTransferManager:
         job.state = TransferState.FAILED
         job.error = error
         logger.error("Transfer failed: %s — %s", job.file_info.name, error)
+        if self.on_transfer_update:
+            self.on_transfer_update(job)
 
     def _finalize_receive(self, job: TransferJob, dest_dir: str | Path | None = None) -> None:
         """Write received data to disk.
@@ -334,8 +426,6 @@ class FileTransferManager:
                 self.on_transfer_update(job)
         except OSError as e:
             self._fail_job(job, str(e))
-            if self.on_transfer_update:
-                self.on_transfer_update(job)
 
     # ── directory listing ─────────────────────────────────────────────
 
@@ -372,7 +462,6 @@ class FileTransferManager:
                         "mtime": stat.st_mtime,
                     })
                 except OSError:
-                    # Skip files we can't stat (permission issues)
                     entries.append({
                         "name": child.name,
                         "is_dir": child.is_dir(),
@@ -399,8 +488,9 @@ class FileTransferManager:
         """Request a directory listing from the remote peer.
 
         The result will be delivered via ``on_remote_listing`` callback.
+        This is synchronous — just sends one message.
         """
-        asyncio.ensure_future(send_fn(Message.file_list_request(path)))
+        send_fn(Message.file_list_request(path))
 
     def handle_list_response(self, msg: Message) -> None:
         """Process an incoming FILE_LIST_RESPONSE."""
@@ -412,26 +502,22 @@ class FileTransferManager:
 
     # ── download requests ─────────────────────────────────────────────
 
-    async def request_download(
+    def request_download(
         self,
         remote_path: str,
         send_fn: Callable,
         local_dest: str | Path | None = None,
-    ) -> TransferJob | None:
+    ) -> None:
         """Request to download a file from the remote peer.
 
         Parameters
         ----------
         remote_path : str
             Path of the file on the remote system.
-        send_fn : async callable
+        send_fn : callable
             Function to send a ``Message``.
         local_dest : str or Path, optional
             Local destination path. If None, uses filename in Downloads.
-
-        Returns
-        -------
-        TransferJob or None
         """
         name = Path(remote_path).name
         job_id = f"dl-{int(time.time())}-{name}"
@@ -447,25 +533,23 @@ class FileTransferManager:
             job.file_info.path = str(local_dest)
         self._jobs[job_id] = job
 
-        await send_fn(Message(
+        # Send the download request synchronously
+        send_fn(Message(
             MessageType.FILE_DOWNLOAD_REQUEST,
             {"remote_path": remote_path, "job_id": job_id},
         ))
-        return job
 
     def handle_download_request(self, msg: Message, send_fn: Callable) -> None:
         """Handle an incoming FILE_DOWNLOAD_REQUEST from remote.
 
-        Starts sending the requested file in chunks.
+        Starts sending the requested file in chunks on the background loop.
         """
         remote_path = msg.payload.get("remote_path", "")
         job_id = msg.payload.get("job_id", "")
 
         path = Path(remote_path)
         if not path.exists() or not path.is_file():
-            asyncio.ensure_future(send_fn(
-                Message.file_download_reject(job_id, "File not found"),
-            ))
+            send_fn(Message.file_download_reject(job_id, "File not found"))
             return
 
         file_info = FileInfo.from_path(path)
@@ -477,20 +561,18 @@ class FileTransferManager:
         )
         self._jobs[job_id] = job
 
-        # Send accept, then start chunk transfer
-        asyncio.ensure_future(self._send_download_chunks(job, send_fn))
+        # Start chunk transfer on background loop
+        self._bg_loop.run(self._send_download_chunks_async(job, send_fn))
 
-    async def _send_download_chunks(self, job: TransferJob, send_fn: Callable) -> None:
-        """Send file chunks for a download request."""
+    async def _send_download_chunks_async(self, job: TransferJob, send_fn: Callable) -> None:
+        """Send file chunks for a download request (background)."""
         # Send accept first
-        await send_fn(Message.file_download_accept(job.id))
+        send_fn(Message.file_download_accept(job.id))
 
         path = Path(job.file_info.path)
         if not path.exists():
             self._fail_job(job, "File missing")
-            await send_fn(Message.file_error(job.id, "File missing"))
-            if self.on_transfer_update:
-                self.on_transfer_update(job)
+            send_fn(Message.file_error(job.id, "File missing"))
             return
 
         job.state = TransferState.IN_PROGRESS
@@ -509,7 +591,7 @@ class FileTransferManager:
                     job.id, seq, chunk,
                     is_last=len(chunk) < _CHUNK_SIZE,
                 )
-                await send_fn(msg)
+                send_fn(msg)
 
                 job.bytes_transferred += len(chunk)
                 job.progress = job.bytes_transferred / job.file_info.size
@@ -523,11 +605,7 @@ class FileTransferManager:
             self.on_transfer_update(job)
 
     def handle_download_accept(self, msg: Message) -> None:
-        """Handle FILE_DOWNLOAD_ACCEPT — remote peer will start sending chunks.
-
-        The actual chunk handling goes through the existing handle_chunk flow,
-        but we mark the job as IN_PROGRESS here.
-        """
+        """Handle FILE_DOWNLOAD_ACCEPT — remote peer will start sending chunks."""
         job_id = msg.payload.get("job_id", "")
         job = self._jobs.get(job_id)
         if job:
