@@ -505,11 +505,10 @@ class TransferDelegate(QStyledItemDelegate):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         rect = option.rect
-        # Background
-        if option.state & QStyleOptionViewItem.StateFlag.State_Selected:
-            painter.fillRect(rect, QColor("#f8fafc"))
-        else:
-            painter.fillRect(rect, QColor("#ffffff"))
+        # Background — use QStyle.State_Selected (Qt6 API)
+        from PySide6.QtWidgets import QStyle
+        selected = bool(option.state & QStyle.State_Selected)
+        painter.fillRect(rect, QColor("#f8fafc") if selected else QColor("#ffffff"))
         # Bottom border
         painter.setPen(QPen(QColor("#f1f5f9"), 1))
         painter.drawLine(rect.bottomLeft(), rect.bottomRight())

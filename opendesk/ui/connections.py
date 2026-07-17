@@ -131,10 +131,10 @@ class DeviceDelegate(QStyledItemDelegate):
 
         from PySide6.QtWidgets import QStyle
         state = option.state
-        # Background
-        if state & QStyle.StateFlag.State_Selected:
+        # Background — use QStyle.State_* (Qt6 API)
+        if state & QStyle.State_Selected:
             painter.fillRect(option.rect, QColor("#dbeafe"))
-        elif state & QStyle.StateFlag.State_MouseOver:
+        elif state & QStyle.State_MouseOver:
             painter.fillRect(option.rect, QColor("#f8fafc"))
         else:
             painter.fillRect(option.rect, QColor("#ffffff"))

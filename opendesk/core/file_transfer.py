@@ -372,7 +372,10 @@ class FileTransferManager:
 
         job.chunk_buffer.extend(data)
         job.bytes_transferred += len(data)
-        job.progress = job.bytes_transferred / job.file_info.size
+        if job.file_info.size > 0:
+            job.progress = job.bytes_transferred / job.file_info.size
+        else:
+            job.progress = 1.0 if is_last else 0.0
 
         if is_last:
             if job.file_info.path:
