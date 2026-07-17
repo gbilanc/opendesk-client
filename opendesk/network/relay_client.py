@@ -297,7 +297,17 @@ class _RelaySession:
                     self.inbox.put(("keyframe_requested", None, self.session_seq))
 
                 elif t == MessageType.ERROR:
-                    err = msg.payload.get("message", "Unknown relay error")
+                    err = msg.payload.get("message", None)
+                    if err is None:
+                        # Payload senza 'message' — logghiamo il payload completo per debug
+                        logger.warning(
+                            "Host received ERROR from relay without message field "
+                            "(payload=%s, code=%s) — possible protocol mismatch",
+                            {k: (str(v)[:120] if isinstance(v, (bytes, str)) and len(str(v)) > 120 else v)
+                             for k, v in msg.payload.items()},
+                            msg.payload.get("code", "N/A"),
+                        )
+                        err = f"Relay error (code={msg.payload.get('code', 'N/A')})"
                     # "Peer disconnected" is expected when the remote client leaves.
                     # Treat it as a peer event, not a relay error.
                     if "Peer disconnected" in err:
@@ -511,7 +521,16 @@ class _RelaySession:
                     self.inbox.put(("keyframe_requested", None, self.session_seq))
 
                 elif t == MessageType.ERROR:
-                    err = msg.payload.get("message", "Unknown relay error")
+                    err = msg.payload.get("message", None)
+                    if err is None:
+                        logger.warning(
+                            "Client received ERROR without message field "
+                            "(payload=%s, code=%s)",
+                            {k: (str(v)[:120] if isinstance(v, (bytes, str)) and len(str(v)) > 120 else v)
+                             for k, v in msg.payload.items()},
+                            msg.payload.get("code", "N/A"),
+                        )
+                        err = f"Relay error (code={msg.payload.get('code', 'N/A')})"
                     logger.debug("Client received ERROR: %s — breaking loop", err)
                     self.inbox.put(("error", err, self.session_seq))
                     break
