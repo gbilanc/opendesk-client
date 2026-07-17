@@ -429,7 +429,11 @@ class VideoEncoder:
             # Low-latency tuning
             if "h264" in codec and codec not in ("h264_nvenc",):
                 opts["tune"] = "zerolatency"
-                opts["profile"] = "baseline"
+                # yuv444p requires High 4:4:4 Predictive Profile — baseline non supporta 4:4:4
+                if self._stream.pix_fmt == "yuv444p":
+                    opts["profile"] = "high444"
+                else:
+                    opts["profile"] = "baseline"
             elif is_hevc and codec in ("hevc",):
                 opts["tune"] = "zerolatency"
             if codec in ("h264_nvenc", "hevc_nvenc"):
