@@ -316,6 +316,7 @@ class MainWindow(QMainWindow):
         # Connection panel (device list + manual entry)
         self._connection_panel = ConnectionPanel(
             device_registry=self._device_registry,
+            local_device_id=self._device_id,
             parent=central,
         )
         self._connection_panel.connection_requested.connect(self._on_connection_requested)

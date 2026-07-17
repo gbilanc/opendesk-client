@@ -198,11 +198,13 @@ class ConnectionPanel(QWidget):
     def __init__(
         self,
         device_registry=None,
+        local_device_id: str = "",
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._model = DeviceListModel(self)
         self._registry = device_registry
+        self._local_device_id = local_device_id
         self._setup_ui()
         self._setup_connections()
 
@@ -366,8 +368,9 @@ class ConnectionPanel(QWidget):
     # ── public API ──────────────────────────────────────────────────
 
     def update_device_list(self, devices: list[DeviceEntry]) -> None:
-        """Update the displayed device list (called from MainWindow)."""
-        self._model.set_devices(devices)
+        """Update the displayed device list, excluding the local device."""
+        filtered = [d for d in devices if d.device_id != self._local_device_id]
+        self._model.set_devices(filtered)
 
     def set_connected(self, connected: bool) -> None:
         """Enable/disable the Chat button based on connection state."""
@@ -406,7 +409,8 @@ class ConnectionPanel(QWidget):
             self._registry.set_trusted(device_id, not trusted)
             # Aggiorna la visualizzazione dalla fonte ufficiale
             devices = self._registry.all()
-            self._model.set_devices(devices)
+            filtered = [d for d in devices if d.device_id != self._local_device_id]
+            self._model.set_devices(filtered)
 
     @property
     def model(self) -> DeviceListModel:
