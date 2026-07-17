@@ -194,6 +194,7 @@ class ConnectionPanel(QWidget):
     connection_requested = Signal(str, str)  # session_id, password
     file_transfer_requested = Signal(str, str)  # device_id, password
     chat_toggled = Signal()  # toggle chat panel visibility
+    disconnect_requested = Signal()  # disconnect current session
 
     def __init__(
         self,
@@ -246,7 +247,7 @@ class ConnectionPanel(QWidget):
         self._empty_widget.setVisible(False)
         layout.addWidget(self._empty_widget)
 
-        # ── Connect button ──
+        # ── Action buttons row ──
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
@@ -300,7 +301,31 @@ class ConnectionPanel(QWidget):
         self._chat_btn.clicked.connect(self._on_chat)
         btn_row.addWidget(self._chat_btn)
 
+        # ── Disconnect button ──
         btn_row.addStretch()
+
+        self._disconnect_btn = QPushButton("Disconnect")
+        self._disconnect_btn.setEnabled(False)
+        self._disconnect_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #dc2626;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 18px;
+                font-weight: 600;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #b91c1c;
+            }
+            QPushButton:disabled {
+                background-color: #94a3b8;
+            }
+        """)
+        self._disconnect_btn.clicked.connect(self._on_disconnect)
+        btn_row.addWidget(self._disconnect_btn)
+
         layout.addLayout(btn_row)
 
         # ── Manual entry section ──
@@ -373,8 +398,11 @@ class ConnectionPanel(QWidget):
         self._model.set_devices(filtered)
 
     def set_connected(self, connected: bool) -> None:
-        """Enable/disable the Chat button based on connection state."""
+        """Enable/disable Disconnect and Chat based on connection state.
+        Connect and Transfer Files are controlled by selection state.
+        """
         self._chat_btn.setEnabled(connected)
+        self._disconnect_btn.setEnabled(connected)
 
     # ── context menu ───────────────────────────────────────────────
 
@@ -468,6 +496,11 @@ class ConnectionPanel(QWidget):
         if not device_id or not password:
             return
         self.connection_requested.emit(device_id, password)
+
+    @Slot()
+    def _on_disconnect(self) -> None:
+        """Emit disconnect_requested signal."""
+        self.disconnect_requested.emit()
 
     @Slot()
     def _on_connect(self) -> None:

@@ -269,7 +269,6 @@ class MainWindow(QMainWindow):
             }
         """)
 
-        toolbar.addAction(self.act_disconnect)
         toolbar.addSeparator()
         toolbar.addAction(self.act_fit)
         toolbar.addAction(self.act_zoom_in)
@@ -315,6 +314,7 @@ class MainWindow(QMainWindow):
         self._connection_panel.connection_requested.connect(self._on_connection_requested)
         self._connection_panel.file_transfer_requested.connect(self._on_file_transfer_requested)
         self._connection_panel.chat_toggled.connect(self._on_chat_toggled)
+        self._connection_panel.disconnect_requested.connect(self._on_disconnect)
         layout.addWidget(self._connection_panel, 1)
 
         self.setCentralWidget(central)
