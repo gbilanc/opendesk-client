@@ -78,11 +78,12 @@ class RemoteFileSystemModel(QAbstractItemModel):
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         if not parent.isValid():
-            return len(self._root.get("children", []))
+            return len(self._root.get("children") or [])
         node = parent.internalPointer() if parent.internalPointer() else self._root
         if not isinstance(node, dict):
             return 0
-        return len(node.get("children", []))
+        children = node.get("children")
+        return 0 if children is None else len(children)
 
     def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:
         return 4  # name, size, type, modified
@@ -94,7 +95,7 @@ class RemoteFileSystemModel(QAbstractItemModel):
         parent_node = parent.internalPointer() if parent.isValid() else self._root
         if not isinstance(parent_node, dict):
             return QModelIndex()
-        children = parent_node.get("children", [])
+        children = parent_node.get("children") or []
         if row < 0 or row >= len(children):
             return QModelIndex()
         return self.createIndex(row, column, children[row])
@@ -118,7 +119,7 @@ class RemoteFileSystemModel(QAbstractItemModel):
         # Find row of parent
         grandparent_path = self._find_parent_path(parent_node)
         grandparent = self._path_map.get(grandparent_path or "/", self._root)
-        grandparent_children = grandparent.get("children", [])
+        grandparent_children = grandparent.get("children") or []
         try:
             row = grandparent_children.index(parent_node)
         except ValueError:
@@ -211,11 +212,11 @@ class RemoteFileSystemModel(QAbstractItemModel):
         # Begin reset on parent
         parent_index = self._find_index_for_path(path)
         if parent_index.isValid():
-            self.beginRemoveRows(parent_index, 0, len(node.get("children", [])) - 1)
+            self.beginRemoveRows(parent_index, 0, max(0, len(node.get("children") or []) - 1))
         else:
-            self.beginRemoveRows(QModelIndex(), 0, len(self._root.get("children", [])) - 1)
+            self.beginRemoveRows(QModelIndex(), 0, max(0, len(self._root.get("children") or []) - 1))
 
-        old_children = node.get("children", [])
+        old_children = node.get("children") or []
         for child in old_children:
             child_path = child.get("path", "")
             if child_path in self._path_map:
@@ -331,7 +332,7 @@ class RemoteFileSystemModel(QAbstractItemModel):
                 return QModelIndex()
             # Find row
             parent_node = parent.internalPointer() if parent.isValid() else self._root
-            parent_children = parent_node.get("children", [])
+            parent_children = parent_node.get("children") or []
             try:
                 row = parent_children.index(node)
             except ValueError:
