@@ -140,6 +140,20 @@ class StreamService(QObject):
                 self._input_backend = None
                 self.input_unavailable.emit(str(e))
 
+            # Imposta la risoluzione dello schermo sul backend di input
+            # (necessaria per il corretto scaling delle coordinate ABS su Wayland)
+            if self._input_backend is not None:
+                try:
+                    from PySide6.QtWidgets import QApplication
+                    screen = QApplication.primaryScreen()
+                    if screen is not None:
+                        size = screen.size()
+                        self._input_backend.set_screen_size(
+                            size.width(), size.height(),
+                        )
+                except Exception:
+                    logger.debug("Could not query screen size for input backend")
+
             # Reset bandwidth
             self._bw_measure_bytes = 0
             self._bw_measure_time = time.time()

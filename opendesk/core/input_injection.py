@@ -87,6 +87,15 @@ class InputBackend(ABC):
     @abstractmethod
     def type_text(self, text: str) -> None: ...
 
+    def set_screen_size(self, width: int, height: int) -> None:
+        """Set the remote screen resolution (for coordinate scaling).
+
+        Called by the stream service when the screen resolution becomes
+        known.  Some backends (e.g. Wayland ABS uinput) need this to
+        correctly scale pixel coordinates to the device range.
+        """
+        return
+
     def release(self) -> None:
         """Clean up backend resources."""
         return
@@ -255,6 +264,8 @@ class WaylandInputBackend(InputBackend):
     def __init__(self) -> None:
         self._ui: Any = None  # noqa: ANN401
         self._abs_ui: Any = None  # noqa: ANN401
+        self._screen_width: int = 0
+        self._screen_height: int = 0
         self._setup()
 
     def _setup(self) -> None:
@@ -403,12 +414,25 @@ class WaylandInputBackend(InputBackend):
         logger.warning("Unknown key '%s'", key)
         return 0
 
+    def set_screen_size(self, width: int, height: int) -> None:
+        """Set the screen resolution for ABS coordinate scaling."""
+        self._screen_width = width
+        self._screen_height = height
+        logger.info(
+            "Wayland: screen size set to %dx%d for ABS scaling",
+            width, height,
+        )
+
     def _try_create_abs_device(self) -> None:
         """Tenta di creare un secondo device uinput con EV_ABS.
 
         Alcuni compositori Wayland (wlroots, KDE) supportano il
         posizionamento assoluto via EV_ABS da uinput.  GNOME lo
         ignora.  Se la creazione fallisce, si usa il fallback REL.
+
+        Nota: le coordinate vanno scalate in base alla risoluzione
+        dello schermo (set_screen_size), altrimenti il compositore
+        le interpreta nel range 0-_ABS_MAX invece che in pixel.
         """
         from evdev import UInput, AbsInfo
         try:
@@ -429,7 +453,7 @@ class WaylandInputBackend(InputBackend):
             self._has_abs = True
             logger.info(
                 "Wayland: ABS uinput device created (max=%d) — "
-                "absolute mouse positioning enabled",
+                "absolute mouse positioning enabled (waiting for screen size)",
                 _ABS_MAX,
             )
         except Exception as e:
@@ -462,14 +486,26 @@ class WaylandInputBackend(InputBackend):
             return
 
         if absolute and self._has_abs:
-            # ABS uinput: invia coordinate assolute direttamente
-            # (wlroots/KDE rispettano EV_ABS; GNOME ignora → REL fallback)
-            self._abs_ui.write(self._e.EV_ABS, self._e.ABS_X, x)
-            self._abs_ui.write(self._e.EV_ABS, self._e.ABS_Y, y)
-            self._abs_ui.syn()
-            self._virtual_x = x
-            self._virtual_y = y
-            return
+            if self._screen_width > 0 and self._screen_height > 0:
+                # Scala le coordinate pixel nel range ABS del device
+                # Esempio: pixel x=500 su schermo 1920px → ABS_X = 500 * 32767 / 1920 ≈ 8533
+                abs_x = int(x * _ABS_MAX / self._screen_width)
+                abs_y = int(y * _ABS_MAX / self._screen_height)
+                # Clamp per sicurezza
+                abs_x = max(0, min(_ABS_MAX, abs_x))
+                abs_y = max(0, min(_ABS_MAX, abs_y))
+                self._abs_ui.write(self._e.EV_ABS, self._e.ABS_X, abs_x)
+                self._abs_ui.write(self._e.EV_ABS, self._e.ABS_Y, abs_y)
+                self._abs_ui.syn()
+                self._virtual_x = x
+                self._virtual_y = y
+                return
+            else:
+                # Screen size non ancora nota → REL fallback
+                logger.debug(
+                    "Wayland ABS: screen size unknown, falling back to REL "
+                    "for move to (%d, %d)", x, y,
+                )
 
         if absolute:
             if not self._virtual_inited:
