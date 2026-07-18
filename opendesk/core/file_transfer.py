@@ -264,12 +264,15 @@ class FileTransferManager:
             file_info.sha256 = await self._compute_sha256(path_obj)
             logger.info("File transfer queued: %s (%d bytes)", file_info.name, file_info.size)
 
-        # Send file request messages
+        # Send file request messages with the sender's job_id so the
+        # receiver echoes it back in FILE_ACCEPT and both sides use
+        # the same identifier for the transfer.
         for job in jobs:
             send_fn(Message.file_request(
                 job.file_info.name,
                 job.file_info.size,
                 job.file_info.sha256,
+                job_id=job.id,
             ))
             self._push_update("transfer", job.id)
 
@@ -338,12 +341,16 @@ class FileTransferManager:
     def handle_file_request(self, msg: Message) -> str | None:
         """Handle an incoming file request.
 
-        Returns the job ID if accepted, or ``None`` to reject.
+        Uses the sender's ``job_id`` so both sides agree on the same
+        identifier for the transfer.  Returns the job ID if accepted,
+        or ``None`` to reject.
         """
         name = msg.payload.get("name", "unknown")
         size = msg.payload.get("size", 0)
         sha256 = msg.payload.get("sha256", "")
-        job_id = f"recv-{int(time.time())}-{name}"
+        # Use the sender's job_id so FILE_ACCEPT echoes back an ID
+        # that the sender can find in its own job registry.
+        job_id = msg.payload.get("job_id", "") or f"recv-{int(time.time())}-{name}"
 
         file_info = FileInfo(name=name, size=size, sha256=sha256)
         job = TransferJob(
@@ -354,7 +361,7 @@ class FileTransferManager:
         self._jobs[job_id] = job
         job.state = TransferState.ACCEPTED
         job.started_at = time.time()
-        logger.info("Incoming file: %s (%d bytes)", name, size)
+        logger.info("Incoming file: %s (%d bytes) [job=%s]", name, size, job_id)
         self._push_update("transfer", job_id)
         return job_id
 

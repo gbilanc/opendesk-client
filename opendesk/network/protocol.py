@@ -293,10 +293,19 @@ class Message:
     # ── file transfer factories ──
 
     @classmethod
-    def file_request(cls, name: str, size: int, sha256: str = "") -> Message:
-        """Request permission to send a file."""
+    def file_request(cls, name: str, size: int, sha256: str = "",
+                     job_id: str = "") -> Message:
+        """Request permission to send a file.
+
+        Parameters
+        ----------
+        job_id : str
+            The sender's local job ID, so the receiver can echo it back
+            in FILE_ACCEPT and both sides agree on the same identifier.
+        """
         return cls(MessageType.FILE_REQUEST, {
             "name": name, "size": size, "sha256": sha256,
+            "job_id": job_id,
         })
 
     @classmethod
