@@ -60,59 +60,120 @@ class AudioConfig:
 
 
 class OpusCodec:
-    """Simple Opus encoder/decoder using PyAV."""
+    """Simple Opus encoder/decoder using PyAV.
+
+    Encoder uses ``av.open()`` + ``add_stream()`` (same approach as
+    ``VideoEncoder``).  Decoder uses ``CodecContext``.
+    """
 
     def __init__(self, sample_rate: int = _SAMPLE_RATE, channels: int = _CHANNELS) -> None:
         self._sample_rate = sample_rate
         self._channels = channels
-        self._encoder = None
+        self._encoder_container = None
+        self._encoder_stream = None
         self._decoder = None
 
-    def setup_encoder(self) -> None:
-        self._encoder = av.CodecContext.create("libopus", "w")
-        self._encoder.sample_rate = self._sample_rate
-        self._encoder.channels = self._channels
-        self._encoder.frame_size = _FRAME_SIZE
-        self._encoder.bit_rate = 64000
-        logger.info("Opus encoder ready")
+    # ── encoder (stream-based API) ─────────────────────────────────
 
-    def setup_decoder(self) -> None:
-        self._decoder = av.CodecContext.create("libopus", "r")
-        self._decoder.sample_rate = self._sample_rate
-        self._decoder.channels = self._channels
-        logger.info("Opus decoder ready")
+    def setup_encoder(self) -> None:
+        """Create the Opus encoder via av.open + add_stream.
+
+        Uses the same high-level approach as ``VideoEncoder`` to avoid
+        PyAV compatibility issues with ``CodecContext.create()``.
+        """
+        self._encoder_container = av.open("pipe:", mode="w", format="opus")
+        self._encoder_stream = self._encoder_container.add_stream(
+            "libopus", rate=self._sample_rate
+        )
+        self._encoder_stream.bit_rate = 64000
+        logger.info(
+            "Opus encoder ready: %d Hz, %d ch",
+            self._sample_rate, self._channels,
+        )
 
     def encode(self, pcm: np.ndarray) -> bytes | None:
         """Encode PCM float32 array to Opus packet."""
-        if self._encoder is None:
+        if self._encoder_stream is None:
             return None
-        frame = av.AudioFrame(format="fltp", layout="stereo", samples=len(pcm))
+
+        # Build an AudioFrame in fltp planar format
+        frame = av.AudioFrame(
+            format="fltp", layout="stereo", samples=len(pcm),
+        )
         frame.sample_rate = self._sample_rate
-        frame.planes[0] = pcm[:, 0].tobytes()
-        frame.planes[1] = pcm[:, 1].tobytes()
         frame.pts = 0
 
-        packets = self._encoder.encode(frame)
+        # Fill plane data using update() (the writable PyAV API)
+        frame.planes[0].update(pcm[:, 0].tobytes())
+        frame.planes[1].update(pcm[:, 1].tobytes())
+
+        packets = self._encoder_stream.encode(frame)
         if packets:
+            # Return the first (and usually only) packet
             return bytes(packets[0])
+
+        # Flush residuals
+        flush = self._encoder_stream.encode(None)
+        if flush:
+            return bytes(flush[0])
         return None
 
+    # ── decoder (CodecContext-based) ───────────────────────────────
+
+    def setup_decoder(self) -> None:
+        """Create the Opus decoder via CodecContext."""
+        self._decoder = av.CodecContext.create("libopus", "r")
+        self._decoder.sample_rate = self._sample_rate
+        self._decoder.layout = av.AudioLayout("stereo")
+        logger.info(
+            "Opus decoder ready: %d Hz, %d ch",
+            self._sample_rate, self._channels,
+        )
+
     def decode(self, data: bytes) -> np.ndarray | None:
-        """Decode Opus packet to PCM float32."""
+        """Decode Opus packet to PCM float32 array (stereo, samples x 2)."""
         if self._decoder is None:
             return None
+
         packet = av.Packet(data)
         frames = self._decoder.decode(packet)
         if not frames:
             return None
 
         f = frames[0]
-        ch0 = np.frombuffer(f.planes[0], dtype=np.float32)
-        ch1 = np.frombuffer(f.planes[1], dtype=np.float32)
-        return np.column_stack([ch0, ch1])
+        fmt_name = f.format.name
+        num_samples = f.samples
+        num_channels = len(f.layout.channels)
+
+        if fmt_name == "fltp" and len(f.planes) >= 2:
+            # Planar float32: each plane has num_samples valid floats
+            ch0 = np.frombuffer(bytes(f.planes[0]), dtype=np.float32)[:num_samples]
+            ch1 = np.frombuffer(bytes(f.planes[1]), dtype=np.float32)[:num_samples]
+            return np.column_stack([ch0, ch1])
+        elif fmt_name == "s16" and len(f.planes) >= 1:
+            # Interleaved s16: one plane with num_samples * num_channels int16 values
+            total = num_samples * num_channels
+            raw = np.frombuffer(bytes(f.planes[0]), dtype=np.int16)[:total]
+            samples = raw.reshape(-1, num_channels).astype(np.float32) / 32768.0
+            return samples
+        else:
+            logger.warning(
+                "Unhandled decoder output format: %s, planes=%d, num_channels=%d",
+                fmt_name, len(f.planes), num_channels,
+            )
+            return None
+
+    # ── cleanup ────────────────────────────────────────────────────
 
     def release(self) -> None:
-        self._encoder = None
+        """Release encoder container and decoder."""
+        if self._encoder_container:
+            try:
+                self._encoder_container.close()
+            except Exception:
+                pass
+            self._encoder_container = None
+            self._encoder_stream = None
         self._decoder = None
 
 
