@@ -232,6 +232,15 @@ When a remote session is active, the toolbar shows:
 
 The status bar also shows **Mic On/Off** and **Cam On/Off** indicators.
 
+### Camera PiP overlay
+
+The remote webcam feed appears as a **draggable picture-in-picture** overlay in the
+top-right corner of the viewer window:
+
+- **Drag** the overlay to reposition it anywhere in the viewer
+- Click the **✖ button** (red) to close/hide the overlay
+- Re-enable with the **📷 Camera** toolbar button
+
 ### Architecture
 
 ```

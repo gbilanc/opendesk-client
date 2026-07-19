@@ -726,12 +726,17 @@ class MainWindow(QMainWindow):
                 on_mouse_event=self._on_remote_mouse_event,
                 on_key_event=self._on_remote_key_event,
                 on_disconnect=self._on_disconnect,
+                on_mic_toggle=self._on_toggle_mic,
+                on_camera_toggle=self._on_toggle_camera,
                 parent=self,
             )
             self._viewer_window.frame_timeout.connect(self._on_frame_timeout)
             # Apply sharp text mode from settings
             sharp_text = self._settings.value("video/sharp_text_viewer", True, type=bool)
             self._viewer_window.set_sharp_text(sharp_text)
+            # Sync mic/camera button state
+            self._viewer_window.set_mic_checked(self._stream.audio_enabled)
+            self._viewer_window.set_camera_checked(self._stream.camera_enabled)
         self._viewer_window.set_connection_active(True, peer_name)
         self._viewer_window.show()
         self._viewer_window.raise_()
@@ -781,6 +786,10 @@ class MainWindow(QMainWindow):
             self._mic_indicator.setText("Mic Off")
             self._mic_indicator.setStyleSheet("font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;")
         self._mic_indicator.setVisible(True)
+        # Sync viewer toolbar button state
+        if self._viewer_window:
+            self._viewer_window.set_mic_checked(checked)
+        self.act_toggle_mic.setChecked(checked)
         logger.info("Microphone toggled: %s", "ON" if checked else "OFF")
 
     @Slot(bool)
@@ -808,6 +817,10 @@ class MainWindow(QMainWindow):
                     Message(MessageType.CAMERA_START, {"enabled": False})
                 )
         self._camera_indicator.setVisible(True)
+        # Sync viewer toolbar button state
+        if self._viewer_window:
+            self._viewer_window.set_camera_checked(checked)
+        self.act_toggle_camera.setChecked(checked)
         logger.info("Camera toggled: %s", "ON" if checked else "OFF")
 
     # ── Input injection (host) ──────────────────────────────────────

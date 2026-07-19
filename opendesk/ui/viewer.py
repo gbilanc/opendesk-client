@@ -68,11 +68,110 @@ _FRAME_TIMEOUT_MS = 10000  # 10 s without a frame → show warning
 _CAMERA_OVERLAY_WIDTH = 240
 _CAMERA_OVERLAY_HEIGHT = 180
 _CAMERA_OVERLAY_MARGIN = 12
-_CAMERA_OVERLAY_STYLE = (
-    "background-color: #0f172a;"
-    "border: 2px solid #1e293b;"
-    "border-radius: 8px;"
-)
+
+
+# ---------------------------------------------------------------------------
+# CameraOverlay — draggable PiP widget
+# ---------------------------------------------------------------------------
+
+
+class CameraOverlay(QWidget):
+    """Picture-in-picture overlay for the remote webcam feed.
+
+    Can be dragged by the user and has a close button.
+    """
+
+    closed = Signal()  # emitted when user clicks the close button
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFixedSize(_CAMERA_OVERLAY_WIDTH, _CAMERA_OVERLAY_HEIGHT)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+
+        # Container widget for the rounded background
+        self._container = QWidget(self)
+        self._container.setGeometry(0, 0, _CAMERA_OVERLAY_WIDTH, _CAMERA_OVERLAY_HEIGHT)
+        self._container.setStyleSheet(
+            "background-color: #0f172a;"
+            "border: 2px solid #1e293b;"
+            "border-radius: 8px;"
+        )
+
+        # Video label
+        self._video_label = QLabel(self._container)
+        self._video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._video_label.setText("📷")
+        self._video_label.setStyleSheet("background: transparent; font-size: 28px;")
+        self._video_label.setGeometry(2, 2, _CAMERA_OVERLAY_WIDTH - 4, _CAMERA_OVERLAY_HEIGHT - 28)
+
+        # Close button
+        self._close_btn = QPushButton("✖", self._container)
+        self._close_btn.setFixedSize(22, 22)
+        self._close_btn.setStyleSheet(
+            "QPushButton {"
+            "  background: #ef4444; color: white; border-radius: 11px;"
+            "  font-size: 11px; font-weight: bold;"
+            "  border: none;"
+            "}"
+            "QPushButton:hover { background: #dc2626; }"
+        )
+        self._close_btn.move(_CAMERA_OVERLAY_WIDTH - 26, 4)
+        self._close_btn.clicked.connect(self._on_close)
+
+        # Drag state
+        self._dragging = False
+        self._drag_offset = QPoint()
+
+    # ── public API ──────────────────────────────────────────────────
+
+    def set_pixmap(self, pixmap: QPixmap) -> None:
+        """Set the camera frame pixmap, scaled to fit."""
+        scaled = pixmap.scaled(
+            _CAMERA_OVERLAY_WIDTH - 8,
+            _CAMERA_OVERLAY_HEIGHT - 32,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self._video_label.setPixmap(scaled)
+
+    def clear_frame(self) -> None:
+        """Reset to placeholder icon."""
+        self._video_label.clear()
+        self._video_label.setText("📷")
+
+    # ── close ───────────────────────────────────────────────────────
+
+    def _on_close(self) -> None:
+        """Hide the overlay and emit closed signal."""
+        self.hide()
+        self.closed.emit()
+
+    # ── drag support ───────────────────────────────────────────────
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = True
+            self._drag_offset = event.globalPosition().toPoint() - self.parent().mapToGlobal(self.pos())
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if self._dragging:
+            parent = self.parent()
+            if parent:
+                global_pos = event.globalPosition().toPoint() - self._drag_offset
+                new_pos = parent.mapFromGlobal(global_pos)
+                # Clamp within parent bounds
+                pw, ph = parent.width(), parent.height()
+                new_pos.setX(max(0, min(new_pos.x(), pw - _CAMERA_OVERLAY_WIDTH)))
+                new_pos.setY(max(0, min(new_pos.y(), ph - _CAMERA_OVERLAY_HEIGHT)))
+                self.move(new_pos)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = False
+        super().mouseReleaseEvent(event)
 
 
 # ---------------------------------------------------------------------------
@@ -167,14 +266,11 @@ class RemoteViewer(QGraphicsView):
         self._pending_mouse: tuple[int, int, int, bool, bool] | None = None
         self._MOUSE_COALESCE_MS = 33  # ~30 fps
 
-        # ── Camera PiP overlay (top-right) ──
+        # ── Camera PiP overlay (top-right, draggable) ──
         self._camera_active: bool = False
-        self._camera_overlay = QLabel(self)
-        self._camera_overlay.setFixedSize(_CAMERA_OVERLAY_WIDTH, _CAMERA_OVERLAY_HEIGHT)
-        self._camera_overlay.setStyleSheet(_CAMERA_OVERLAY_STYLE)
-        self._camera_overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._camera_overlay.setText("📷")
+        self._camera_overlay = CameraOverlay(self)
         self._camera_overlay.setVisible(False)
+        self._camera_overlay.closed.connect(self._on_camera_overlay_closed)
 
         # Placeholder while disconnected
         self._show_placeholder()
@@ -549,8 +645,7 @@ class RemoteViewer(QGraphicsView):
         self._camera_active = active
         self._camera_overlay.setVisible(active)
         if not active:
-            self._camera_overlay.clear()
-            self._camera_overlay.setText("📷")
+            self._camera_overlay.clear_frame()
 
     def update_camera_frame(self, jpeg_data: bytes) -> None:
         """Update the camera PiP overlay with a new JPEG frame."""
@@ -559,23 +654,22 @@ class RemoteViewer(QGraphicsView):
         try:
             pixmap = QPixmap()
             if pixmap.loadFromData(jpeg_data, "JPEG"):
-                # Scale to fit the overlay while maintaining aspect ratio
-                scaled = pixmap.scaled(
-                    _CAMERA_OVERLAY_WIDTH - 4,  # account for border
-                    _CAMERA_OVERLAY_HEIGHT - 4,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-                self._camera_overlay.setPixmap(scaled)
+                self._camera_overlay.set_pixmap(pixmap)
         except Exception as e:
             logger.warning("Camera overlay update error: %s", e)
 
+    def _on_camera_overlay_closed(self) -> None:
+        """User closed the camera PiP overlay — deactivate."""
+        self._camera_active = False
+
     def _reposition_camera_overlay(self) -> None:
         """Position the camera PiP at the top-right of the viewport."""
-        if self._camera_overlay:
-            x = self.viewport().width() - _CAMERA_OVERLAY_WIDTH - _CAMERA_OVERLAY_MARGIN
-            y = _CAMERA_OVERLAY_MARGIN
-            self._camera_overlay.move(x, y)
+        if self._camera_overlay and self._camera_overlay.isVisible():
+            # Only reposition if user hasn't manually moved it
+            if not hasattr(self, '_camera_overlay_moved'):
+                x = self.viewport().width() - _CAMERA_OVERLAY_WIDTH - _CAMERA_OVERLAY_MARGIN
+                y = _CAMERA_OVERLAY_MARGIN
+                self._camera_overlay.move(x, y)
 
     def drawForeground(self, painter: QPainter, rect: QRectF) -> None:  # noqa: N802
         """Paint HUD overlay on top of the remote view."""
@@ -639,6 +733,8 @@ class ViewerToolbar(QToolBar):
     zoom_out_requested = Signal()
     fit_requested = Signal()
     sharp_toggled = Signal(bool)
+    mic_toggled = Signal(bool)
+    camera_toggled = Signal(bool)
     disconnect_requested = Signal()
     ctrl_alt_del_requested = Signal()
 
@@ -688,6 +784,24 @@ class ViewerToolbar(QToolBar):
 
         self.addSeparator()
 
+        # Mic toggle
+        self._mic_act = QAction("🎤 Mic", self)
+        self._mic_act.setToolTip("Toggle microphone streaming")
+        self._mic_act.setCheckable(True)
+        self._mic_act.setChecked(False)
+        self._mic_act.triggered.connect(self.mic_toggled)
+        self.addAction(self._mic_act)
+
+        # Camera toggle
+        self._cam_act = QAction("📷 Camera", self)
+        self._cam_act.setToolTip("Toggle webcam streaming")
+        self._cam_act.setCheckable(True)
+        self._cam_act.setChecked(False)
+        self._cam_act.triggered.connect(self.camera_toggled)
+        self.addAction(self._cam_act)
+
+        self.addSeparator()
+
         # Ctrl+Alt+Del
         cad_act = QAction("✱ Ctrl+Alt+Del", self)
         cad_act.setToolTip("Send Ctrl+Alt+Del to the remote computer")
@@ -699,6 +813,14 @@ class ViewerToolbar(QToolBar):
         disc_act.setToolTip("End current session")
         disc_act.triggered.connect(self.disconnect_requested)
         self.addAction(disc_act)
+
+    def set_mic_checked(self, checked: bool) -> None:
+        """Set mic toggle button state without emitting signal."""
+        self._mic_act.setChecked(checked)
+
+    def set_camera_checked(self, checked: bool) -> None:
+        """Set camera toggle button state without emitting signal."""
+        self._cam_act.setChecked(checked)
 
     def _on_sharp_toggled(self, checked: bool) -> None:
         """Forward sharp toggle to the signal."""
@@ -729,6 +851,8 @@ class ViewerWindow(QMainWindow):
         on_mouse_event: Callable | None = None,
         on_key_event: Callable | None = None,
         on_disconnect: Callable | None = None,
+        on_mic_toggle: Callable | None = None,
+        on_camera_toggle: Callable | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -750,6 +874,8 @@ class ViewerWindow(QMainWindow):
         self._toolbar.zoom_out_requested.connect(self._viewer.zoom_out)
         self._toolbar.fit_requested.connect(self._viewer.zoom_to_fit)
         self._toolbar.sharp_toggled.connect(self._viewer.set_sharp_text)
+        self._toolbar.mic_toggled.connect(self._on_mic_toggled)
+        self._toolbar.camera_toggled.connect(self._on_camera_toggled)
         self._toolbar.ctrl_alt_del_requested.connect(self._on_ctrl_alt_del)
         self._toolbar.disconnect_requested.connect(self._on_disconnect_clicked)
         self.addToolBar(self._toolbar)
@@ -759,6 +885,10 @@ class ViewerWindow(QMainWindow):
         self._status_label = QLabel("Connected")
         self._status.addWidget(self._status_label)
         self.setStatusBar(self._status)
+
+        # Connect external callbacks
+        self._on_mic_toggle_cb = on_mic_toggle
+        self._on_camera_toggle_cb = on_camera_toggle
 
         # ── Connect signals → callbacks ──
         if on_mouse_event:
@@ -798,6 +928,14 @@ class ViewerWindow(QMainWindow):
         self._toolbar._sharp_act.setChecked(enabled)
         self._viewer.set_sharp_text(enabled)
 
+    def set_mic_checked(self, checked: bool) -> None:
+        """Sync mic toggle state from MainWindow without re-triggering."""
+        self._toolbar.set_mic_checked(checked)
+
+    def set_camera_checked(self, checked: bool) -> None:
+        """Sync camera toggle state from MainWindow without re-triggering."""
+        self._toolbar.set_camera_checked(checked)
+
     # ── slots ───────────────────────────────────────────────────────
 
     def _toggle_fullscreen(self) -> None:
@@ -810,6 +948,16 @@ class ViewerWindow(QMainWindow):
             self.showFullScreen()
             self._toolbar.hide()
             self._status.hide()
+
+    def _on_mic_toggled(self, checked: bool) -> None:
+        """Forward mic toggle to external callback."""
+        if self._on_mic_toggle_cb:
+            self._on_mic_toggle_cb(checked)
+
+    def _on_camera_toggled(self, checked: bool) -> None:
+        """Forward camera toggle to external callback."""
+        if self._on_camera_toggle_cb:
+            self._on_camera_toggle_cb(checked)
 
     def _on_ctrl_alt_del(self) -> None:
         """Send Ctrl+Alt+Del to the remote peer."""
