@@ -61,8 +61,8 @@ include = ["opendesk*"]
 "*" = ["*.qss", "*.png", "*.svg", "*.ico"]
 
 [tool.uv]
-# uv-specific settings
-native-tls = true
+# Use system certificate store instead of the bundled one
+system-certs = true
 
 
 [tool.black]
