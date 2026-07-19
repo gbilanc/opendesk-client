@@ -6,7 +6,7 @@ Multi-platform remote desktop application (TeamViewer / AnyDesk-like).
 - **Tech:** Python 3.12+, PySide6 (Qt6), PyAV (FFmpeg), E2E encryption
 - **Network:** TCP relay with P2P support
 - **Features:** Screen sharing, remote control, file transfer, clipboard sync,
-  audio, chat, multi-monitor
+  microphone streaming, webcam streaming with PiP overlay, audio, chat, multi-monitor
 
 ## Quick start (uv — recommended)
 
@@ -44,7 +44,7 @@ uv run mypy opendesk/  # type check
 # Wayland support (Linux)
 uv sync --extra wayland
 
-# Audio streaming
+# Audio streaming (microphone)
 uv sync --extra audio
 
 # macOS input backend
@@ -85,14 +85,14 @@ sudo usermod -aG input $USER
 
 ```
 opendesk/
-├── opendesk/          # Main application (45 files, ~12k LOC)
-│   ├── core/          # Screen capture, input, codec, audio, recording
+├── opendesk/          # Main application (~50 files, ~13k LOC)
+│   ├── core/          # Screen capture, input, codec, audio, camera, recording
 │   ├── network/       # Protocol, P2P, relay, NAT traversal
 │   ├── crypto/        # E2E encryption (NaCl Box), Argon2 auth
 │   ├── services/      # Streaming pipeline, connection service
 │   ├── ui/            # PySide6 widgets + QSS themes (light/dark)
 │   └── utils/         # Logging, platform detection
-├── tests/             # 123 tests — unit, integration, edge cases
+├── tests/             # 123+ tests — unit, integration, edge cases
 └── uv.lock            # Locked dependencies
 ```
 
@@ -172,6 +172,97 @@ OpenDesk uses **128×128 JPEG tiles** instead of a full H.264 keyframe:
 - If >30% of tiles changed, a full keyframe is sent instead (more efficient)
 
 This approach saves bandwidth and encoding CPU for typical desktop usage.
+
+## Microphone & Webcam
+
+OpenDesk can stream your microphone and webcam to the remote peer, enabling
+voice and video communication alongside the remote desktop.
+
+### Microphone 🎤
+
+- Captures audio from the default microphone, encodes it with **Opus** (via PyAV),
+  and sends it as `AUDIO_FRAME` messages over the relay.
+- On the receiving side, audio is decoded and played through the default speaker.
+- Requires the optional `soundcard` library:
+
+  ```bash
+  uv sync --extra audio
+  ```
+
+- Enable in **Tools → Settings → General → Audio (Microphone)** or click the
+  **🎤 Mic** button in the toolbar during a session.
+
+> **Note:** If `soundcard` is not installed or the Opus codec is unavailable,
+> the microphone feature is gracefully disabled and the streaming pipeline
+> continues to work unaffected.
+
+### Webcam 📷
+
+- Captures video from the default webcam using **OpenCV** (`cv2.VideoCapture`),
+  encodes frames as JPEG, and sends them as `CAMERA_FRAME` messages.
+- On the receiving side, the webcam feed appears as a **picture-in-picture
+  overlay** in the top-right corner of the remote desktop viewer.
+- OpenCV is already a core dependency — no extra packages needed.
+
+  ```
+  ┌──────────────────────────────────┐
+  │                                  │
+  │  Remote desktop                  │
+  │              ┌──────────┐        │
+  │              │ 📷 Cam   │        │
+  │              │ 240×180  │        │
+  │              └──────────┘        │
+  │                                  │
+  └──────────────────────────────────┘
+  ```
+
+- Configure in **Tools → Settings → General → Camera (Webcam)**:
+  - Select camera device (auto-detected)
+  - Choose quality preset (Low / Medium / High)
+- Toggle during a session with the **📷 Camera** toolbar button.
+
+### Toolbar controls
+
+When a remote session is active, the toolbar shows:
+
+| Button | Action |
+|--------|--------|
+| **🎤 Mic** | Toggle microphone streaming (green = active) |
+| **📷 Camera**  | Toggle webcam streaming (green = active) |
+
+The status bar also shows **Mic On/Off** and **Cam On/Off** indicators.
+
+### Architecture
+
+```
+┌─ HOST ──────────────────────────────┐
+│                                      │
+│  AudioManager (thread)               │
+│    → soundcard.record()              │
+│    → Opus encode                     │
+│    → AUDIO_FRAME → relay             │
+│                                      │
+│  CameraManager (thread)              │
+│    → cv2.VideoCapture()              │
+│    → JPEG encode                     │
+│    → CAMERA_FRAME → relay            │
+│                                      │
+│  StreamingPipeline (3 threads)       │
+│    → screen capture → H.264 → relay  │
+└──────────────────────────────────────┘
+
+┌─ CLIENT ─────────────────────────────┐
+│                                       │
+│  AudioManager.play_audio_frame()      │
+│    → Opus decode → soundcard.play()   │
+│                                       │
+│  ViewerWindow                         │
+│    ├── RemoteViewer (screen)          │
+│    └── Camera PiP overlay (top-right) │
+│                                       │
+│  CAMERA_FRAME → update_camera_frame() │
+└──────────────────────────────────────┘
+```
 
 ## Commands
 
