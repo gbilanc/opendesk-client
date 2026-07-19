@@ -60,10 +60,6 @@ include = ["opendesk*"]
 [tool.setuptools.package-data]
 "*" = ["*.qss", "*.png", "*.svg", "*.ico"]
 
-[tool.uv]
-# Use system certificate store instead of the bundled one
-system-certs = true
-
 
 [tool.black]
 line-length = 99
