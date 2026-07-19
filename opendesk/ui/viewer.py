@@ -64,6 +64,16 @@ _ZOOM_STEP = 1.15
 _HUD_UPDATE_MS = 1000  # HUD refresh interval
 _FRAME_TIMEOUT_MS = 10000  # 10 s without a frame → show warning
 
+# ── Camera PiP overlay ──
+_CAMERA_OVERLAY_WIDTH = 240
+_CAMERA_OVERLAY_HEIGHT = 180
+_CAMERA_OVERLAY_MARGIN = 12
+_CAMERA_OVERLAY_STYLE = (
+    "background-color: #0f172a;"
+    "border: 2px solid #1e293b;"
+    "border-radius: 8px;"
+)
+
 
 # ---------------------------------------------------------------------------
 # RemoteViewer — main display widget
@@ -156,6 +166,15 @@ class RemoteViewer(QGraphicsView):
         self._mouse_coalesce_timer.timeout.connect(self._send_pending_mouse)
         self._pending_mouse: tuple[int, int, int, bool, bool] | None = None
         self._MOUSE_COALESCE_MS = 33  # ~30 fps
+
+        # ── Camera PiP overlay (top-right) ──
+        self._camera_active: bool = False
+        self._camera_overlay = QLabel(self)
+        self._camera_overlay.setFixedSize(_CAMERA_OVERLAY_WIDTH, _CAMERA_OVERLAY_HEIGHT)
+        self._camera_overlay.setStyleSheet(_CAMERA_OVERLAY_STYLE)
+        self._camera_overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._camera_overlay.setText("📷")
+        self._camera_overlay.setVisible(False)
 
         # Placeholder while disconnected
         self._show_placeholder()
@@ -252,6 +271,7 @@ class RemoteViewer(QGraphicsView):
             self._frame_timeout_timer.start(_FRAME_TIMEOUT_MS)
         else:
             self._frame_timeout_timer.stop()
+            self.set_camera_active(False)
         self._show_placeholder()
 
     # ── Zoom / Fit ──────────────────────────────────────────────────
@@ -375,10 +395,11 @@ class RemoteViewer(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def resizeEvent(self, event) -> None:  # noqa: N802
-        """Re-apply fit mode on resize."""
+        """Re-apply fit mode on resize and reposition camera overlay."""
         super().resizeEvent(event)
         if self._fit_mode == self.FitMode.FIT_WINDOW:
             self._apply_fit_mode()
+        self._reposition_camera_overlay()
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         """Forward keyboard events and handle local shortcuts."""
@@ -520,6 +541,41 @@ class RemoteViewer(QGraphicsView):
             return chr(qt_key).lower()
 
         return None
+
+    # ── Camera PiP overlay ────────────────────────────────────────────
+
+    def set_camera_active(self, active: bool) -> None:
+        """Show or hide the camera picture-in-picture overlay."""
+        self._camera_active = active
+        self._camera_overlay.setVisible(active)
+        if not active:
+            self._camera_overlay.clear()
+            self._camera_overlay.setText("📷")
+
+    def update_camera_frame(self, jpeg_data: bytes) -> None:
+        """Update the camera PiP overlay with a new JPEG frame."""
+        if not self._camera_active:
+            return
+        try:
+            pixmap = QPixmap()
+            if pixmap.loadFromData(jpeg_data, "JPEG"):
+                # Scale to fit the overlay while maintaining aspect ratio
+                scaled = pixmap.scaled(
+                    _CAMERA_OVERLAY_WIDTH - 4,  # account for border
+                    _CAMERA_OVERLAY_HEIGHT - 4,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                self._camera_overlay.setPixmap(scaled)
+        except Exception as e:
+            logger.warning("Camera overlay update error: %s", e)
+
+    def _reposition_camera_overlay(self) -> None:
+        """Position the camera PiP at the top-right of the viewport."""
+        if self._camera_overlay:
+            x = self.viewport().width() - _CAMERA_OVERLAY_WIDTH - _CAMERA_OVERLAY_MARGIN
+            y = _CAMERA_OVERLAY_MARGIN
+            self._camera_overlay.move(x, y)
 
     def drawForeground(self, painter: QPainter, rect: QRectF) -> None:  # noqa: N802
         """Paint HUD overlay on top of the remote view."""

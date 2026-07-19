@@ -85,6 +85,10 @@ class MessageType(IntEnum):
     # ── Audio ──
     AUDIO_FRAME = 0x50  # Opus-encoded audio packet
 
+    # ── Camera (webcam) ──
+    CAMERA_FRAME = 0x53  # JPEG-encoded webcam frame
+    CAMERA_START = 0x54  # Webcam stream start/stop notification
+
     # ── Chat ──
     CHAT_MESSAGE = 0x60  # Text chat message
     CHAT_TYPING = 0x61  # Typing indicator
@@ -457,6 +461,35 @@ class Message:
                 "width": width,
                 "height": height,
                 "pts": pts,
+            },
+        )
+
+    @classmethod
+    def camera_frame(cls, data: bytes, width: int, height: int, pts: int,
+                     fmt: str = "jpeg") -> Message:
+        """A webcam video frame (JPEG-encoded by default)."""
+        return cls(
+            MessageType.CAMERA_FRAME,
+            {
+                "data": data,
+                "width": width,
+                "height": height,
+                "pts": pts,
+                "format": fmt,
+            },
+        )
+
+    @classmethod
+    def camera_start(cls, enabled: bool, width: int = 0, height: int = 0,
+                     fps: int = 0) -> Message:
+        """Notify peer that the webcam stream started or stopped."""
+        return cls(
+            MessageType.CAMERA_START,
+            {
+                "enabled": enabled,
+                "width": width,
+                "height": height,
+                "fps": fps,
             },
         )
 

@@ -251,14 +251,36 @@ class SettingsDialog(QDialog):
         clipboard_form.addRow("", self._enable_clipboard_sync)
         general_layout.addWidget(clipboard_group)
 
-        audio_group = QGroupBox("Audio")
+        audio_group = QGroupBox("Audio (Microphone)")
         audio_form = QFormLayout(audio_group)
         audio_form.setSpacing(8)
 
-        self._enable_audio = QCheckBox("Enable remote audio")
+        self._enable_audio = QCheckBox("Stream microphone to remote peer")
         self._enable_audio.setChecked(False)
         audio_form.addRow("", self._enable_audio)
         general_layout.addWidget(audio_group)
+
+        camera_group = QGroupBox("Camera (Webcam)")
+        camera_form = QFormLayout(camera_group)
+        camera_form.setSpacing(8)
+
+        self._enable_camera = QCheckBox("Stream webcam to remote peer")
+        self._enable_camera.setChecked(False)
+        camera_form.addRow("", self._enable_camera)
+
+        self._camera_device_combo = QComboBox()
+        self._camera_device_combo.addItem("Default camera", 0)
+        self._populate_camera_devices()
+        camera_form.addRow("Device:", self._camera_device_combo)
+
+        self._camera_quality_combo = QComboBox()
+        self._camera_quality_combo.addItem("Low (320×240, 5 fps)", "low")
+        self._camera_quality_combo.addItem("Medium (640×480, 10 fps)", "medium")
+        self._camera_quality_combo.addItem("High (640×480, 15 fps)", "high")
+        self._camera_quality_combo.setCurrentIndex(1)  # Medium default
+        camera_form.addRow("Quality:", self._camera_quality_combo)
+
+        general_layout.addWidget(camera_group)
 
         general_layout.addStretch()
         tabs.addTab(general_tab, "General")
@@ -344,7 +366,33 @@ class SettingsDialog(QDialog):
             self._settings.value("audio/enabled", False, type=bool)
         )
 
+        self._enable_camera.setChecked(
+            self._settings.value("camera/enabled", False, type=bool)
+        )
+        camera_device = int(self._settings.value("camera/device", 0))
+        cam_idx = self._camera_device_combo.findData(camera_device)
+        if cam_idx >= 0:
+            self._camera_device_combo.setCurrentIndex(cam_idx)
+        camera_quality = self._settings.value("camera/quality", "medium")
+        cq_idx = self._camera_quality_combo.findData(camera_quality)
+        if cq_idx >= 0:
+            self._camera_quality_combo.setCurrentIndex(cq_idx)
+
         self._populate_trusted_devices()
+
+    def _populate_camera_devices(self) -> None:
+        """Populate the camera device combo with detected cameras."""
+        try:
+            from opendesk.core.camera_manager import list_cameras
+            cameras = list_cameras()
+            # Keep default entry at index 0
+            for i, cam in enumerate(cameras):
+                label = f"{cam['name']} (dev {cam['index']})"
+                existing = self._camera_device_combo.findData(cam['index'])
+                if existing < 0:
+                    self._camera_device_combo.addItem(label, cam['index'])
+        except Exception as e:
+            logger.debug("Could not enumerate cameras: %s", e)
 
     def _populate_trusted_devices(self) -> None:
         """Populate the list of pre-authorized devices."""
@@ -478,6 +526,15 @@ class SettingsDialog(QDialog):
 
         self._settings.setValue("general/clipboard_sync", self._enable_clipboard_sync.isChecked())
         self._settings.setValue("audio/enabled", self._enable_audio.isChecked())
+        self._settings.setValue("camera/enabled", self._enable_camera.isChecked())
+        self._settings.setValue(
+            "camera/device",
+            self._camera_device_combo.currentData(),
+        )
+        self._settings.setValue(
+            "camera/quality",
+            self._camera_quality_combo.currentData(),
+        )
 
         self._settings.sync()
         logger.info("Settings saved")

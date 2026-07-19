@@ -14,6 +14,8 @@ import time
 
 from PySide6.QtCore import QObject, QSettings, QTimer, Signal, Slot
 
+from opendesk.core.audio_manager import AudioManager, AudioConfig, AudioDirection
+from opendesk.core.camera_manager import CameraManager, CameraConfig
 from opendesk.core.screen_capture import ScreenCapture, CapturedFrame
 from opendesk.core.video_codec import VideoEncoder, EncoderConfig, QualityLevel, _QUALITY_CRF
 from opendesk.core.input_injection import (
@@ -107,6 +109,18 @@ class StreamService(QObject):
         self._bw_measure_time: float = 0.0
         self._bw_estimated_kbps: float = 0.0
 
+        # Audio manager (microphone capture + playback)
+        self._audio_manager = AudioManager(
+            AudioConfig(enabled=False)
+        )
+        self._audio_enabled: bool = False
+
+        # Camera manager (webcam capture)
+        self._camera_manager = CameraManager(
+            CameraConfig(enabled=False)
+        )
+        self._camera_enabled: bool = False
+
         # React when the remote peer requests a keyframe
         self._relay.host_keyframe_requested.connect(self._force_keyframe)
 
@@ -119,6 +133,32 @@ class StreamService(QObject):
     @property
     def input_backend(self) -> InputBackend | None:
         return self._input_backend
+
+    @property
+    def audio_manager(self) -> AudioManager:
+        """The AudioManager instance (capture + playback)."""
+        return self._audio_manager
+
+    @property
+    def camera_manager(self) -> CameraManager:
+        """The CameraManager instance (webcam capture)."""
+        return self._camera_manager
+
+    @property
+    def audio_enabled(self) -> bool:
+        return self._audio_enabled
+
+    @audio_enabled.setter
+    def audio_enabled(self, value: bool) -> None:
+        self._audio_enabled = value
+
+    @property
+    def camera_enabled(self) -> bool:
+        return self._camera_enabled
+
+    @camera_enabled.setter
+    def camera_enabled(self, value: bool) -> None:
+        self._camera_enabled = value
 
     @property
     def capture(self):
@@ -220,6 +260,14 @@ class StreamService(QObject):
             self._pipeline.on_tile_sent = lambda data, x, y, tw, th, pts: _on_send(data)
             self._pipeline.start()
 
+            # Avvia cattura audio se abilitata
+            if self._audio_enabled:
+                self._start_audio_capture()
+
+            # Avvia cattura webcam se abilitata
+            if self._camera_enabled:
+                self._start_camera_capture()
+
             # Timer per bandwidth adaptation (1s)
             self._bw_timer.start(1000)
 
@@ -233,8 +281,10 @@ class StreamService(QObject):
             self.stop_streaming()
 
     def stop_streaming(self) -> None:
-        """Ferma la pipeline e rilascia le risorse."""
+        """Ferma la pipeline, audio capture e rilascia le risorse."""
         self._bw_timer.stop()
+        self._stop_audio_capture()
+        self._stop_camera_capture()
         if self._pipeline:
             self._pipeline.stop()
             self._pipeline = None
@@ -243,6 +293,31 @@ class StreamService(QObject):
             self._input_backend = None
         self._bw_measure_bytes = 0
         logger.info("Streaming stopped")
+
+    # ── audio capture (host side) ─────────────────────────────────────
+
+    def _start_audio_capture(self) -> None:
+        """Avvia la cattura del microfono in un thread separato."""
+        self._audio_manager.direction = AudioDirection.MIC_ONLY
+        self._audio_manager.start_capture(self._relay.send_message)
+
+    def _stop_audio_capture(self) -> None:
+        """Ferma la cattura del microfono."""
+        self._audio_manager.stop_capture()
+
+    def play_audio_frame(self, data: bytes) -> None:
+        """Decodifica e riproduce un pacchetto audio ricevuto (lato client)."""
+        self._audio_manager.play_audio_frame(data)
+
+    # ── camera capture (host side) ─────────────────────────────────────
+
+    def _start_camera_capture(self) -> None:
+        """Avvia la cattura della webcam in un thread separato."""
+        self._camera_manager.start_capture(self._relay.send_message)
+
+    def _stop_camera_capture(self) -> None:
+        """Ferma la cattura della webcam."""
+        self._camera_manager.stop_capture()
 
     @Slot()
     def _force_keyframe(self) -> None:

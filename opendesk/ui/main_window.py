@@ -84,6 +84,10 @@ class MainWindow(QMainWindow):
         self._connection = ConnectionService(self)
         self._stream = StreamService(self._connection.relay, self)
 
+        # Load audio/camera preferences from settings
+        self._stream.audio_enabled = self._settings.value("audio/enabled", False, type=bool)
+        self._stream.camera_enabled = self._settings.value("camera/enabled", False, type=bool)
+
         # Map service signals → existing handlers
         self._connection.connected.connect(self._on_relay_connected)
         self._connection.disconnected.connect(self._on_relay_disconnected)
@@ -200,6 +204,19 @@ class MainWindow(QMainWindow):
         self.act_settings.setStatusTip("Configure OpenDesk")
         self.act_settings.triggered.connect(self._on_settings)
 
+        # ── Media toggles ──
+        self.act_toggle_mic = QAction("🎤 Mic", self)
+        self.act_toggle_mic.setCheckable(True)
+        self.act_toggle_mic.setChecked(self._stream.audio_enabled)
+        self.act_toggle_mic.setStatusTip("Toggle microphone streaming")
+        self.act_toggle_mic.triggered.connect(self._on_toggle_mic)
+
+        self.act_toggle_camera = QAction("📷 Camera", self)
+        self.act_toggle_camera.setCheckable(True)
+        self.act_toggle_camera.setChecked(self._stream.camera_enabled)
+        self.act_toggle_camera.setStatusTip("Toggle webcam streaming")
+        self.act_toggle_camera.triggered.connect(self._on_toggle_camera)
+
         # ── File ──
         self.act_send_file = QAction("&Send File...", self)
         self.act_send_file.setShortcut(QKeySequence("Ctrl+F"))
@@ -276,6 +293,9 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.act_zoom_out)
         toolbar.addSeparator()
         toolbar.addAction(self.act_fullscreen)
+        toolbar.addSeparator()
+        toolbar.addAction(self.act_toggle_mic)
+        toolbar.addAction(self.act_toggle_camera)
 
         self.addToolBar(toolbar)
 
@@ -344,6 +364,17 @@ class MainWindow(QMainWindow):
 
         self._status_text = QLabel("Ready")
         status.addWidget(self._status_text, 1)
+
+        # ── Media status indicators ──
+        self._mic_indicator = QLabel("Mic Off")
+        self._mic_indicator.setStyleSheet("font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;")
+        self._mic_indicator.setVisible(False)
+        status.addPermanentWidget(self._mic_indicator)
+
+        self._camera_indicator = QLabel("Cam Off")
+        self._camera_indicator.setStyleSheet("font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;")
+        self._camera_indicator.setVisible(False)
+        status.addPermanentWidget(self._camera_indicator)
 
         # ── Caps Lock indicator ──
         self._caps_lock_label = QLabel("⇪")
@@ -563,6 +594,22 @@ class MainWindow(QMainWindow):
             else:
                 if self._chat_panel.isVisible():
                     self._chat_panel.hide()
+        elif msg.type == MessageType.AUDIO_FRAME:
+            data = msg.payload.get("data", b"")
+            if data and self._stream.audio_enabled:
+                self._stream.play_audio_frame(data)
+        elif msg.type == MessageType.CAMERA_FRAME:
+            data = msg.payload.get("data", b"")
+            if data and self._stream.camera_enabled:
+                if self._viewer_window and self._viewer_window.isVisible():
+                    self._viewer_window.viewer.update_camera_frame(data)
+                    self._viewer_window.viewer.set_camera_active(True)
+        elif msg.type == MessageType.CAMERA_START:
+            enabled = msg.payload.get("enabled", False)
+            if self._viewer_window:
+                self._viewer_window.viewer.set_camera_active(enabled)
+                if not enabled:
+                    self._viewer_window.viewer.update_camera_frame(b"")
         elif msg.type in (MessageType.CLIPBOARD_TEXT, MessageType.CLIPBOARD_IMAGE):
             if self._clipboard_sync.enabled:
                 self._clipboard_sync.receive_from_remote(msg)
@@ -718,6 +765,50 @@ class MainWindow(QMainWindow):
     def _stop_streaming(self) -> None:
         """Stop screen capture and streaming."""
         self._stream.stop_streaming()
+
+    # ── Media toggles ──────────────────────────────────────────────────
+
+    @Slot(bool)
+    def _on_toggle_mic(self, checked: bool) -> None:
+        """Toggle microphone streaming on/off."""
+        self._stream.audio_enabled = checked
+        if checked:
+            self._stream._start_audio_capture()
+            self._mic_indicator.setText("Mic On")
+            self._mic_indicator.setStyleSheet("font-size: 12px; font-weight: 700; color: #22c55e; padding: 0 6px;")
+        else:
+            self._stream._stop_audio_capture()
+            self._mic_indicator.setText("Mic Off")
+            self._mic_indicator.setStyleSheet("font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;")
+        self._mic_indicator.setVisible(True)
+        logger.info("Microphone toggled: %s", "ON" if checked else "OFF")
+
+    @Slot(bool)
+    def _on_toggle_camera(self, checked: bool) -> None:
+        """Toggle webcam streaming on/off."""
+        self._stream.camera_enabled = checked
+        if checked:
+            self._stream._start_camera_capture()
+            self._camera_indicator.setText("Cam On")
+            self._camera_indicator.setStyleSheet("font-size: 12px; font-weight: 700; color: #22c55e; padding: 0 6px;")
+            # Notify remote peer that camera stream started
+            if self._connection.relay.is_connected:
+                from opendesk.network.protocol import Message, MessageType
+                self._connection.relay.send_message(
+                    Message(MessageType.CAMERA_START, {"enabled": True})
+                )
+        else:
+            self._stream._stop_camera_capture()
+            self._camera_indicator.setText("Cam Off")
+            self._camera_indicator.setStyleSheet("font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;")
+            # Notify remote peer that camera stream stopped
+            if self._connection.relay.is_connected:
+                from opendesk.network.protocol import Message, MessageType
+                self._connection.relay.send_message(
+                    Message(MessageType.CAMERA_START, {"enabled": False})
+                )
+        self._camera_indicator.setVisible(True)
+        logger.info("Camera toggled: %s", "ON" if checked else "OFF")
 
     # ── Input injection (host) ──────────────────────────────────────
 
