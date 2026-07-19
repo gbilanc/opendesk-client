@@ -271,6 +271,17 @@ class AudioManager:
 
     def _capture_loop(self) -> None:
         """Continuously capture microphone audio and send to remote."""
+        # Workaround: ctypes.util.find_library on Windows searches PATH but
+        # C:\Windows\System32 is often absent from PATH in some shells (e.g.
+        # Git Bash). cffi (used by soundcard) calls find_library to locate
+        # ole32.dll, so we ensure System32 is on PATH before importing.
+        import platform as _platform
+        if _platform.system() == "Windows":
+            import os as _os
+            _system32 = r"C:\Windows\System32"
+            if _os.path.isdir(_system32) and _system32 not in _os.environ["PATH"]:
+                _os.environ["PATH"] += _os.pathsep + _system32
+
         try:
             import soundcard as sc  # optional dependency
         except ImportError:
