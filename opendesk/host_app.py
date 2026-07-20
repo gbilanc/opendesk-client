@@ -474,8 +474,20 @@ class HostWindow(QMainWindow):
     """
 
     WINDOW_TITLE = "OpenDesk Host"
-    MIN_WIDTH = 440
-    MIN_HEIGHT = 300
+    MIN_WIDTH = 420
+    MIN_HEIGHT = 360
+
+    # ── Design tokens ───────────────────────────────────────────────────
+    _C_PRIMARY = "#2563eb"
+    _C_PRIMARY_DARK = "#1e40af"
+    _C_SUCCESS = "#22c55e"
+    _C_WARNING = "#eab308"
+    _C_DANGER = "#ef4444"
+    _C_TEXT = "#0f172a"
+    _C_TEXT_SECONDARY = "#64748b"
+    _C_BORDER = "#e2e8f0"
+    _C_SURFACE = "#ffffff"
+    _FONT_MONO = "'Courier New', 'Consolas', monospace"
 
     def __init__(self, service: HostService) -> None:
         super().__init__()
@@ -488,133 +500,241 @@ class HostWindow(QMainWindow):
 
         # ── Sub-windows (lazy) ──
         self._chat_panel: ChatPanel | None = None
-        self._transfer_dock: QWidget | None = None  # FileBrowserDock (lazy)
+        self._transfer_dock: QWidget | None = None
 
         # ── Build UI ──
         self._setup_central_widget()
         self._setup_menu()
-        self._setup_statusbar()
         self._wire_service()
 
-    # ── UI setup ────────────────────────────────────────────────────────
+    # ═══════════════════════════════════════════════════════════════════════
+    # UI setup
+    # ═══════════════════════════════════════════════════════════════════════
 
     def _setup_central_widget(self) -> None:
-        """Costruisce il widget centrale compatto."""
+        """Costruisce il widget centrale con design rinnovato."""
         central = QWidget(self)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(10)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        # ── Title ──
+        # ── 1. Header bar ──────────────────────────────────────────────
+        header = QFrame()
+        header.setObjectName("HostHeader")
+        header.setFixedHeight(96)
+        header.setStyleSheet(f"""
+            QFrame#HostHeader {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {self._C_PRIMARY_DARK},
+                    stop:1 {self._C_PRIMARY}
+                );
+            }}
+        """)
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(20, 10, 20, 10)
+        header_layout.setSpacing(2)
+
+        # Title
         title = QLabel("OpenDesk Host")
-        title.setStyleSheet("font-size: 18px; font-weight: 800; color: #2563eb;")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
+        title.setStyleSheet("font-size: 20px; font-weight: 800; color: #ffffff;")
+        header_layout.addWidget(title)
 
-        # ── Session ID row ──
-        id_layout = QHBoxLayout()
-        id_layout.setSpacing(6)
+        # Status row inside header
+        status_row = QHBoxLayout()
+        status_row.setSpacing(6)
 
-        id_label = QLabel("Your ID:")
-        id_label.setStyleSheet("font-size: 12px; font-weight: 700; color: #2563eb;")
-        id_layout.addWidget(id_label)
+        self._status_dot = QLabel("●")
+        self._status_dot.setStyleSheet(f"font-size: 12px; color: {self._C_WARNING};")
+        status_row.addWidget(self._status_dot)
+
+        self._status_label = QLabel("Initializing...")
+        self._status_label.setStyleSheet("font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.85);")
+        status_row.addWidget(self._status_label)
+        status_row.addStretch()
+
+        header_layout.addLayout(status_row)
+        layout.addWidget(header)
+
+        # ── 2. Content area ────────────────────────────────────────────
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(20, 20, 20, 16)
+        content_layout.setSpacing(16)
+
+        # ── 2a. Credentials card ───────────────────────────────────────
+        card = QFrame()
+        card.setObjectName("CredentialsCard")
+        card.setStyleSheet(f"""
+            QFrame#CredentialsCard {{
+                background: {self._C_SURFACE};
+                border: 1px solid {self._C_BORDER};
+                border-radius: 10px;
+            }}
+        """)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(20, 18, 20, 18)
+        card_layout.setSpacing(4)
+
+        # ── Your ID ──
+        id_label = QLabel("YOUR ID")
+        id_label.setStyleSheet(f"font-size: 10px; font-weight: 700; color: {self._C_TEXT_SECONDARY}; letter-spacing: 1px;")
+        card_layout.addWidget(id_label)
+
+        id_row = QHBoxLayout()
+        id_row.setSpacing(8)
 
         self._id_display = QLabel("—")
         self._id_display.setObjectName("HostIdDisplay")
-        # Tooltip mostra l'UUID del device (per pre-autorizzazione)
-        self._id_display.setToolTip("Device UUID: " + self._service.device_id)
-        self._id_display.setStyleSheet("""
-            QLabel#HostIdDisplay {
-                font-size: 20px; font-weight: 800;
-                font-family: 'Courier New', 'Consolas', monospace;
-                letter-spacing: 3px;
-                padding: 2px 12px;
-                border: 1px solid palette(mid);
-                border-radius: 6px;
-                min-width: 160px;
-            }
+        self._id_display.setToolTip(f"Device UUID: {self._service.device_id}\nUsa questo UUID per pre-autorizzare il dispositivo")
+        self._id_display.setStyleSheet(f"""
+            QLabel#HostIdDisplay {{
+                font-size: 24px; font-weight: 800;
+                font-family: {self._FONT_MONO};
+                letter-spacing: 4px;
+                color: {self._C_TEXT};
+            }}
         """)
-        id_layout.addWidget(self._id_display)
+        id_row.addWidget(self._id_display)
+        id_row.addStretch()
 
-        self._copy_id_btn = QPushButton("Copy")
-        self._copy_id_btn.setFixedHeight(26)
+        self._copy_id_btn = QPushButton("📋  Copy ID")
+        self._copy_id_btn.setFixedHeight(32)
         self._copy_id_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._copy_id_btn.setStyleSheet(self._copy_button_style())
         self._copy_id_btn.clicked.connect(self._copy_session_id)
-        id_layout.addWidget(self._copy_id_btn)
+        id_row.addWidget(self._copy_id_btn)
 
-        id_layout.addStretch()
-        layout.addLayout(id_layout)
+        card_layout.addLayout(id_row)
 
-        # ── Password row ──
-        pwd_layout = QHBoxLayout()
-        pwd_layout.setSpacing(6)
+        # Separator
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"max-height: 1px; background: {self._C_BORDER}; margin: 8px 0;")
+        card_layout.addWidget(sep)
 
-        pwd_label = QLabel("Password:")
-        pwd_label.setStyleSheet("font-size: 12px; font-weight: 700; color: #2563eb;")
-        pwd_layout.addWidget(pwd_label)
+        # ── Password ──
+        pwd_label = QLabel("PASSWORD")
+        pwd_label.setStyleSheet(f"font-size: 10px; font-weight: 700; color: {self._C_TEXT_SECONDARY}; letter-spacing: 1px;")
+        card_layout.addWidget(pwd_label)
+
+        pwd_row = QHBoxLayout()
+        pwd_row.setSpacing(8)
 
         self._pwd_display = QLabel("—")
         self._pwd_display.setObjectName("HostPwdDisplay")
-        self._pwd_display.setStyleSheet("""
-            QLabel#HostPwdDisplay {
-                font-size: 14px; font-weight: 700;
-                font-family: 'Courier New', 'Consolas', monospace;
-                letter-spacing: 1px;
-                padding: 2px 10px;
-                border: 1px solid palette(mid);
-                border-radius: 6px;
-                min-width: 100px;
-            }
+        self._pwd_display.setStyleSheet(f"""
+            QLabel#HostPwdDisplay {{
+                font-size: 18px; font-weight: 700;
+                font-family: {self._FONT_MONO};
+                letter-spacing: 3px;
+                color: {self._C_TEXT};
+            }}
         """)
-        pwd_layout.addWidget(self._pwd_display)
+        pwd_row.addWidget(self._pwd_display)
+        pwd_row.addStretch()
 
-        self._copy_pwd_btn = QPushButton("Copy")
-        self._copy_pwd_btn.setFixedHeight(26)
+        self._copy_pwd_btn = QPushButton("📋  Copy Pwd")
+        self._copy_pwd_btn.setFixedHeight(32)
         self._copy_pwd_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._copy_pwd_btn.setStyleSheet(self._copy_button_style())
         self._copy_pwd_btn.clicked.connect(self._copy_password)
-        pwd_layout.addWidget(self._copy_pwd_btn)
+        pwd_row.addWidget(self._copy_pwd_btn)
 
-        self._refresh_btn = QPushButton("🔄 New Session")
-        self._refresh_btn.setFixedHeight(26)
-        self._refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._refresh_btn.clicked.connect(self._on_refresh_session)
-        pwd_layout.addWidget(self._refresh_btn)
+        card_layout.addLayout(pwd_row)
 
-        pwd_layout.addStretch()
-        layout.addLayout(pwd_layout)
+        content_layout.addWidget(card)
 
-        # ── Separator ──
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("max-height: 1px; background: palette(mid);")
-        layout.addWidget(sep)
+        # ── 2b. Device UUID info ───────────────────────────────────────
+        uuid_info = QLabel(f"Device UUID: {self._service.device_id}")
+        uuid_info.setStyleSheet(f"font-size: 10px; color: {self._C_TEXT_SECONDARY};")
+        uuid_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        uuid_info.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        uuid_info.setToolTip("Usa questo UUID in Settings → Security per pre-autorizzare questo dispositivo")
+        content_layout.addWidget(uuid_info)
 
-        # ── Status ──
-        self._status_label = QLabel("Initializing...")
-        self._status_label.setStyleSheet("font-size: 13px; font-weight: 600; color: #64748b;")
-        self._status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._status_label.setWordWrap(True)
-        layout.addWidget(self._status_label)
-
-        # ── Action buttons ──
+        # ── 2c. Action buttons ─────────────────────────────────────────
         # Solo Settings: Chat e File Transfer si attivano automaticamente
         # quando il computer remoto li richiede.
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(8)
+        actions_layout = QHBoxLayout()
+        actions_layout.setSpacing(8)
 
-        self._settings_btn = QPushButton("⚙ Settings")
-        self._settings_btn.setFixedHeight(34)
+        self._refresh_btn = QPushButton("🔄  New Session")
+        self._refresh_btn.setFixedHeight(36)
+        self._refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._refresh_btn.setStyleSheet(self._secondary_button_style())
+        self._refresh_btn.clicked.connect(self._on_refresh_session)
+        actions_layout.addWidget(self._refresh_btn)
+
+        actions_layout.addStretch()
+
+        self._settings_btn = QPushButton("⚙  Settings")
+        self._settings_btn.setFixedHeight(36)
         self._settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._settings_btn.setStyleSheet(self._secondary_button_style())
         self._settings_btn.clicked.connect(self._on_settings)
-        btn_layout.addWidget(self._settings_btn)
+        actions_layout.addWidget(self._settings_btn)
 
-        layout.addLayout(btn_layout)
-        layout.addStretch()
+        content_layout.addLayout(actions_layout)
+        content_layout.addStretch()
+
+        layout.addWidget(content, 1)
 
         self.setCentralWidget(central)
 
+    # ── Button styles ───────────────────────────────────────────────────
+
+    @staticmethod
+    def _copy_button_style() -> str:
+        return f"""
+            QPushButton {{
+                padding: 4px 14px;
+                font-size: 12px;
+                font-weight: 600;
+                border: 1px solid #e2e8f0;
+                border-radius: 6px;
+                background: #f8fafc;
+                color: #2563eb;
+            }}
+            QPushButton:hover {{
+                background: #2563eb;
+                color: #ffffff;
+                border-color: #2563eb;
+            }}
+            QPushButton:pressed {{
+                background: #1d4ed8;
+            }}
+            QPushButton:disabled {{
+                background: #f1f5f9;
+                color: #94a3b8;
+                border-color: #e2e8f0;
+            }}
+        """
+
+    @staticmethod
+    def _secondary_button_style() -> str:
+        return f"""
+            QPushButton {{
+                padding: 6px 18px;
+                font-size: 13px;
+                font-weight: 600;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                background: #ffffff;
+                color: #475569;
+            }}
+            QPushButton:hover {{
+                background: #f1f5f9;
+                border-color: #2563eb;
+                color: #2563eb;
+            }}
+            QPushButton:pressed {{
+                background: #e2e8f0;
+            }}
+        """
+
     def _setup_menu(self) -> None:
-        """Crea la barra menu minimale."""
+        """Menu minimale (File > Quit, Help > About)."""
         menubar = self.menuBar()
         if menubar is None:
             return
@@ -629,13 +749,6 @@ class HostWindow(QMainWindow):
         act_about = QAction("&About OpenDesk Host", self)
         act_about.triggered.connect(self._on_about)
         help_menu.addAction(act_about)
-
-    def _setup_statusbar(self) -> None:
-        """Barra di stato semplice."""
-        status = QStatusBar(self)
-        self._status_text = QLabel("")
-        status.addWidget(self._status_text, 1)
-        self.setStatusBar(status)
 
     def _wire_service(self) -> None:
         """Collega i segnali del servizio ai gestori UI."""
@@ -653,7 +766,17 @@ class HostWindow(QMainWindow):
     @Slot(str)
     def _on_status_changed(self, status: str) -> None:
         self._status_label.setText(status)
-        self._status_text.setText(status)
+        # Aggiorna colore pallino in base allo stato
+        lower = status.lower()
+        if "error" in lower or "fail" in lower or "unavailable" in lower:
+            color = self._C_DANGER
+        elif "connect" in lower or "authenticat" in lower or "join" in lower:
+            color = self._C_WARNING
+        elif "stream" in lower or "connected" in lower or "wait" in lower:
+            color = self._C_SUCCESS
+        else:
+            color = self._C_WARNING
+        self._status_dot.setStyleSheet(f"font-size: 12px; color: {color};")
 
     @Slot(str, str)
     def _on_device_info_changed(self, session_id: str, password: str) -> None:
