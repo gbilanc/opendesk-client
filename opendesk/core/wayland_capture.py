@@ -81,6 +81,7 @@ class WaylandScreenCast:
         Checks for:
         - ``dbus-next`` Python package
         - ``org.freedesktop.portal.Desktop`` on the session D-Bus
+        - GObject Introspection (needed by the PipeWire helper subprocess)
         """
         if self._available is not None:
             return self._available
@@ -89,6 +90,15 @@ class WaylandScreenCast:
             import dbus_next  # noqa: F401
         except ImportError:
             logger.debug("Wayland screencast: dbus-next not installed")
+            self._available = False
+            return False
+
+        # Also need gi bindings for the GStreamer helper subprocess
+        from opendesk.core.platform_config import _find_system_python_gi
+        if _find_system_python_gi() is None:
+            logger.debug(
+                "Wayland screencast: no system Python with gi bindings"
+            )
             self._available = False
             return False
 
@@ -439,9 +449,9 @@ class WaylandScreenCast:
         if self._session is None or self._session.pipewire_node <= 0:
             raise RuntimeError("No PipeWire node available")
 
-        from opendesk.core.screen_capture import _find_system_python
+        from opendesk.core.platform_config import _find_system_python_gi
 
-        system_python = _find_system_python()
+        system_python = _find_system_python_gi()
         if not system_python:
             raise RuntimeError(
                 "No system Python with GStreamer gi bindings found. "

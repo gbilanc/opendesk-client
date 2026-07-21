@@ -310,10 +310,10 @@ class TestInputBackend:
 
 class TestCaptureBackend:
     def test_auto_detect(self) -> None:
-        from opendesk.core.screen_capture import _detect_capture_method
-        method = _detect_capture_method()
+        from opendesk.core.platform_config import get_platform_config
+        cfg = get_platform_config()
         # On CI/headless this should return MSS, but any valid method is fine
-        assert method is not None
+        assert cfg.capture_method is not None
 
     def test_pipewire_availability_check(self) -> None:
         from opendesk.core.screen_capture import PipeWireCapture

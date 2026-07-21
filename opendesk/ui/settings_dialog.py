@@ -285,6 +285,65 @@ class SettingsDialog(QDialog):
         general_layout.addStretch()
         tabs.addTab(general_tab, "General")
 
+        # ── Tab 5: Platform info ──
+        plat_tab = QWidget()
+        plat_layout = QVBoxLayout(plat_tab)
+        plat_layout.setSpacing(12)
+
+        plat_group = QGroupBox("Piattaforma rilevata")
+        plat_form = QFormLayout(plat_group)
+        plat_form.setSpacing(8)
+
+        from opendesk.core.platform_config import get_platform_config
+        self._plat_cfg = get_platform_config()
+
+        self._plat_name_label = QLabel(f"<b>{self._plat_cfg.display_name}</b>")
+        plat_form.addRow("Sistema:", self._plat_name_label)
+
+        self._plat_capture_label = QLabel(self._plat_cfg.capture_method.name)
+        if self._plat_cfg.capture_methods_available:
+            self._plat_capture_label.setText(
+                self._plat_cfg.capture_method.name
+                + " (" + ", ".join(m.name for m in self._plat_cfg.capture_methods_available) + " disponibili)"
+            )
+        plat_form.addRow("Cattura schermo:", self._plat_capture_label)
+
+        self._plat_input_label = QLabel(self._plat_cfg.input_backend_name)
+        plat_form.addRow("Input remoto:", self._plat_input_label)
+
+        self._plat_codec_label = QLabel(self._plat_cfg.codec_hint)
+        plat_form.addRow("Codec predef.:", self._plat_codec_label)
+
+        self._plat_pixel_label = QLabel(self._plat_cfg.default_pixel_format)
+        plat_form.addRow("Pixel format:", self._plat_pixel_label)
+
+        if self._plat_cfg.hw_encoders_available:
+            hw_text = ", ".join(self._plat_cfg.hw_encoders_available)
+        else:
+            hw_text = "nessuno (solo SW)"
+        self._plat_hw_label = QLabel(hw_text)
+        plat_form.addRow("HW encoder:", self._plat_hw_label)
+
+        plat_layout.addWidget(plat_group)
+
+        # Dipendenze
+        if self._plat_cfg.required_system_packages:
+            deps_group = QGroupBox("Dipendenze di sistema richieste")
+            deps_layout = QVBoxLayout(deps_group)
+            for dep in self._plat_cfg.required_system_packages:
+                deps_layout.addWidget(QLabel(f"• {dep}"))
+            plat_layout.addWidget(deps_group)
+
+        if self._plat_cfg.pip_extra:
+            pip_label = QLabel(
+                f"<small>Installa con: <code>uv sync --extra {self._plat_cfg.pip_extra}</code></small>"
+            )
+            pip_label.setTextFormat(Qt.TextFormat.RichText)
+            plat_layout.addWidget(pip_label)
+
+        plat_layout.addStretch()
+        tabs.addTab(plat_tab, "Platform")
+
         layout.addWidget(tabs)
 
         # ── Buttons ──

@@ -16,6 +16,7 @@ from PySide6.QtCore import QObject, QSettings, QTimer, Signal, Slot
 
 from opendesk.core.audio_manager import AudioManager, AudioConfig, AudioDirection
 from opendesk.core.camera_manager import CameraManager, CameraConfig
+from opendesk.core.platform_config import get_platform_config
 from opendesk.core.screen_capture import ScreenCapture, CapturedFrame
 from opendesk.core.video_codec import VideoEncoder, EncoderConfig, QualityLevel, _QUALITY_CRF
 from opendesk.core.input_injection import (
@@ -212,13 +213,18 @@ class StreamService(QObject):
             if not codec:
                 codec = VideoEncoder.default_codec(prefer_hw=prefer_hw)
 
+            # Pixel format: default dal PlatformConfig
+            cfg = get_platform_config()
+
             # CRF mode: mappa qualita' a CRF
             crf = _QUALITY_CRF.get(quality)
 
-            # Pixel format: yuv444p per testo nitido (full chroma)
-            pixel_format = self._settings.value("video/pixel_format", "yuv444p")
+            # Pixel format: default dal PlatformConfig, poi da impostazioni
+            pixel_format = self._settings.value("video/pixel_format", "")
+            if not pixel_format:
+                pixel_format = cfg.default_pixel_format
             if pixel_format not in ("yuv420p", "yuv444p"):
-                pixel_format = "yuv444p"
+                pixel_format = cfg.default_pixel_format
 
             # Encoder preset: empty = auto by quality level
             encoder_preset = self._settings.value("video/encoder_preset", "")

@@ -142,6 +142,10 @@ def main(log_level: int | None = None) -> None:
     version = __import__("opendesk").__version__
     logger.info("Starting OpenDesk v%s", version)
 
+    # Log platform configuration at startup
+    from opendesk.core.platform_config import get_platform_config
+    get_platform_config()
+
     app = QApplication(sys.argv)
     app.setApplicationName("OpenDesk")
     app.setOrganizationName("OpenDesk")

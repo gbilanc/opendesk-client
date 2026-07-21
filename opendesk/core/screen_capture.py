@@ -21,6 +21,7 @@ import numpy as np
 from PIL import Image
 
 from opendesk.utils.platform import current_platform, Platform, is_wayland
+from opendesk.core.platform_config import get_platform_config, CaptureMethod
 
 logger = logging.getLogger(__name__)
 
@@ -454,25 +455,6 @@ class PipeWireCapture:
 # ---------------------------------------------------------------------------
 
 
-def _detect_capture_method() -> CaptureMethod:
-    plat = current_platform()
-    if plat == Platform.LINUX and is_wayland():
-        # 1) Prefer D-Bus portal (avoids double portal dialog)
-        try:
-            from opendesk.core.wayland_capture import WaylandScreenCast
-            wsc = WaylandScreenCast()
-            if wsc.is_available():
-                logger.info("Capture backend: PORTAL (Wayland D-Bus + GStreamer)")
-                return CaptureMethod.PORTAL
-        except Exception:
-            pass
-        # 2) GStreamer pipewiresrc (works but shows its own dialog)
-        pw = PipeWireCapture()
-        if pw.is_available():
-            logger.info("Capture backend: PIPEWIRE (GStreamer pipewiresrc)")
-            return CaptureMethod.PIPEWIRE
-        logger.info("Capture backend: MSS (XWayland fallback)")
-    return CaptureMethod.MSS
 
 
 # ---------------------------------------------------------------------------
@@ -483,13 +465,22 @@ def _detect_capture_method() -> CaptureMethod:
 class ScreenCapture:
     """Cross-platform screen capture engine.
 
-    Auto-detects the best backend:
-    - Linux/Wayland → PipeWire (falls back to MSS/XWayland)
-    - X11, Windows, macOS → MSS
+    Uses ``PlatformConfig`` to select the best backend for the current
+    platform.  The method can be overridden explicitly.
+
+    Backend selection
+    -----------------
+    - **Wayland** → PORTAL (D-Bus + PipeWire) → PIPEWIRE → MSS (XWayland)
+    - **X11** → MSS (via X11)
+    - **Windows** → MSS (via DXGI)
+    - **macOS** → MSS (via CoreGraphics)
     """
 
     def __init__(self, method: CaptureMethod | None = None) -> None:
-        self._method = method if method and method != CaptureMethod.AUTO else _detect_capture_method()
+        if method and method != CaptureMethod.AUTO:
+            self._method = method
+        else:
+            self._method = get_platform_config().capture_method
         self._lock = Lock()
         self._sct: mss.mss | None = None
         self._pw: PipeWireCapture | None = None
@@ -866,26 +857,10 @@ def release_screenshot_capture() -> None:
 
 
 def _find_system_python() -> str | None:
-    """Find a Python interpreter that has GStreamer + GstApp gi bindings."""
-    import shutil
-    import subprocess
+    """Find a Python interpreter that has GStreamer + GstApp gi bindings.
 
-    candidates = ["/usr/bin/python3", "/usr/bin/python"]
-    for py in candidates:
-        if not shutil.which(py):
-            continue
-        try:
-            r = subprocess.run(
-                [py, "-c",
-                 "import gi; gi.require_version('Gst', '1.0');"
-                 "gi.require_version('GstApp', '1.0');"
-                 "from gi.repository import Gst; Gst.init(None);"
-                 "print('ok')"],
-                capture_output=True, text=True, timeout=3,
-            )
-            if r.returncode == 0:
-                return py
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-            continue
-
-    return None
+    Delegates to ``platform_config._find_system_python_gi`` to avoid
+    duplicating the detection logic.
+    """
+    from opendesk.core.platform_config import _find_system_python_gi
+    return _find_system_python_gi()

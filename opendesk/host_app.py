@@ -522,6 +522,10 @@ class HostWindow(QMainWindow):
         self._setup_menu()
         self._wire_service()
 
+        # Health check all'avvio
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(500, self._check_platform_health_startup)
+
     # ═══════════════════════════════════════════════════════════════════════
     # UI setup
     # ═══════════════════════════════════════════════════════════════════════
@@ -558,6 +562,12 @@ class HostWindow(QMainWindow):
         # Status row inside header
         status_row = QHBoxLayout()
         status_row.setSpacing(6)
+
+        # ── Health indicator ──
+        from opendesk.ui.widgets.health_status import HealthStatusWidget
+        self._health_widget = HealthStatusWidget(self)
+        self._health_widget.setToolTip("Stato piattaforma — click per dettagli")
+        status_row.addWidget(self._health_widget)
 
         self._status_dot = QLabel("●")
         self._status_dot.setStyleSheet(f"font-size: 12px; color: {self._C_WARNING};")
@@ -775,8 +785,52 @@ class HostWindow(QMainWindow):
         act_about.triggered.connect(self._on_about)
         help_menu.addAction(act_about)
 
+    # ── Platform health ────────────────────────────────────────────
+
+    def _check_platform_health_startup(self) -> None:
+        """Mostra notifica se ci sono criticità all'avvio."""
+        from opendesk.ui.widgets.toast_notification import ToastNotification
+        from opendesk.core.platform_config import get_platform_config, HealthSeverity
+
+        cfg = get_platform_config()
+        issues = cfg.check_health()
+
+        critical = [i for i in issues if i.severity == HealthSeverity.CRITICAL]
+        warnings = [i for i in issues if i.severity == HealthSeverity.WARNING]
+
+        if critical:
+            msg = f"🔴 {len(critical)} problema critico: " + ", ".join(c.message.split(".")[0] for c in critical[:2])
+            ToastNotification(self, msg, ToastNotification.Type.ERROR, duration_ms=6000).show()
+        elif warnings:
+            msg = f"🟡 {len(warnings)} avviso: " + ", ".join(w.message.split(".")[0] for w in warnings[:2])
+            ToastNotification(self, msg, ToastNotification.Type.WARNING, duration_ms=5000).show()
+
+        if hasattr(self, '_health_widget'):
+            self._health_widget._refresh()
+
+    # ── Signal wiring ──────────────────────────────────────────────
+
     def _wire_service(self) -> None:
         """Collega i segnali del servizio ai gestori UI."""
+
+        # Click sull'health widget mostra dettagli
+        if hasattr(self, '_health_widget'):
+            from PySide6.QtWidgets import QMessageBox
+            def show_health(event):
+                cfg = get_platform_config()
+                issues = cfg.check_health()
+                msg = f"<b>Piattaforma: {cfg.display_name}</b><br><br>"
+                if not issues:
+                    msg += "✅ Nessun problema rilevato."
+                else:
+                    for i in issues:
+                        icon = {HealthSeverity.CRITICAL: "🔴", HealthSeverity.WARNING: "🟡", HealthSeverity.INFO: "ℹ️"}[i.severity]
+                        msg += f"{icon} <b>{i.component}</b>: {i.message}<br>"
+                        if i.fix:
+                            msg += f"&nbsp;&nbsp;&nbsp;→ {i.fix}<br>"
+                        msg += "<br>"
+                QMessageBox.information(self, "Stato piattaforma", msg)
+            self._health_widget.mousePressEvent = show_health  # type: ignore[assignment]
         svc = self._service
         svc.status_changed.connect(self._on_status_changed)
         svc.device_info_changed.connect(self._on_device_info_changed)
@@ -995,6 +1049,10 @@ def main_host() -> None:
     setup_logging(level=logging.DEBUG)
     version = __import__("opendesk").__version__
     logger.info("Starting OpenDesk Host v%s", version)
+
+    # Log platform configuration
+    from opendesk.core.platform_config import get_platform_config
+    get_platform_config()  # detect + log summary
 
     app = QApplication(sys.argv)
     app.setApplicationName("OpenDesk Host")

@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from enum import IntEnum, auto
 
 from opendesk.utils.platform import current_platform, Platform, is_wayland
+from opendesk.core.platform_config import get_platform_config
 
 logger = logging.getLogger(__name__)
 
@@ -968,17 +969,28 @@ _BACKENDS: dict[tuple[Platform, bool], type[InputBackend]] = {
 
 
 def create_input_backend() -> InputBackend:
-    """Create the appropriate input backend for the current platform."""
+    """Create the appropriate input backend for the current platform.
+
+    Uses ``PlatformConfig`` to select the backend for the detected
+    platform, falling back to the legacy _BACKENDS dict if the
+    platform config does not have a backend class.
+    """
+    cfg = get_platform_config()
+    backend = cfg.create_input_backend()
+    if backend is not None:
+        logger.info("Input backend: %s (%s)", type(backend).__name__, cfg.display_name)
+        return backend
+
+    # Legacy fallback (config did not resolve a backend)
     plat = current_platform()
     wayland = is_wayland() if plat == Platform.LINUX else False
     key = (plat, wayland)
     backend_cls = _BACKENDS.get(key)
 
     if backend_cls is None:
-        # Fallback to non-wayland
         backend_cls = _BACKENDS.get((plat, False))
     if backend_cls is None:
         raise RuntimeError(f"Unsupported platform: {plat}")
 
-    logger.info("Input backend: %s (%s)", backend_cls.__name__, plat.name)
+    logger.info("Input backend (legacy): %s (%s)", backend_cls.__name__, plat.name)
     return backend_cls()

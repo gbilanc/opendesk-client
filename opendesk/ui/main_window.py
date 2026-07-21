@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from opendesk.core.keyboard_state import caps_lock_active
 from opendesk.core.device_registry import DeviceRegistry
+from opendesk.core.platform_config import get_platform_config, HealthSeverity
 from opendesk.core.file_transfer import FileTransferManager, TransferJob, TransferState
 from opendesk.core.clipboard_sync import ClipboardSync
 from opendesk.network.protocol import Message, MessageType
@@ -134,6 +135,9 @@ class MainWindow(QMainWindow):
         self._setup_menus()
         self._setup_toolbar()
         self._setup_statusbar()
+
+        # Mostra warning di piattaforma all'avvio (se ci sono criticità)
+        QTimer.singleShot(500, self._check_platform_health_startup)
         self._setup_docks()
         self._setup_central_widget()
         self._setup_fullscreen_shortcuts()
@@ -355,9 +359,62 @@ class MainWindow(QMainWindow):
         if self._viewer_window and self._viewer_window.isFullScreen():
             self._viewer_window._toggle_fullscreen()
 
+    # ── Platform health ────────────────────────────────────────────
+
+    def _check_platform_health_startup(self) -> None:
+        """Show a toast notification if critical issues are detected at startup."""
+        from opendesk.ui.widgets.toast_notification import ToastNotification
+
+        cfg = get_platform_config()
+        issues = cfg.check_health()
+
+        critical = [i for i in issues if i.severity == HealthSeverity.CRITICAL]
+        warnings = [i for i in issues if i.severity == HealthSeverity.WARNING]
+
+        if critical:
+            msg = f"🔴 {len(critical)} problema{'i' if len(critical) > 1 else ''} critico{'i' if len(critical) > 1 else ''}: "
+            msg += ", ".join(c.message.split(".")[0] for c in critical[:2])
+            ToastNotification(self, msg, ToastNotification.Type.ERROR, duration_ms=6000).show()
+        elif warnings:
+            msg = f"🟡 {len(warnings)} avviso{'i' if len(warnings) > 1 else ''}: "
+            msg += ", ".join(w.message.split(".")[0] for w in warnings[:2])
+            ToastNotification(self, msg, ToastNotification.Type.WARNING, duration_ms=5000).show()
+
+        # Aggiorna il widget health nella status bar
+        if hasattr(self, '_health_widget'):
+            self._health_widget._refresh()
+
+    def _show_health_details(self) -> None:
+        """Show a dialog with full health details."""
+        from PySide6.QtWidgets import QMessageBox
+
+        cfg = get_platform_config()
+        issues = cfg.check_health()
+
+        msg = f"<b>Piattaforma: {cfg.display_name}</b><br><br>"
+
+        if not issues:
+            msg += "✅ Nessun problema rilevato."
+        else:
+            for i in issues:
+                icon = {HealthSeverity.CRITICAL: "🔴", HealthSeverity.WARNING: "🟡", HealthSeverity.INFO: "ℹ️"}[i.severity]
+                msg += f"{icon} <b>{i.component}</b>: {i.message}<br>"
+                if i.fix:
+                    msg += f"&nbsp;&nbsp;&nbsp;→ {i.fix}<br>"
+                msg += "<br>"
+
+        QMessageBox.information(self, "Stato piattaforma", msg)
+
     def _setup_statusbar(self) -> None:
         """Configure the status bar."""
         status = QStatusBar(self)
+
+        # ── Health indicator (piattaforma) ──
+        from opendesk.ui.widgets.health_status import HealthStatusWidget
+        self._health_widget = HealthStatusWidget(self)
+        self._health_widget.setToolTip("Stato piattaforma — click per dettagli")
+        self._health_widget.mousePressEvent = lambda e: self._show_health_details()  # type: ignore[assignment]
+        status.addPermanentWidget(self._health_widget)
 
         self._session_status = SessionStatusWidget()
         status.addPermanentWidget(self._session_status)
