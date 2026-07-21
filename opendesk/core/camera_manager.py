@@ -254,8 +254,9 @@ class CameraManager:
         cap: cv2.VideoCapture | None = None
 
         try:
-            # Open camera
-            cap = cv2.VideoCapture(self._config.device_index, cv2.CAP_ANY)
+            # Open camera (suppress OpenCV's noisy stderr backend errors)
+            with _suppress_opencv_stderr():
+                cap = cv2.VideoCapture(self._config.device_index, cv2.CAP_ANY)
             if cap is None or not cap.isOpened():
                 self._state = CameraState.ERROR
                 logger.error("Failed to open camera device %d", self._config.device_index)
