@@ -671,6 +671,10 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "ruff" },
 ]
+wayland = [
+    { name = "dbus-next" },
+    { name = "evdev" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -680,7 +684,9 @@ requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=24.0" },
     { name = "cryptography", specifier = ">=41.0.7" },
     { name = "dbus-next", marker = "sys_platform == 'linux'", specifier = ">=0.2.3" },
+    { name = "dbus-next", marker = "extra == 'wayland'", specifier = ">=0.2.3" },
     { name = "evdev", marker = "sys_platform == 'linux'", specifier = ">=1.9.3" },
+    { name = "evdev", marker = "extra == 'wayland'", specifier = ">=1.9.3" },
     { name = "msgpack", specifier = ">=1.0.0" },
     { name = "mss", specifier = ">=9.0.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.9.0" },
@@ -698,7 +704,7 @@ requires-dist = [
     { name = "soundcard", marker = "extra == 'audio'", specifier = ">=0.4.6" },
     { name = "websockets", specifier = ">=10.4" },
 ]
-provides-extras = ["audio", "dev"]
+provides-extras = ["audio", "wayland", "dev"]
 
 [[package]]
 name = "packaging"

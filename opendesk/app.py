@@ -16,10 +16,6 @@ from pathlib import Path
 # Enable crash diagnostics — on segfault, prints a traceback to stderr
 faulthandler.enable()
 
-# Fix for Python 3.14+: ctypes.util.find_library() no longer searches
-# C:\Windows\System32 automatically, breaking cffi-based libs like SoundCard.
-os.add_dll_directory(r"C:\Windows\System32")
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QPalette, QColor
 from PySide6.QtWidgets import QApplication
