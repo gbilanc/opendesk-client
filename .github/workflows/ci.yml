@@ -5,9 +5,6 @@ on:
     branches: [main, master, develop]
   pull_request:
     branches: [main, master]
-  release:
-    types: [published]
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -78,83 +75,5 @@ jobs:
       - name: Run tests
         run: uv run pytest tests/ -v --tb=short
 
-  # ── Build wheel + sdist ────────────────────────────────────────────
-  build:
-    needs: [lint, test]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python pin 3.12
-
-      - name: Install build deps
-        run: uv sync --extra dev
-
-      - name: Build wheel and sdist
-        run: uv run python -m build
-
-      - name: Upload wheel artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: opendesk-dist
-          path: dist/*.whl
-          retention-days: 7
-
-      - name: Upload sdist artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: opendesk-dist
-          path: dist/*.tar.gz
-          retention-days: 7
-
-  # ── Publish to PyPI (on tag v*) ────────────────────────────────────
-  publish-pypi:
-    needs: [build]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-
-    environment:
-      name: pypi
-      url: https://pypi.org/p/opendesk
-    permissions:
-      id-token: write  # required for Trusted Publishing
-
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: opendesk-dist/
-
-  # ── GitHub Release (on tag v*) ─────────────────────────────────────
-  release:
-    needs: [build]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            opendesk-dist/*.whl
-            opendesk-dist/*.tar.gz
-          generate_release_notes: true
 
 

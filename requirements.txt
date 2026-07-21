@@ -1,8 +1,0 @@
-# OpenDesk — Dependency management via pyproject.toml
-#
-# Install:
-#   pip install opendesk          # stable release from PyPI
-#   pip install -e .              # editable install from source
-#   pip install -e ".[dev]"       # with development tools
-#
-# See pyproject.toml for the full dependency list.

@@ -51,8 +51,6 @@ dependencies = [
     "evdev>=1.9.3       ; sys_platform == 'linux'",
     # macOS (screen capture / input via CoreGraphics)
     "pyobjc-framework-Quartz>=9.0 ; sys_platform == 'darwin'",
-    "build>=1.5.0",
-    "twine>=6.2.0",
 ]
 
 [project.urls]
@@ -70,8 +68,6 @@ dev = [
     "black>=24.0",
     "ruff>=0.3.0",
     "mypy>=1.9.0",
-    "build>=1.2.0",
-    "twine>=6.0.0",
 ]
 
 [tool.setuptools.packages.find]

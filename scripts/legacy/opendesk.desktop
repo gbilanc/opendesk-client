@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=OpenDesk
-Comment=Remote Desktop Application
-Icon=opendesk
-Exec=opendesk
-Terminal=false
-Categories=Network;RemoteAccess;
-StartupWMClass=opendesk
