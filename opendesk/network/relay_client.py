@@ -491,10 +491,8 @@ class _RelaySession:
                                 self._frame_width = width
                                 self._frame_height = height
                                 self._last_keyframe_time = time.time()
-                                # Pass bytes directly — avoids a second
-                                # ndarray copy in the UI thread.
                                 self.inbox.put(
-                                    ("frame", (rgb.tobytes(), width, height), self.session_seq),
+                                    ("frame", (rgb.copy(), width, height), self.session_seq),
                                 )
                                 logger.debug(
                                     "Frame decoded: %dx%d (%s)",
@@ -545,7 +543,7 @@ class _RelaySession:
                                     self._reference_frame[ty:ty+th, tx:tx+tw] = tile_rgb
                                     self.inbox.put(
                                         ("frame", (
-                                            self._reference_frame.tobytes(),
+                                            self._reference_frame.copy(),
                                             self._frame_width,
                                             self._frame_height,
                                         ), self.session_seq),

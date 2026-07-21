@@ -25,12 +25,24 @@ _checker: _Checker = None
 
 
 def _check_x11() -> bool:
-    """Check Caps Lock via Xlib (X11 / Linux)."""
+    """Check Caps Lock via Xlib (X11 / Linux).
+
+    The Display connection is opened once and reused across calls
+    to avoid blocking on a fresh X11 handshake every 500 ms.
+    """
+    # Reuse the Display across calls so we don't pay the handshake
+    # cost every 500 ms when the caps-lock timer fires.
+    if not hasattr(_check_x11, "_display"):
+        try:
+            from Xlib import display as xdisplay  # type: ignore[import-untyped]
+            _check_x11._display = xdisplay.Display()  # type: ignore[attr-defined]
+        except Exception:
+            logger.debug("Xlib Display open failed, falling back", exc_info=True)
+            return _check_sys_leds()
+
     try:
-        from Xlib import display as xdisplay  # type: ignore[import-untyped]
-        d = xdisplay.Display()
+        d = _check_x11._display  # type: ignore[attr-defined]
         state = d.get_keyboard_control()._data["led_mask"]  # noqa: SLF001
-        d.close()
         return bool(state & 1)
     except Exception:
         logger.debug("Xlib Caps Lock check failed, falling back", exc_info=True)

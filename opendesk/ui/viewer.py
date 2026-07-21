@@ -306,11 +306,17 @@ class RemoteViewer(QGraphicsView):
         Uses a ring buffer to avoid per-frame allocations.  At 1080p@30fps
         this saves ~180 MB/s of ``.copy().tobytes()`` overhead.
         """
-        # Convert to QImage
-        if isinstance(rgb_data, np.ndarray):
-            if rgb_data.dtype != np.uint8:
-                rgb_data = rgb_data.clip(0, 255).astype(np.uint8)
-            if rgb_data.shape[2] == 3:
+        # Skip if viewport not ready yet (window still initialising)
+        if self.viewport().width() < 2 or self.viewport().height() < 2:
+            return
+
+        try:
+            # ── Convert to QImage ───────────────────────────────────
+            if isinstance(rgb_data, np.ndarray):
+                if rgb_data.dtype != np.uint8:
+                    rgb_data = rgb_data.clip(0, 255).astype(np.uint8)
+                if rgb_data.shape[2] != 3:
+                    return
                 h, w, _ = rgb_data.shape
                 expected_size = w * h * 3
 
@@ -328,37 +334,49 @@ class RemoteViewer(QGraphicsView):
                 self._frame_buffers.append(buf)
                 img = QImage(buf, w, h, w * 3, QImage.Format.Format_RGB888)
                 # Keep a reference so the buffer is not GC'd while QImage uses it
-                img._np_buffer = buf
+                img._np_buffer = buf  # type: ignore[attr-defined]
+            elif isinstance(rgb_data, bytes):
+                img = QImage(rgb_data, width, height, width * 3, QImage.Format.Format_RGB888)
             else:
                 return
-        elif isinstance(rgb_data, bytes):
-            img = QImage(rgb_data, width, height, width * 3, QImage.Format.Format_RGB888)
-        else:
-            return
 
-        pixmap = QPixmap.fromImage(img)
+            if img.isNull():
+                return
 
-        # Update or create scene pixmap
-        if self._pixmap_item is None:
-            self._pixmap_item = self._scene.addPixmap(pixmap)
-            self._pixmap_item.setTransformationMode(
-                Qt.TransformationMode.FastTransformation
-                if self._sharp_text
-                else Qt.TransformationMode.SmoothTransformation
-            )
-            self._remote_resolution = (width, height)
-            self._apply_fit_mode()
-        else:
-            self._pixmap_item.setPixmap(pixmap)
-            self._remote_resolution = (width, height)
+            # ── Convert to QPixmap ─────────────────────────────────
+            pixmap = QPixmap.fromImage(img)
+            if pixmap.isNull():
+                return
 
-        # Track FPS
-        self._frame_count_since_hud += 1
-        self._last_frame_time = time.time()
+            # ── Update or create scene pixmap ─────────────────────
+            if self._pixmap_item is None:
+                self._pixmap_item = self._scene.addPixmap(pixmap)
+                self._pixmap_item.setTransformationMode(
+                    Qt.TransformationMode.FastTransformation
+                    if self._sharp_text
+                    else Qt.TransformationMode.SmoothTransformation
+                )
+                self._remote_resolution = (width, height)
+                self._apply_fit_mode()
+            else:
+                self._pixmap_item.setPixmap(pixmap)
+                self._remote_resolution = (width, height)
 
-        # Reset the frame timeout watchdog
-        if self._connection_active:
-            self._frame_timeout_timer.start(_FRAME_TIMEOUT_MS)
+            # Track FPS
+            self._frame_count_since_hud += 1
+            self._last_frame_time = time.time()
+
+            # Reset the frame timeout watchdog
+            if self._connection_active:
+                self._frame_timeout_timer.start(_FRAME_TIMEOUT_MS)
+
+        except Exception:
+            logger.exception("display_frame error — resetting decoder state")
+            # Reset pixmap item so the next frame starts fresh
+            if self._pixmap_item is not None:
+                self._scene.removeItem(self._pixmap_item)
+                self._pixmap_item = None
+            self._frame_buffers.clear()
 
     def set_connection_active(self, active: bool) -> None:
         """Mark connection state for UI updates."""
