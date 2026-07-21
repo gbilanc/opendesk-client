@@ -12,11 +12,8 @@ import logging
 import queue
 import secrets
 import string
-import time
 import uuid
 from pathlib import Path
-
-import numpy as np
 
 from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QAction, QCloseEvent
@@ -28,7 +25,6 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
-    QStatusBar,
     QVBoxLayout,
     QWidget,
 )
@@ -37,7 +33,7 @@ from opendesk.core.device_registry import DeviceRegistry
 from opendesk.core.file_transfer import FileTransferManager, TransferState
 from opendesk.crypto.auth import AuthManager
 from opendesk.network.protocol import Message, MessageType
-from opendesk.network.relay_client import RelayClient, RelayRole
+from opendesk.network.relay_client import RelayClient
 from opendesk.services.stream_service import StreamService
 from opendesk.ui.chat_panel import ChatPanel
 from opendesk.ui.settings_dialog import SettingsDialog
@@ -210,7 +206,10 @@ class HostService(QObject):
         logger.info("Starting host on relay %s:%s session=%s", host, port, clean_id)
         trusted_ids = {d.device_id for d in self._device_registry.trusted()}
         self._relay.start_hosting(
-            host, port, clean_id, self._password,
+            host,
+            port,
+            clean_id,
+            self._password,
             device_id=self._device_id,
             device_name=self._device_name,
             trusted_device_ids=trusted_ids,
@@ -283,7 +282,8 @@ class HostService(QObject):
         self.status_changed.emit("Reconnecting to relay...")
         trusted_ids = {d.device_id for d in self._device_registry.trusted()}
         self._relay.start_hosting(
-            host, port,
+            host,
+            port,
             self._session_id.replace(" ", ""),
             self._password,
             device_id=self._device_id,
@@ -405,8 +405,10 @@ class HostService(QObject):
             if self._stream and self._stream.input_backend:
                 logger.debug(
                     "Host received MOUSE_EVENT: x=%d y=%d button=%s pressed=%s",
-                    msg.payload.get("x"), msg.payload.get("y"),
-                    msg.payload.get("button"), msg.payload.get("pressed"),
+                    msg.payload.get("x"),
+                    msg.payload.get("y"),
+                    msg.payload.get("button"),
+                    msg.payload.get("pressed"),
                 )
                 self._stream.inject_mouse(msg)
             else:
@@ -417,7 +419,8 @@ class HostService(QObject):
         elif t == MessageType.KEYBOARD_EVENT and self._stream and self._stream.input_backend:
             logger.debug(
                 "Host received KEYBOARD_EVENT: key=%s pressed=%s",
-                msg.payload.get("key"), msg.payload.get("pressed"),
+                msg.payload.get("key"),
+                msg.payload.get("pressed"),
             )
             self._stream.inject_keyboard(msg)
 
@@ -537,6 +540,7 @@ class HostWindow(QMainWindow):
 
         # Health check all'avvio
         from PySide6.QtCore import QTimer
+
         QTimer.singleShot(500, self._check_platform_health_startup)
 
     # ═══════════════════════════════════════════════════════════════════════
@@ -554,7 +558,8 @@ class HostWindow(QMainWindow):
         header = QFrame()
         header.setObjectName("HostHeader")
         header.setFixedHeight(96)
-        header.setStyleSheet(f"""
+        header.setStyleSheet(
+            f"""
             QFrame#HostHeader {{
                 background: qlineargradient(
                     x1:0, y1:0, x2:1, y2:0,
@@ -562,7 +567,8 @@ class HostWindow(QMainWindow):
                     stop:1 {self._C_PRIMARY}
                 );
             }}
-        """)
+        """
+        )
         header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(20, 10, 20, 10)
         header_layout.setSpacing(2)
@@ -578,6 +584,7 @@ class HostWindow(QMainWindow):
 
         # ── Health indicator ──
         from opendesk.ui.widgets.health_status import HealthStatusWidget
+
         self._health_widget = HealthStatusWidget(self)
         self._health_widget.setToolTip("Stato piattaforma — click per dettagli")
         status_row.addWidget(self._health_widget)
@@ -587,7 +594,9 @@ class HostWindow(QMainWindow):
         status_row.addWidget(self._status_dot)
 
         self._status_label = QLabel("Initializing...")
-        self._status_label.setStyleSheet("font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.85);")
+        self._status_label.setStyleSheet(
+            "font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.85);"
+        )
         status_row.addWidget(self._status_label)
         status_row.addStretch()
 
@@ -603,20 +612,24 @@ class HostWindow(QMainWindow):
         # ── 2a. Credentials card ───────────────────────────────────────
         card = QFrame()
         card.setObjectName("CredentialsCard")
-        card.setStyleSheet(f"""
+        card.setStyleSheet(
+            f"""
             QFrame#CredentialsCard {{
                 background: {self._C_SURFACE};
                 border: 1px solid {self._C_BORDER};
                 border-radius: 10px;
             }}
-        """)
+        """
+        )
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(20, 18, 20, 18)
         card_layout.setSpacing(4)
 
         # ── Your ID ──
         id_label = QLabel("YOUR ID")
-        id_label.setStyleSheet(f"font-size: 10px; font-weight: 700; color: {self._C_TEXT_SECONDARY}; letter-spacing: 1px;")
+        id_label.setStyleSheet(
+            f"font-size: 10px; font-weight: 700; color: {self._C_TEXT_SECONDARY}; letter-spacing: 1px;"
+        )
         card_layout.addWidget(id_label)
 
         id_row = QHBoxLayout()
@@ -624,9 +637,12 @@ class HostWindow(QMainWindow):
 
         self._id_display = QLabel("—")
         self._id_display.setObjectName("HostIdDisplay")
-        self._id_display.setToolTip(f"Device UUID: {self._service.device_id}\nUsa questo UUID per pre-autorizzare il dispositivo")
+        self._id_display.setToolTip(
+            f"Device UUID: {self._service.device_id}\nUsa questo UUID per pre-autorizzare il dispositivo"
+        )
         self._id_display.setFixedHeight(44)
-        self._id_display.setStyleSheet(f"""
+        self._id_display.setStyleSheet(
+            f"""
             QLabel#HostIdDisplay {{
                 font-size: 26px; font-weight: 800;
                 font-family: {self._FONT_MONO};
@@ -637,7 +653,8 @@ class HostWindow(QMainWindow):
                 border: 1px solid #e2e8f0;
                 border-radius: 8px;
             }}
-        """)
+        """
+        )
         id_row.addWidget(self._id_display)
         id_row.addStretch()
 
@@ -658,7 +675,9 @@ class HostWindow(QMainWindow):
 
         # ── Password ──
         pwd_label = QLabel("PASSWORD")
-        pwd_label.setStyleSheet(f"font-size: 10px; font-weight: 700; color: {self._C_TEXT_SECONDARY}; letter-spacing: 1px;")
+        pwd_label.setStyleSheet(
+            f"font-size: 10px; font-weight: 700; color: {self._C_TEXT_SECONDARY}; letter-spacing: 1px;"
+        )
         card_layout.addWidget(pwd_label)
 
         pwd_row = QHBoxLayout()
@@ -667,7 +686,8 @@ class HostWindow(QMainWindow):
         self._pwd_display = QLabel("—")
         self._pwd_display.setObjectName("HostPwdDisplay")
         self._pwd_display.setFixedHeight(44)
-        self._pwd_display.setStyleSheet(f"""
+        self._pwd_display.setStyleSheet(
+            f"""
             QLabel#HostPwdDisplay {{
                 font-size: 20px; font-weight: 700;
                 font-family: {self._FONT_MONO};
@@ -678,7 +698,8 @@ class HostWindow(QMainWindow):
                 border: 1px solid #e2e8f0;
                 border-radius: 8px;
             }}
-        """)
+        """
+        )
         pwd_row.addWidget(self._pwd_display)
         pwd_row.addStretch()
 
@@ -698,7 +719,9 @@ class HostWindow(QMainWindow):
         uuid_info.setStyleSheet(f"font-size: 10px; color: {self._C_TEXT_SECONDARY};")
         uuid_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         uuid_info.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        uuid_info.setToolTip("Usa questo UUID in Settings → Security per pre-autorizzare questo dispositivo")
+        uuid_info.setToolTip(
+            "Usa questo UUID in Settings → Security per pre-autorizzare questo dispositivo"
+        )
         content_layout.addWidget(uuid_info)
 
         # ── 2c. Action buttons ─────────────────────────────────────────
@@ -734,8 +757,8 @@ class HostWindow(QMainWindow):
 
     @staticmethod
     def _copy_button_style() -> str:
-        return f"""
-            QPushButton {{
+        return """
+            QPushButton {
                 padding: 4px 14px;
                 font-size: 12px;
                 font-weight: 600;
@@ -743,26 +766,26 @@ class HostWindow(QMainWindow):
                 border-radius: 6px;
                 background: #f8fafc;
                 color: #2563eb;
-            }}
-            QPushButton:hover {{
+            }
+            QPushButton:hover {
                 background: #2563eb;
                 color: #ffffff;
                 border-color: #2563eb;
-            }}
-            QPushButton:pressed {{
+            }
+            QPushButton:pressed {
                 background: #1d4ed8;
-            }}
-            QPushButton:disabled {{
+            }
+            QPushButton:disabled {
                 background: #f1f5f9;
                 color: #94a3b8;
                 border-color: #e2e8f0;
-            }}
+            }
         """
 
     @staticmethod
     def _secondary_button_style() -> str:
-        return f"""
-            QPushButton {{
+        return """
+            QPushButton {
                 padding: 6px 18px;
                 font-size: 13px;
                 font-weight: 600;
@@ -770,15 +793,15 @@ class HostWindow(QMainWindow):
                 border-radius: 8px;
                 background: #ffffff;
                 color: #475569;
-            }}
-            QPushButton:hover {{
+            }
+            QPushButton:hover {
                 background: #f1f5f9;
                 border-color: #2563eb;
                 color: #2563eb;
-            }}
-            QPushButton:pressed {{
+            }
+            QPushButton:pressed {
                 background: #e2e8f0;
-            }}
+            }
         """
 
     def _setup_menu(self) -> None:
@@ -802,8 +825,8 @@ class HostWindow(QMainWindow):
 
     def _check_platform_health_startup(self) -> None:
         """Mostra notifica se ci sono criticità all'avvio."""
+        from opendesk.core.platform_config import HealthSeverity, get_platform_config
         from opendesk.ui.widgets.toast_notification import ToastNotification
-        from opendesk.core.platform_config import get_platform_config, HealthSeverity
 
         cfg = get_platform_config()
         issues = cfg.check_health()
@@ -812,13 +835,17 @@ class HostWindow(QMainWindow):
         warnings = [i for i in issues if i.severity == HealthSeverity.WARNING]
 
         if critical:
-            msg = f"🔴 {len(critical)} problema critico: " + ", ".join(c.message.split(".")[0] for c in critical[:2])
+            msg = f"🔴 {len(critical)} problema critico: " + ", ".join(
+                c.message.split(".")[0] for c in critical[:2]
+            )
             ToastNotification(self, msg, ToastNotification.Type.ERROR, duration_ms=6000).show()
         elif warnings:
-            msg = f"🟡 {len(warnings)} avviso: " + ", ".join(w.message.split(".")[0] for w in warnings[:2])
+            msg = f"🟡 {len(warnings)} avviso: " + ", ".join(
+                w.message.split(".")[0] for w in warnings[:2]
+            )
             ToastNotification(self, msg, ToastNotification.Type.WARNING, duration_ms=5000).show()
 
-        if hasattr(self, '_health_widget'):
+        if hasattr(self, "_health_widget"):
             self._health_widget._refresh()
 
     # ── Signal wiring ──────────────────────────────────────────────
@@ -827,8 +854,9 @@ class HostWindow(QMainWindow):
         """Collega i segnali del servizio ai gestori UI."""
 
         # Click sull'health widget mostra dettagli
-        if hasattr(self, '_health_widget'):
+        if hasattr(self, "_health_widget"):
             from PySide6.QtWidgets import QMessageBox
+
             def show_health(event):
                 cfg = get_platform_config()
                 issues = cfg.check_health()
@@ -837,12 +865,17 @@ class HostWindow(QMainWindow):
                     msg += "✅ Nessun problema rilevato."
                 else:
                     for i in issues:
-                        icon = {HealthSeverity.CRITICAL: "🔴", HealthSeverity.WARNING: "🟡", HealthSeverity.INFO: "ℹ️"}[i.severity]
+                        icon = {
+                            HealthSeverity.CRITICAL: "🔴",
+                            HealthSeverity.WARNING: "🟡",
+                            HealthSeverity.INFO: "ℹ️",
+                        }[i.severity]
                         msg += f"{icon} <b>{i.component}</b>: {i.message}<br>"
                         if i.fix:
                             msg += f"&nbsp;&nbsp;&nbsp;→ {i.fix}<br>"
                         msg += "<br>"
                 QMessageBox.information(self, "Stato piattaforma", msg)
+
             self._health_widget.mousePressEvent = show_health  # type: ignore[assignment]
         svc = self._service
         svc.status_changed.connect(self._on_status_changed)
@@ -948,9 +981,7 @@ class HostWindow(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
-        self._service.respond_to_incoming_file(
-            job_id, reply == QMessageBox.StandardButton.Yes
-        )
+        self._service.respond_to_incoming_file(job_id, reply == QMessageBox.StandardButton.Yes)
 
     @Slot()
     def _on_file_transfer_event(self) -> None:
@@ -963,7 +994,8 @@ class HostWindow(QMainWindow):
             dock.set_connected(True)
             dock.set_status("Connected — file transfer ready")
             self._service.file_transfer.request_remote_listing(
-                "/", self._service.relay.send_message,
+                "/",
+                self._service.relay.send_message,
             )
 
     def _ensure_transfer_dock(self) -> QWidget:
@@ -983,7 +1015,8 @@ class HostWindow(QMainWindow):
         if not paths:
             return
         self._service.file_transfer.send_files(
-            paths, self._service.relay.send_message,
+            paths,
+            self._service.relay.send_message,
             remote_dest_path=remote_dest,
         )
 
@@ -993,14 +1026,16 @@ class HostWindow(QMainWindow):
             return
         for rpath in remote_paths:
             self._service.file_transfer.request_download(
-                rpath, self._service.relay.send_message,
+                rpath,
+                self._service.relay.send_message,
                 local_dest=local_dest,
             )
 
     @Slot(str)
     def _on_browser_remote_listing(self, path: str) -> None:
         self._service.file_transfer.request_remote_listing(
-            path, self._service.relay.send_message,
+            path,
+            self._service.relay.send_message,
         )
 
     # ── Copy ────────────────────────────────────────────────────────────
@@ -1030,7 +1065,7 @@ class HostWindow(QMainWindow):
         """Formatta il session ID leggibile: rimuove spazi e ri-formatta."""
         raw = session_id.replace(" ", "")
         # Gruppi di 3 cifre
-        blocks = [raw[i:i+3] for i in range(0, len(raw), 3)]
+        blocks = [raw[i : i + 3] for i in range(0, len(raw), 3)]
         return " ".join(blocks)
 
     # ── About ───────────────────────────────────────────────────────────
@@ -1040,7 +1075,7 @@ class HostWindow(QMainWindow):
         QMessageBox.about(
             self,
             "About OpenDesk Host",
-            "<h3>OpenDesk Host v0.1.0</h3>"
+            "<h3>OpenDesk Host v1.0.0</h3>"
             "<p>Remote desktop host — accepts incoming connections.</p>"
             "<p>Built with Python, PySide6.</p>"
             "<hr>"
@@ -1053,7 +1088,8 @@ class HostWindow(QMainWindow):
         """Conferma se una sessione remota e' attiva."""
         if self._service.is_peer_connected:
             reply = QMessageBox.question(
-                self, "Confirm Quit",
+                self,
+                "Confirm Quit",
                 "A remote session is active.\nDisconnect and quit?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
@@ -1085,6 +1121,7 @@ def main_host() -> None:
 
     # Log platform configuration
     from opendesk.core.platform_config import get_platform_config
+
     get_platform_config()  # detect + log summary
 
     app = QApplication(sys.argv)

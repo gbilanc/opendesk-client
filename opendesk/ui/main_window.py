@@ -10,13 +10,10 @@ from __future__ import annotations
 
 import logging
 import queue
-import time
-import uuid
 from pathlib import Path
 
 import numpy as np
-
-from PySide6.QtCore import QObject, QSettings, QSize, Qt, QTimer, Slot
+from PySide6.QtCore import QSettings, QSize, Qt, QTimer, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -30,11 +27,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from opendesk.core.keyboard_state import caps_lock_active
-from opendesk.core.device_registry import DeviceRegistry
-from opendesk.core.platform_config import get_platform_config, HealthSeverity
-from opendesk.core.file_transfer import FileTransferManager, TransferJob, TransferState
 from opendesk.core.clipboard_sync import ClipboardSync
+from opendesk.core.file_transfer import FileTransferManager, TransferState
+from opendesk.core.keyboard_state import caps_lock_active
+from opendesk.core.platform_config import HealthSeverity, get_platform_config
 from opendesk.network.protocol import Message, MessageType
 from opendesk.network.relay_client import RelayRole
 from opendesk.services.connection_service import ConnectionService
@@ -57,14 +53,8 @@ class MainWindow(QMainWindow):
     MIN_HEIGHT = 680
 
     # ── Caps Lock indicator styles ──
-    _CAPS_ON_STYLE = (
-        "font-size: 12px; font-weight: 700; color: #dc2626;"
-        " padding: 0 6px;"
-    )
-    _CAPS_OFF_STYLE = (
-        "font-size: 12px; font-weight: 600; color: #94a3b8;"
-        " padding: 0 6px;"
-    )
+    _CAPS_ON_STYLE = "font-size: 12px; font-weight: 700; color: #dc2626;" " padding: 0 6px;"
+    _CAPS_OFF_STYLE = "font-size: 12px; font-weight: 600; color: #94a3b8;" " padding: 0 6px;"
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -147,8 +137,9 @@ class MainWindow(QMainWindow):
         # Use persisted password if available, otherwise generate one
         saved_pwd = self._settings.value("session/password", "")
         if not saved_pwd:
-            import string
             import secrets
+            import string
+
             alphabet = string.ascii_uppercase + string.digits
             saved_pwd = "".join(secrets.choice(alphabet) for _ in range(8))
             self._settings.setValue("session/password", saved_pwd)
@@ -158,9 +149,7 @@ class MainWindow(QMainWindow):
             self._connection.password,
         )
         self._host_session_id = self._connection.session_id.replace(" ", "")
-        self._status_text.setText(
-            f"Hosting: {self._connection.session_id.replace(' ', '')}"
-        )
+        self._status_text.setText(f"Hosting: {self._connection.session_id.replace(' ', '')}")
         self._connection.start_hosting()
 
         logger.info("Main window initialised")
@@ -270,7 +259,8 @@ class MainWindow(QMainWindow):
         toolbar = QToolBar("Main", self)
         toolbar.setMovable(False)
         toolbar.setIconSize(QSize(20, 20))
-        toolbar.setStyleSheet("""
+        toolbar.setStyleSheet(
+            """
             QToolBar {
                 background: #ffffff;
                 border-bottom: 1px solid #e2e8f0;
@@ -290,7 +280,8 @@ class MainWindow(QMainWindow):
             QToolButton:pressed {
                 background: #e2e8f0;
             }
-        """)
+        """
+        )
 
         toolbar.addSeparator()
         toolbar.addAction(self.act_fit)
@@ -382,7 +373,7 @@ class MainWindow(QMainWindow):
             ToastNotification(self, msg, ToastNotification.Type.WARNING, duration_ms=5000).show()
 
         # Aggiorna il widget health nella status bar
-        if hasattr(self, '_health_widget'):
+        if hasattr(self, "_health_widget"):
             self._health_widget._refresh()
 
     def _show_health_details(self) -> None:
@@ -398,7 +389,11 @@ class MainWindow(QMainWindow):
             msg += "✅ Nessun problema rilevato."
         else:
             for i in issues:
-                icon = {HealthSeverity.CRITICAL: "🔴", HealthSeverity.WARNING: "🟡", HealthSeverity.INFO: "ℹ️"}[i.severity]
+                icon = {
+                    HealthSeverity.CRITICAL: "🔴",
+                    HealthSeverity.WARNING: "🟡",
+                    HealthSeverity.INFO: "ℹ️",
+                }[i.severity]
                 msg += f"{icon} <b>{i.component}</b>: {i.message}<br>"
                 if i.fix:
                     msg += f"&nbsp;&nbsp;&nbsp;→ {i.fix}<br>"
@@ -412,6 +407,7 @@ class MainWindow(QMainWindow):
 
         # ── Health indicator (piattaforma) ──
         from opendesk.ui.widgets.health_status import HealthStatusWidget
+
         self._health_widget = HealthStatusWidget(self)
         self._health_widget.setToolTip("Stato piattaforma — click per dettagli")
         self._health_widget.mousePressEvent = lambda e: self._show_health_details()  # type: ignore[assignment]
@@ -425,12 +421,16 @@ class MainWindow(QMainWindow):
 
         # ── Media status indicators ──
         self._mic_indicator = QLabel("Mic Off")
-        self._mic_indicator.setStyleSheet("font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;")
+        self._mic_indicator.setStyleSheet(
+            "font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;"
+        )
         self._mic_indicator.setVisible(False)
         status.addPermanentWidget(self._mic_indicator)
 
         self._camera_indicator = QLabel("Cam Off")
-        self._camera_indicator.setStyleSheet("font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;")
+        self._camera_indicator.setStyleSheet(
+            "font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;"
+        )
         self._camera_indicator.setVisible(False)
         status.addPermanentWidget(self._camera_indicator)
 
@@ -483,7 +483,8 @@ class MainWindow(QMainWindow):
         was_hosting = self._connection.is_hosting
         logger.info(
             "Relay disconnected (was_hosting=%s, host_session=%s)",
-            was_hosting, self._host_session_id,
+            was_hosting,
+            self._host_session_id,
         )
         self._clipboard_sync.stop()
         self.act_send_file.setEnabled(False)
@@ -498,9 +499,7 @@ class MainWindow(QMainWindow):
         if not was_hosting and self._host_session_id:
             # Host connection dropped unexpectedly — auto-retry
             self._status_text.setText("⚠ Relay disconnected — reconnecting...")
-            self._connection.schedule_retry(
-                lambda m: self._status_text.setText(m)
-            )
+            self._connection.schedule_retry(lambda m: self._status_text.setText(m))
         else:
             self._status_text.setText("Disconnected")
 
@@ -529,7 +528,8 @@ class MainWindow(QMainWindow):
             client_mode = self._connection.client_connection_mode
             is_ft_only = client_mode == "file_transfer"
             logger.info(
-                "Remote client authenticated (mode=%s)", client_mode,
+                "Remote client authenticated (mode=%s)",
+                client_mode,
             )
             self._status_text.setText("Authentication successful")
 
@@ -593,7 +593,8 @@ class MainWindow(QMainWindow):
             logger.warning("Authentication failed: %s", message)
             self._file_transfer_mode = False
             QMessageBox.warning(
-                self, "Authentication Failed",
+                self,
+                "Authentication Failed",
                 f"Failed to authenticate with the remote computer:\n{message}",
             )
             self._connection.disconnect_client()
@@ -685,7 +686,9 @@ class MainWindow(QMainWindow):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
-            if reply == QMessageBox.StandardButton.Yes and self._file_transfer.accept_incoming(job.id):
+            if reply == QMessageBox.StandardButton.Yes and self._file_transfer.accept_incoming(
+                job.id
+            ):
                 self._relay.send_message(Message.file_accept(job.id))
             else:
                 reason = job.error or "Rejected by local user"
@@ -831,9 +834,10 @@ class MainWindow(QMainWindow):
         self._connected = True
         self.act_disconnect.setEnabled(True)
         self._session_status.set_status(
-            f"Streaming to client", connected=True,
+            "Streaming to client",
+            connected=True,
         )
-        self.setWindowTitle(f"OpenDesk — Streaming")
+        self.setWindowTitle("OpenDesk — Streaming")
         self._status_text.setText("Streaming to remote client...")
         self._stream.start_streaming()
 
@@ -850,11 +854,15 @@ class MainWindow(QMainWindow):
         if checked:
             self._stream._start_audio_capture()
             self._mic_indicator.setText("Mic On")
-            self._mic_indicator.setStyleSheet("font-size: 12px; font-weight: 700; color: #22c55e; padding: 0 6px;")
+            self._mic_indicator.setStyleSheet(
+                "font-size: 12px; font-weight: 700; color: #22c55e; padding: 0 6px;"
+            )
         else:
             self._stream._stop_audio_capture()
             self._mic_indicator.setText("Mic Off")
-            self._mic_indicator.setStyleSheet("font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;")
+            self._mic_indicator.setStyleSheet(
+                "font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;"
+            )
         self._mic_indicator.setVisible(True)
         # Sync viewer toolbar button state
         if self._viewer_window:
@@ -912,7 +920,11 @@ class MainWindow(QMainWindow):
         if self._relay.is_connected and self._relay.role == RelayRole.CLIENT:
             logger.debug(
                 "Sending MOUSE_EVENT: x=%d y=%d button=%s pressed=%s abs=%s",
-                x, y, button, pressed, absolute,
+                x,
+                y,
+                button,
+                pressed,
+                absolute,
             )
             self._relay.send_mouse_event(x, y, button, pressed, absolute)
 
@@ -1012,6 +1024,7 @@ class MainWindow(QMainWindow):
     def _on_toggle_theme(self) -> None:
         """Toggle between light and dark theme."""
         from opendesk.app import toggle_theme
+
         theme = toggle_theme(QApplication.instance())
         self.act_toggle_theme.setText(
             "Toggle &Light Theme" if theme == "dark" else "Toggle &Dark Theme"
@@ -1022,7 +1035,9 @@ class MainWindow(QMainWindow):
     def _on_send_file(self) -> None:
         """Open a file dialog and send the selected file(s)."""
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Select files to send", "",
+            self,
+            "Select files to send",
+            "",
             "All files (*)",
         )
         if not paths or not self._file_transfer_send_fn:
@@ -1067,15 +1082,9 @@ class MainWindow(QMainWindow):
         """
         if self._transfer_dock is None:
             self._transfer_dock = FileBrowserDock(self)
-            self._transfer_dock.file_upload_requested.connect(
-                self._on_browser_upload
-            )
-            self._transfer_dock.file_download_requested.connect(
-                self._on_browser_download
-            )
-            self._transfer_dock.remote_listing_requested.connect(
-                self._on_browser_remote_listing
-            )
+            self._transfer_dock.file_upload_requested.connect(self._on_browser_upload)
+            self._transfer_dock.file_download_requested.connect(self._on_browser_download)
+            self._transfer_dock.remote_listing_requested.connect(self._on_browser_remote_listing)
         return self._transfer_dock
 
     def _send_file_message(self, msg: Message) -> None:
@@ -1111,7 +1120,8 @@ class MainWindow(QMainWindow):
         if not paths or not self._file_transfer_send_fn:
             return
         self._file_transfer.send_files(
-            paths, self._file_transfer_send_fn,
+            paths,
+            self._file_transfer_send_fn,
             remote_dest_path=remote_dest,
         )
         logger.info("Upload requested: %d files to %s", len(paths), remote_dest)
@@ -1129,7 +1139,8 @@ class MainWindow(QMainWindow):
             return
         for rpath in remote_paths:
             self._file_transfer.request_download(
-                rpath, self._file_transfer_send_fn,
+                rpath,
+                self._file_transfer_send_fn,
                 local_dest=local_dest,
             )
         logger.info("Download requested: %d files to %s", len(remote_paths), local_dest)
@@ -1142,7 +1153,6 @@ class MainWindow(QMainWindow):
 
     def _poll_file_transfer_updates(self) -> None:
         """Poll the FileTransferManager updates queue (runs on main thread via QTimer)."""
-        from opendesk.core.file_transfer import TransferJob
         try:
             while True:
                 event = self._file_transfer.updates.get_nowait()
@@ -1177,7 +1187,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "About OpenDesk",
-            "<h3>OpenDesk v0.1.0</h3>"
+            "<h3>OpenDesk v1.0.0</h3>"
             "<p>Multi-platform remote desktop application.</p>"
             "<p>Built with Python, PySide6, and WebRTC.</p>"
             "<hr>"
@@ -1237,9 +1247,7 @@ class MainWindow(QMainWindow):
         # Update session status widget
         if connected:
             display_id = self._peer_id or self._host_session_id
-            self._session_status.set_status(
-                f"Connected to {display_id}", connected=True
-            )
+            self._session_status.set_status(f"Connected to {display_id}", connected=True)
             self.setWindowTitle(f"OpenDesk — {display_id}")
         else:
             self._session_status.set_status("Disconnected")
