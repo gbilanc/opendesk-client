@@ -306,6 +306,7 @@ class RemoteViewer(QGraphicsView):
         Uses a ring buffer to avoid per-frame allocations.  At 1080p@30fps
         this saves ~180 MB/s of ``.copy().tobytes()`` overhead.
         """
+        t_start = time.time()
         # Skip if viewport not ready yet (window still initialising)
         if self.viewport().width() < 2 or self.viewport().height() < 2:
             return
@@ -344,7 +345,9 @@ class RemoteViewer(QGraphicsView):
                 return
 
             # ── Convert to QPixmap ─────────────────────────────────
+            t0 = time.time()
             pixmap = QPixmap.fromImage(img)
+            t_pixmap = (time.time() - t0) * 1000
             if pixmap.isNull():
                 return
 
@@ -369,6 +372,13 @@ class RemoteViewer(QGraphicsView):
             # Reset the frame timeout watchdog
             if self._connection_active:
                 self._frame_timeout_timer.start(_FRAME_TIMEOUT_MS)
+
+            t_total = (time.time() - t_start) * 1000
+            if t_total > 16:  # >16ms (60fps budget)
+                logger.debug(
+                    "display_frame: %.0fms total (pixmap %.0fms) %dx%d",
+                    t_total, t_pixmap, width, height,
+                )
 
         except Exception:
             logger.exception("display_frame error — resetting decoder state")

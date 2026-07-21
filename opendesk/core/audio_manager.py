@@ -344,11 +344,13 @@ class AudioManager:
     def play_audio_frame(self, data: bytes) -> None:
         """Play a received audio frame (Opus packet).
 
-        Safe to call from any thread.
+        Safe to call from any thread.  Audio is only played when the
+        direction is OUTPUT_ONLY or BOTH; otherwise the frame is
+        silently discarded.
         """
-        if not self._config.enabled and self._direction != AudioDirection.NONE:
-            # Allow playback even if capture is off, as long as direction allows
-            pass
+        # ── gate: only play when direction allows receiving ─────
+        if self._direction not in (AudioDirection.OUTPUT_ONLY, AudioDirection.BOTH):
+            return
 
         try:
             import soundcard as sc
@@ -361,6 +363,23 @@ class AudioManager:
 
         pcm = self._opus.decode(data)
         if pcm is None:
+            return
+
+        # ── Offload blocking play() to a background thread ───────
+        import threading
+        threading.Thread(
+            target=self._play_blocking,
+            args=(pcm,),
+            daemon=True,
+        ).start()
+
+    # ── background playback ─────────────────────────────────────
+
+    def _play_blocking(self, pcm: bytes) -> None:
+        """Blocking playback — runs in a background daemon thread."""
+        try:
+            import soundcard as sc
+        except ImportError:
             return
 
         with self._playback_lock:

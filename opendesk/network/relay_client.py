@@ -944,6 +944,8 @@ class RelayClient(QObject):
         clogging the UI thread with stale frames that would never be
         displayed anyway.
         """
+        t_start = time.time()
+        frame_count = 0
         last_frame = None
         while not self._inbox.empty():
             try:
@@ -956,12 +958,20 @@ class RelayClient(QObject):
                 continue
 
             if event == "frame":
+                frame_count += 1
                 last_frame = data  # only keep the latest frame
             else:
                 self._route_client_event(event, data)
 
         if last_frame is not None:
+            t0 = time.time()
             self._route_client_event("frame", last_frame)
+            t_frame = (time.time() - t0) * 1000
+            if t_frame > 10:  # only log if frame display takes >10ms
+                logger.debug(
+                    "Frame display took %.1fms (discarded %d stale frames, poll took %.1fms)",
+                    t_frame, frame_count - 1, (time.time() - t_start) * 1000,
+                )
 
     def _poll_host_inbox(self) -> None:
         """Process host inbox events.
