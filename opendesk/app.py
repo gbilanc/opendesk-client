@@ -215,17 +215,24 @@ StartupWMClass=opendesk
         logger.debug("Created desktop entry: %s", desktop_file)
 
 
-def _parse_cli_args() -> list[str]:
+def _parse_cli_args() -> tuple[list[str], str | None, str | None]:
     """Parse CLI arguments consumed by the launcher.
 
-    Returns the remaining argv after removing consumed flags.
+    Returns (remaining argv, connect_session_id, connect_password).
     """
     remaining: list[str] = []
+    connect_session_id: str | None = None
+    connect_password: str | None = None
     i = 0
     while i < len(sys.argv):
         arg = sys.argv[i]
         if arg == "--install-system-deps":
             install_system_deps()
+        elif arg == "--connect" and i + 2 < len(sys.argv):
+            connect_session_id = sys.argv[i + 1]
+            connect_password = sys.argv[i + 2]
+            i += 3
+            continue
         elif arg == "--log-level" and i + 1 < len(sys.argv):
             # handled below in main()
             remaining.append(arg)
@@ -237,7 +244,7 @@ def _parse_cli_args() -> list[str]:
         else:
             remaining.append(arg)
         i += 1
-    return remaining
+    return remaining, connect_session_id, connect_password
 
 
 def main(log_level: int | None = None) -> None:
@@ -251,7 +258,7 @@ def main(log_level: int | None = None) -> None:
         then to ``logging.DEBUG``.
     """
     # Parse launcher-level CLI args before Qt processes argv
-    sys.argv[:] = _parse_cli_args()
+    sys.argv[:], connect_sid, connect_pwd = _parse_cli_args()
 
     cli_level: int | None = None
     for i, arg in enumerate(sys.argv[1:], start=1):
@@ -287,5 +294,10 @@ def main(log_level: int | None = None) -> None:
 
     window = MainWindow()
     window.show()
+
+    # Auto-connect if --connect was passed on the command line
+    if connect_sid and connect_pwd:
+        logger.info("CLI auto-connect: session=%s", connect_sid)
+        window.connect_to(connect_sid, connect_pwd)
 
     sys.exit(app.exec())

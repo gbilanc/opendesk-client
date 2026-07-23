@@ -99,6 +99,8 @@ class CaptureWorker(threading.Thread):
 
         consec_errors = 0
         max_consec_errors = 10
+        frame_idx = 0
+        last_status_log = time.monotonic()
 
         while not self._stop_event.is_set():
             t0 = time.perf_counter()
@@ -112,6 +114,13 @@ class CaptureWorker(threading.Thread):
 
                 # Successo — resetta contatore errori
                 consec_errors = 0
+                frame_idx += 1
+
+                # Status log ogni 5 secondi
+                now_mono = time.monotonic()
+                if now_mono - last_status_log >= 5.0:
+                    logger.info("CaptureWorker: %d frames captured", frame_idx)
+                    last_status_log = now_mono
 
                 # ── Resolution scaling ──
                 scale = self._config.resolution_scale
@@ -214,11 +223,20 @@ class EncoderWorker(threading.Thread):
     def run(self) -> None:
         logger.info("EncoderWorker started")
         last_frame_time = time.monotonic()
+        encoded_count = 0
+        last_status_log = time.monotonic()
 
         while not self._stop_event.is_set():
             try:
                 data, timestamp = self._frame_queue.get(block=True, timeout=0.5)
                 last_frame_time = time.monotonic()
+                encoded_count += 1
+                
+                # Status log ogni 5 secondi
+                now_mono = time.monotonic()
+                if now_mono - last_status_log >= 5.0:
+                    logger.info("EncoderWorker: %d frames encoded", encoded_count)
+                    last_status_log = now_mono
             except queue.Empty:
                 # Watchdog: se non arrivano frame per 60s, CaptureWorker e' morto
                 # Il timeout è alto per coprire l'avvio lento di Wayland

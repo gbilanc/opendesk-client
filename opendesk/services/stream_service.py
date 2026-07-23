@@ -359,6 +359,8 @@ class StreamService(QObject):
         if self._pipeline:
             self._pipeline.request_keyframe()
             logger.info("Forcing full keyframe on next frame per peer request")
+        else:
+            logger.warning("Keyframe requested but pipeline not running — ignored")
 
     # ── bandwidth adaptation ────────────────────────────────────────
 

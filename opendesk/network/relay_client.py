@@ -421,7 +421,7 @@ class _RelaySession:
                         )
 
                 elif t == MessageType.VIDEO_REQUEST_KEYFRAME:
-                    logger.debug("Peer requested keyframe (host)")
+                    logger.info("Peer requested keyframe (host)")
                     self.inbox.put(("keyframe_requested", None, self.session_seq))
 
                 elif t == MessageType.ERROR:
@@ -494,16 +494,20 @@ class _RelaySession:
         )
 
         # Periodic task that requests a keyframe if none received
+        _frame_count = 0  # track frames received since last watchdog check
         async def _keyframe_watchdog():
+            nonlocal _frame_count
             while self._running.is_set():
                 await asyncio.sleep(3.0)
                 last_activity = self._last_video_activity_time or self._start_time
                 elapsed_since_activity = time.time() - last_activity
                 if elapsed_since_activity > 5.0:
-                    logger.info(
-                        "No video activity for %.0fs — requesting keyframe",
+                    logger.warning(
+                        "No video activity for %.0fs (frames received: %d) — requesting keyframe",
                         elapsed_since_activity,
+                        _frame_count,
                     )
+                    _frame_count = 0
                     self._last_video_activity_time = time.time()
                     await self._send_async(
                         Message(MessageType.VIDEO_REQUEST_KEYFRAME, {}),
@@ -589,7 +593,7 @@ class _RelaySession:
                     height = payload.get("height", 0)
                     data = payload.get("data")
                     is_keyframe = payload.get("keyframe", False)
-                    logger.debug(
+                    logger.info(
                         "VIDEO_FRAME: %dx%d keyframe=%s len=%d",
                         width,
                         height,
@@ -608,6 +612,7 @@ class _RelaySession:
                                 is_keyframe=is_keyframe,
                             )
                             if rgb is not None:
+                                _frame_count += 1
                                 self._reference_frame = rgb.copy()
                                 self._frame_width = width
                                 self._frame_height = height
@@ -617,7 +622,7 @@ class _RelaySession:
                                 self.inbox.put(
                                     ("frame", (rgb.copy(), width, height), self.session_seq),
                                 )
-                                logger.debug(
+                                logger.info(
                                     "Frame decoded: %dx%d (%s)",
                                     width,
                                     height,
@@ -762,6 +767,10 @@ class _RelaySession:
         self, data: bytes, width: int, height: int, pts: int, keyframe: bool = False
     ) -> None:
         """Send an encoded (H.264) VIDEO_FRAME over the relay."""
+        logger.debug(
+            "send_frame: %dx%d keyframe=%s len=%d pts=%d",
+            width, height, keyframe, len(data), pts,
+        )
         msg = Message.video_frame(
             data=data, width=width, height=height, pts=pts, keyframe=keyframe
         )

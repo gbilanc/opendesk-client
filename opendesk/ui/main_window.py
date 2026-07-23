@@ -564,6 +564,9 @@ class MainWindow(QMainWindow):
             logger.info("We authenticated to remote host")
             self._status_text.setText("Authentication successful")
             self._set_connected(True, show_viewer=not self._file_transfer_mode)
+            # Start frame timeout watchdog only after successful auth
+            if self._viewer_window is not None:
+                self._viewer_window.set_connection_active(True, self._peer_id)
             status_msg = (
                 "File transfer session active"
                 if self._file_transfer_mode
@@ -769,6 +772,7 @@ class MainWindow(QMainWindow):
         logger.error("Relay error: %s", error_msg)
         # If we have an active client session, this is likely a client error
         if self._connection.role == RelayRole.CLIENT:
+            self._hide_viewer_window()
             QMessageBox.critical(self, "Connection Error", error_msg)
             self._connection.disconnect_client()
         elif self._connection.is_hosting:
@@ -810,7 +814,6 @@ class MainWindow(QMainWindow):
             # Sync mic/camera button state
             self._viewer_window.set_mic_checked(self._stream.audio_enabled)
             self._viewer_window.set_camera_checked(self._stream.camera_enabled)
-        self._viewer_window.set_connection_active(True, peer_name)
         self._viewer_window.show()
         self._viewer_window.raise_()
         self._viewer_window.activateWindow()
@@ -934,6 +937,18 @@ class MainWindow(QMainWindow):
             self._relay.send_key_event(key, pressed)
 
     # ── Slots: session ──────────────────────────────────────────────
+
+    def connect_to(self, peer_id: str, password: str) -> None:
+        """Public method to connect to a remote session programmatically.
+
+        Can be called from CLI auto-connect or external scripts.
+        """
+        logger.info("Programmatic connect: peer=%s", peer_id)
+        self._file_transfer_mode = False
+        self._peer_id = peer_id
+        self._status_text.setText(f"Connecting to {peer_id}...")
+        self._connection.join_session(peer_id, password)
+        self._show_viewer_window(peer_name=peer_id)
 
     @Slot(str, str)
     def _on_connection_requested(self, peer_id: str, password: str) -> None:
