@@ -30,9 +30,9 @@ class TestKeyToEvdev:
         """I simboli shiftati non devono più essere scartati (erano DROPPED)."""
         b = WaylandInputBackend.__new__(WaylandInputBackend)
         cases = {
-            "!": 0, "@": 0, "#": 0, "$": 0, "%": 0, "^": 0, "&": 0,
-            "*": 0, "(": 0, ")": 0, ":": 0, '"': 0, "?": 0, "{": 0,
-            "}": 0, "|": 0, "~": 0, "_": 0, "+": 0, "<": 0, ">": 0,
+            "!", "@", "#", "$", "%", "^", "&",
+            "*", "(", ")", ":", '"', "?", "{",
+            "}", "|", "~", "_", "+", "<", ">",
         }
         for sym in cases:
             assert b._key_to_evdev(sym) != 0, f"'{sym}' dovrebbe risolvere"

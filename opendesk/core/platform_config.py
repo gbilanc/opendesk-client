@@ -18,12 +18,8 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import TYPE_CHECKING
 
 from opendesk.utils.platform import Platform, current_platform, is_wayland
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -401,11 +397,11 @@ class PlatformConfig:
 
     def summary_lines(self) -> list[str]:
         """Return a list of human-readable config lines for logging / UI."""
+        available = ", ".join(m.name for m in self.capture_methods_available) or "none"
         lines = [
             f"Platform:       {self.display_name}",
             f"Capture:        {self.capture_method.name}",
-            "Available:      ",
-            f"{', '.join(m.name for m in self.capture_methods_available) or 'none'}",
+            f"Available:      {available}",
             f"Input backend:  {self.input_backend_name}",
             f"Codec:          {self.codec_hint}",
             f"HW encoders:    {', '.join(self.hw_encoders_available) or 'none'}",

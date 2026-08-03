@@ -22,6 +22,7 @@ from opendesk.core.input_injection import (
     MouseButton,
     create_input_backend,
 )
+from opendesk.core.keyboard_state import caps_lock_active
 from opendesk.core.platform_config import get_platform_config
 from opendesk.core.video_codec import _QUALITY_CRF, QualityLevel, VideoEncoder
 from opendesk.network.protocol import Message
@@ -423,3 +424,24 @@ class StreamService(QObject):
         state = KeyState.PRESSED if pressed else KeyState.RELEASED
         if key:
             self._input_backend.key_event(key, state)
+
+    def sync_remote_caps_lock(self, remote_active: bool) -> None:
+        """Allinea il Caps Lock locale allo stato del client remoto.
+
+        Se gli stati differiscono, press+release di Caps Lock sul backend
+        per portarlo nello stato richiesto.
+        """
+        if self._input_backend is None:
+            return
+        try:
+            local_active = caps_lock_active()
+        except Exception:
+            logger.debug("Caps Lock check failed on host", exc_info=True)
+            return
+        if local_active != remote_active:
+            logger.info(
+                "Caps Lock sync: local=%s remote=%s → toggling",
+                local_active, remote_active,
+            )
+            self.inject_keyboard(Message.keyboard_event("capslock", True))
+            self.inject_keyboard(Message.keyboard_event("capslock", False))

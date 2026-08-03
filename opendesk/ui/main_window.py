@@ -659,7 +659,7 @@ class MainWindow(QMainWindow):
         elif msg.type == MessageType.KEYBOARD_EVENT and self._stream.input_backend:
             self._inject_keyboard(msg)
         elif msg.type == MessageType.CAPS_LOCK_STATE and self._stream.input_backend:
-            self._sync_remote_caps_lock(msg.payload.get("active", False))
+            self._stream.sync_remote_caps_lock(msg.payload.get("active", False))
         elif msg.type == MessageType.CHAT_MESSAGE:
             text = msg.payload.get("text", "")
             self._chat_panel.add_message("Remote", text, is_remote=True)
@@ -974,27 +974,6 @@ class MainWindow(QMainWindow):
         """Forward the local Caps Lock state to the remote host."""
         if self._relay.is_connected and self._relay.role == RelayRole.CLIENT:
             self._relay.send_caps_lock_state(active)
-
-    def _sync_remote_caps_lock(self, remote_active: bool) -> None:
-        """Host side: align the local Caps Lock to the remote client's state.
-
-        If the states differ, press+release Caps Lock on the local backend
-        to toggle it into the requested state.
-        """
-        if not self._stream.input_backend:
-            return
-        try:
-            local_active = caps_lock_active()
-        except Exception:
-            logger.debug("Caps Lock check failed on host", exc_info=True)
-            return
-        if local_active != remote_active:
-            logger.info(
-                "Caps Lock sync: local=%s remote=%s → toggling",
-                local_active, remote_active,
-            )
-            self._stream.inject_keyboard(Message.keyboard_event("capslock", True))
-            self._stream.inject_keyboard(Message.keyboard_event("capslock", False))
 
     # ── Slots: session ──────────────────────────────────────────────
 

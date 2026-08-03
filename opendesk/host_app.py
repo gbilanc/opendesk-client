@@ -31,7 +31,6 @@ from PySide6.QtWidgets import (
 
 from opendesk.core.device_registry import DeviceRegistry
 from opendesk.core.file_transfer import FileTransferManager, TransferState
-from opendesk.core.keyboard_state import caps_lock_active
 from opendesk.core.platform_config import HealthSeverity, get_platform_config
 from opendesk.crypto.auth import AuthManager
 from opendesk.network.protocol import Message, MessageType
@@ -380,27 +379,6 @@ class HostService(QObject):
         logger.warning("Input backend unavailable: %s", error_msg)
         self.status_changed.emit(f"⚠ Remote input disabled: {error_msg}")
 
-    def _sync_remote_caps_lock(self, remote_active: bool) -> None:
-        """Allinea il Caps Lock locale allo stato del client remoto.
-
-        Se gli stati differiscono, press+release di Caps Lock sul backend
-        per portarlo nello stato richiesto.
-        """
-        if not (self._stream and self._stream.input_backend):
-            return
-        try:
-            local_active = caps_lock_active()
-        except Exception:
-            logger.debug("Caps Lock check failed on host", exc_info=True)
-            return
-        if local_active != remote_active:
-            logger.info(
-                "Caps Lock sync: local=%s remote=%s → toggling",
-                local_active, remote_active,
-            )
-            self._stream.inject_keyboard(Message.keyboard_event("capslock", True))
-            self._stream.inject_keyboard(Message.keyboard_event("capslock", False))
-
     @Slot(str)
     def _on_relay_error(self, error_msg: str) -> None:
         if "Peer disconnected" in error_msg:
@@ -447,7 +425,7 @@ class HostService(QObject):
             )
             self._stream.inject_keyboard(msg)
         elif t == MessageType.CAPS_LOCK_STATE and self._stream and self._stream.input_backend:
-            self._sync_remote_caps_lock(msg.payload.get("active", False))
+            self._stream.sync_remote_caps_lock(msg.payload.get("active", False))
 
         # ── Chat ──
         elif t == MessageType.CHAT_MESSAGE:
