@@ -8,12 +8,11 @@ behaviour without a full MainWindow.
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QWidget
 
 # ── QApplication fixture ─────────────────────────────────────────────
 
@@ -38,8 +37,8 @@ class TestSessionInfoWidget:
 
     def test_initial_state(self, qapp: QApplication) -> None:
         """Widget initialises with placeholder values."""
-        from opendesk.ui.session_info import SessionInfoWidget
         from opendesk.crypto.auth import AuthManager
+        from opendesk.ui.session_info import SessionInfoWidget
 
         auth = AuthManager()
         widget = SessionInfoWidget(auth, device_id="test-uuid-1234", device_name="MyPC")
@@ -48,8 +47,8 @@ class TestSessionInfoWidget:
 
     def test_set_session(self, qapp: QApplication) -> None:
         """set_session() updates the displayed session info."""
-        from opendesk.ui.session_info import SessionInfoWidget
         from opendesk.crypto.auth import AuthManager
+        from opendesk.ui.session_info import SessionInfoWidget
 
         auth = AuthManager()
         widget = SessionInfoWidget(auth, device_id="abcd1234-xxxx", device_name="TestPC")
@@ -59,9 +58,9 @@ class TestSessionInfoWidget:
 
     def test_device_name_changed_signal(self, qapp: QApplication) -> None:
         """Editing the device name emits device_name_changed."""
-        from opendesk.ui.session_info import SessionInfoWidget
+
         from opendesk.crypto.auth import AuthManager
-        from PySide6.QtCore import QEvent
+        from opendesk.ui.session_info import SessionInfoWidget
 
         emitted_names: list[str] = []
         auth = AuthManager()
@@ -78,9 +77,9 @@ class TestSessionInfoWidget:
 
     def test_copy_device_id(self, qapp: QApplication) -> None:
         """Copy button places device ID on clipboard."""
-        from opendesk.ui.session_info import SessionInfoWidget
+
         from opendesk.crypto.auth import AuthManager
-        from PySide6.QtGui import QClipboard
+        from opendesk.ui.session_info import SessionInfoWidget
 
         auth = AuthManager()
         widget = SessionInfoWidget(auth, device_id="abcdef01-1234-5678", device_name="PC")
@@ -229,7 +228,6 @@ class TestChatPanel:
         """Whitespace-only input does not emit signal."""
         from opendesk.ui.chat_panel import ChatPanel
 
-        emitted = False
         panel = ChatPanel()
         panel.message_sent.connect(lambda m: setattr(panel, '_emitted', True))
 
@@ -286,13 +284,13 @@ class TestChallengeResponse:
         assert isinstance(resp, str)
 
     def test_verify_valid(self) -> None:
-        from opendesk.crypto.challenge import generate_nonce, compute_response, verify_response
+        from opendesk.crypto.challenge import compute_response, generate_nonce, verify_response
         nonce = generate_nonce()
         resp = compute_response(nonce, "secret")
         assert verify_response(nonce, "secret", resp)
 
     def test_verify_wrong_password(self) -> None:
-        from opendesk.crypto.challenge import generate_nonce, compute_response, verify_response
+        from opendesk.crypto.challenge import compute_response, generate_nonce, verify_response
         nonce = generate_nonce()
         resp = compute_response(nonce, "secret")
         assert not verify_response(nonce, "wrong", resp)
@@ -318,8 +316,10 @@ class TestAuthSessionCleanup:
 
     def test_max_sessions_enforced(self) -> None:
         """Creating more than MAX_SESSIONS prunes oldest."""
+        import json
+        import tempfile
+
         from opendesk.crypto.auth import AuthManager
-        import tempfile, json
 
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             f.write(json.dumps({"credentials": {}}))

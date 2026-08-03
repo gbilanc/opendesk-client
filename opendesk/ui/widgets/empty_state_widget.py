@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from enum import Enum, auto
-
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QPushButton, QSizePolicy, QFrame,
+    QFrame,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
 )
 
 

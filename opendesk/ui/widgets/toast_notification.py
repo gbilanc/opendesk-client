@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from enum import Enum
 
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, Property
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QWidget, QSizePolicy
+from PySide6.QtCore import Property, QEasingCurve, QPropertyAnimation, QTimer
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QWidget
 
 
 class ToastNotification(QFrame):
@@ -98,7 +98,7 @@ class ToastNotification(QFrame):
         self._opacity = value
         self.setWindowOpacity(value)
 
-    windowOpacity = Property(float, get_window_opacity, set_window_opacity)
+    windowOpacity = Property(float, get_window_opacity, set_window_opacity)  # noqa: N815
 
     # ── public API ──────────────────────────────────────────────────
 

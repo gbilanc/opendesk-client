@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import struct
 
-from opendesk.network.protocol import Message, MessageType, _HEADER_FORMAT, _HEADER_SIZE, _MAX_MESSAGE_SIZE
+from opendesk.network.protocol import (
+    _HEADER_FORMAT,
+    _HEADER_SIZE,
+    _MAX_MESSAGE_SIZE,
+    Message,
+    MessageType,
+)
 
 
 class TestProtocolEdgeCases:

@@ -14,7 +14,6 @@ import sys
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
-
 _LOG_LEVEL_NAMES: dict[str, int] = {
     "DEBUG": logging.DEBUG,
     "INFO": logging.INFO,
@@ -137,7 +136,7 @@ def setup_logging(level: int | None = None) -> None:
         root.info(
             "Log started — %s (%s)",
             log_dir,
-            "level=%s" % logging.getLevelName(level),
+            f"level={logging.getLevelName(level)}",
         )
     else:
         root.handlers[0] = handler

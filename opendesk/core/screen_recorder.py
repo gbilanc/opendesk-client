@@ -15,7 +15,7 @@ from pathlib import Path
 import av
 import numpy as np
 
-from opendesk.core.video_codec import QualityLevel
+from opendesk.core.video_codec import VideoEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,10 @@ class ScreenRecorder:
         )
         self._frame_pts = 0
 
-        logger.info("Recording started: %s (%dx%d, %.1f fps)", self._output_path, width, height, fps)
+        logger.info(
+            "Recording started: %s (%dx%d, %.1f fps)",
+            self._output_path, width, height, fps,
+        )
         return str(self._output_path)
 
     def write_frame(self, rgb_data: np.ndarray) -> bool:

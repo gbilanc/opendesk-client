@@ -11,28 +11,49 @@ Provides:
 from __future__ import annotations
 
 import logging
-import os
-import time
 from pathlib import Path
 
 from PySide6.QtCore import (
-    Qt, QAbstractListModel, QAbstractItemModel, QModelIndex,
-    QSize, Signal, Slot, QRect, QDir,
+    QAbstractItemModel,
+    QAbstractListModel,
+    QDir,
+    QModelIndex,
+    QRect,
+    QSize,
+    Qt,
+    Signal,
+    Slot,
 )
 from PySide6.QtGui import (
-    QColor, QFont, QPainter, QPen, QBrush,
-    QTextOption, QFontMetrics, QIcon, QKeySequence, QShortcut,
+    QBrush,
+    QColor,
+    QFont,
+    QKeySequence,
+    QPainter,
+    QPen,
+    QShortcut,
 )
 from PySide6.QtWidgets import (
-    QDialog, QFrame, QHBoxLayout, QLabel, QListView,
-    QPushButton, QStyledItemDelegate, QStyleOptionViewItem,
-    QVBoxLayout, QWidget, QAbstractItemView, QSizePolicy,
-    QSplitter, QTreeView, QLineEdit, QFileSystemModel,
-    QHeaderView, QStatusBar, QToolBar, QFileDialog,
-    QMessageBox, QApplication,
+    QAbstractItemView,
+    QDialog,
+    QFileSystemModel,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListView,
+    QPushButton,
+    QSplitter,
+    QStatusBar,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QTreeView,
+    QVBoxLayout,
+    QWidget,
 )
 
-from opendesk.core.file_transfer import TransferJob, TransferState, TransferDirection
+from opendesk.core.file_transfer import TransferDirection, TransferJob, TransferState
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +97,7 @@ class RemoteFileSystemModel(QAbstractItemModel):
 
     # ── QAbstractItemModel interface ────────────────────────────────
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
         if not parent.isValid():
             return len(self._root.get("children") or [])
         node = parent.internalPointer() if parent.internalPointer() else self._root
@@ -85,7 +106,7 @@ class RemoteFileSystemModel(QAbstractItemModel):
         children = node.get("children")
         return 0 if children is None else len(children)
 
-    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:
+    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
         return 4  # name, size, type, modified
 
     def index(self, row: int, column: int, parent: QModelIndex = QModelIndex()) -> QModelIndex:
@@ -169,7 +190,10 @@ class RemoteFileSystemModel(QAbstractItemModel):
 
         return None
 
-    def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.ItemDataRole.DisplayRole):
+    def headerData(  # noqa: N802
+        self, section: int, orientation: Qt.Orientation,
+        role: int = Qt.ItemDataRole.DisplayRole,
+    ):
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
             headers = ["Name", "Size", "Type", "Modified"]
             if 0 <= section < len(headers):
@@ -179,7 +203,6 @@ class RemoteFileSystemModel(QAbstractItemModel):
     def flags(self, index: QModelIndex) -> Qt.ItemFlags:
         if not index.isValid():
             return Qt.ItemFlag.NoItemFlags
-        node = index.internalPointer()
         flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
         return flags
 
@@ -214,7 +237,10 @@ class RemoteFileSystemModel(QAbstractItemModel):
         if parent_index.isValid():
             self.beginRemoveRows(parent_index, 0, max(0, len(node.get("children") or []) - 1))
         else:
-            self.beginRemoveRows(QModelIndex(), 0, max(0, len(self._root.get("children") or []) - 1))
+            self.beginRemoveRows(
+                QModelIndex(), 0,
+                max(0, len(self._root.get("children") or []) - 1),
+            )
 
         old_children = node.get("children") or []
         for child in old_children:
@@ -384,7 +410,7 @@ class RemoteFileSystemModel(QAbstractItemModel):
 class TransferListModel(QAbstractListModel):
     """Model-View compliant model for a list of transfer jobs."""
 
-    countChanged = Signal(int)
+    countChanged = Signal(int)  # noqa: N815
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -392,7 +418,7 @@ class TransferListModel(QAbstractListModel):
 
     # ── QAbstractListModel interface ────────────────────────────────
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
         if parent.isValid():
             return 0
         return len(self._jobs)
@@ -579,7 +605,7 @@ class TransferDelegate(QStyledItemDelegate):
 
         painter.restore()
 
-    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
+    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:  # noqa: N802
         return QSize(300, _ITEM_HEIGHT)
 
     @staticmethod
@@ -817,7 +843,9 @@ class FileBrowserDock(QDialog):
         header_layout.setContentsMargins(12, 8, 12, 8)
 
         title_label = QLabel(title)
-        title_label.setStyleSheet("font-size: 13px; font-weight: 700; color: #0f172a; background: transparent;")
+        title_label.setStyleSheet(
+            "font-size: 13px; font-weight: 700; color: #0f172a; background: transparent;"
+        )
         header_layout.addWidget(title_label)
 
         # Path bar
@@ -834,7 +862,8 @@ class FileBrowserDock(QDialog):
         home_btn = QPushButton("🏠")
         home_btn.setFixedSize(28, 28)
         home_btn.setStyleSheet("""
-            QPushButton { border: none; border-radius: 4px; font-size: 14px; background: transparent; }
+            QPushButton { border: none; border-radius: 4px;
+                          font-size: 14px; background: transparent; }
             QPushButton:hover { background: #e2e8f0; }
         """)
         header_layout.addWidget(home_btn)
@@ -924,7 +953,9 @@ class FileBrowserDock(QDialog):
         layout.setSpacing(4)
 
         header = QLabel("Active Transfers")
-        header.setStyleSheet("font-size: 13px; font-weight: 700; color: #0f172a; background: transparent;")
+        header.setStyleSheet(
+            "font-size: 13px; font-weight: 700; color: #0f172a; background: transparent;"
+        )
         layout.addWidget(header)
 
         self._transfer_list = QListView()

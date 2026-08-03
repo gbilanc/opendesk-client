@@ -13,17 +13,23 @@ Esegui con:  python3 -m pytest tests/test_tile_grid_diagnostic.py -v
 from __future__ import annotations
 
 import time
-import numpy as np
+
 import cv2
+import numpy as np
 
 from opendesk.core.video_codec import (
-    VideoEncoder, VideoDecoder, EncoderConfig, QualityLevel,
+    EncoderConfig,
+    QualityLevel,
+    VideoDecoder,
+    VideoEncoder,
 )
 from opendesk.services.stream_service import (
-    _TILE_SIZE, _TILE_THRESHOLD, _TILE_JPEG_QUALITY,
-    _KEYFRAME_INTERVAL, _TILE_MAX_CHANGED_RATIO,
+    _KEYFRAME_INTERVAL,
+    _TILE_JPEG_QUALITY,
+    _TILE_MAX_CHANGED_RATIO,
+    _TILE_SIZE,
+    _TILE_THRESHOLD,
 )
-
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -259,7 +265,8 @@ def test_tile_grid_drift() -> None:
     enc.release()
     dec.release()
     print(f"\n✅ Drift test superato: max_drift={final_drift.max()}, "
-          f"mean_drift={mean_drift:.2f}, bad_pixels={final_bad}/{w*h} ({final_bad/(w*h)*100:.1f}%)")
+          f"mean_drift={mean_drift:.2f}, bad_pixels={final_bad}/{w*h} "
+          f"({final_bad/(w*h)*100:.1f}%)")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -331,7 +338,7 @@ def test_sudden_scene_change() -> None:
 
     enc.release()
     dec.release()
-    print(f"✅ Sudden change test superato")
+    print("✅ Sudden change test superato")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -354,12 +361,15 @@ def test_keyframe_watchdog_logic() -> None:
             await asyncio.sleep(2.0)
             if last_keyframe_time > 0 and time.time() - last_keyframe_time > 5.0:
                 watchdog_triggered = True
-                print(f"  Watchdog trigger: {time.time() - last_keyframe_time:.1f}s senza keyframe")
+                print(
+                    f"  Watchdog trigger: {time.time() - last_keyframe_time:.1f}s "
+                    "senza keyframe"
+                )
                 last_keyframe_time = time.time()
 
     asyncio.run(watchdog())
     assert watchdog_triggered, "Il watchdog doveva attivarsi dopo 6s senza keyframe"
-    print(f"✅ Watchdog test superato")
+    print("✅ Watchdog test superato")
 
 
 # ═══════════════════════════════════════════════════════════════════════

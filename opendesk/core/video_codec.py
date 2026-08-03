@@ -8,16 +8,14 @@ rate control, adaptive quality, and delta-frame support.
 from __future__ import annotations
 
 import logging
-import subprocess  # noqa: S404 — only used for encoder probing
 import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from threading import Lock, RLock
+from typing import Any
 
 import av
 import numpy as np
-
-from opendesk.core.screen_capture import CapturedFrame
 
 logger = logging.getLogger(__name__)
 
@@ -393,7 +391,6 @@ class VideoEncoder:
                 self._actual_crf = max(0, min(51, self._actual_crf))
 
             is_hevc = "hevc" in codec
-            profile = "main" if is_hevc else "baseline"
 
             self._container = av.open("pipe:", mode="w", format=fmt)
             self._stream = self._container.add_stream(codec, rate=self._config.fps)

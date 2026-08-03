@@ -11,8 +11,8 @@ from __future__ import annotations
 import logging
 import platform
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 logger = logging.getLogger(__name__)
 

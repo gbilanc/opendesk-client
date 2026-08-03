@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QFont
-from PySide6.QtWidgets import QFrame, QLabel, QHBoxLayout, QWidget, QToolTip
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QBrush, QColor, QPainter, QPen
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QWidget
 
 from opendesk.core.platform_config import (
-    get_platform_config,
-    HealthSeverity,
     HealthIssue,
+    HealthSeverity,
+    get_platform_config,
 )
 
 

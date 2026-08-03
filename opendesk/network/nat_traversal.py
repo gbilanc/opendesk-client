@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -54,12 +54,10 @@ async def discover_stun(
     ExternalEndpoint or None
         The discovered external address, or ``None`` on failure.
     """
-    import struct
-    import socket
-
     # STUN binding request (RFC 5389)
     # Transaction ID (random 12 bytes)
     import random
+    import struct
     transaction_id = bytes(random.randint(0, 255) for _ in range(12))
 
     # Message header: type=0x0001 (binding request), length=0, magic cookie=0x2112A442
@@ -77,7 +75,7 @@ async def discover_stun(
                 protocol.result_future, timeout=timeout
             )
             return result
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("STUN request timed out")
             return None
         finally:
@@ -117,10 +115,13 @@ class STUNProtocol(asyncio.DatagramProtocol):
                     value = data[offset + 4:offset + 4 + attr_len]
                     # First byte: reserved, second byte: address family
                     family = value[1]
-                    port = struct.unpack("!H", value[2:4])[0] ^ 0x2112  # XOR with magic cookie high bits
+                    # XOR with magic cookie high bits
+                    port = struct.unpack("!H", value[2:4])[0] ^ 0x2112
 
                     if family == 0x01:  # IPv4
-                        ip_bytes = bytes(b ^ c for b, c in zip(value[4:8], struct.pack("!I", 0x2112A442)))
+                        ip_bytes = bytes(
+                            b ^ c for b, c in zip(value[4:8], struct.pack("!I", 0x2112A442))
+                        )
                         ip = ".".join(str(b) for b in ip_bytes)
                     else:  # IPv6
                         ip = "::1"  # simplified for now

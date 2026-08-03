@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from opendesk.crypto.auth import hash_password, verify_password, generate_session_id, generate_otp
+from opendesk.crypto.auth import generate_session_id, hash_password, verify_password
 
 logger = logging.getLogger(__name__)
 

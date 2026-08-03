@@ -10,17 +10,17 @@ from __future__ import annotations
 
 import logging
 import os
+import subprocess
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from threading import Lock
-from typing import Iterator
 
 import mss
 import numpy as np
 from PIL import Image
 
-from opendesk.utils.platform import current_platform, Platform, is_wayland
-from opendesk.core.platform_config import get_platform_config, CaptureMethod
+from opendesk.core.platform_config import CaptureMethod, get_platform_config
 
 logger = logging.getLogger(__name__)
 
@@ -375,9 +375,9 @@ class PipeWireCapture:
         if self._monitors:
             return self._monitors
 
-        import subprocess
-        import shutil
         import re
+        import shutil
+        import subprocess
 
         self._monitors = []
 
@@ -685,8 +685,9 @@ class ScreenCapture:
         if self._portal is not None:
             return self._portal
 
-        from opendesk.core.wayland_capture import WaylandScreenCast
         import asyncio
+
+        from opendesk.core.wayland_capture import WaylandScreenCast
 
         wsc = WaylandScreenCast()
         if not wsc.is_available():

@@ -14,7 +14,6 @@ subito dopo l'autenticazione.
 import asyncio
 import logging
 import sys
-import time
 
 sys.path.insert(0, "/home/giampaolo/Codium/opendesk-relay/src")
 sys.path.insert(0, "/home/giampaolo/Codium/opendesk")
@@ -25,8 +24,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("debug_relay")
 
-from opendesk.network.protocol import Message, MessageType
-from opendesk.crypto.challenge import generate_nonce, compute_response, verify_response
+from opendesk.crypto.challenge import (  # noqa: E402
+    compute_response,
+    generate_nonce,
+    verify_response,
+)
+from opendesk.network.protocol import Message, MessageType  # noqa: E402
 
 RELAY_HOST = "127.0.0.1"
 RELAY_PORT = 8475
@@ -91,9 +94,14 @@ async def run_host():
 
     # Leggi AUTH_RESPONSE
     auth_resp = await read_msg(reader, "HOST")
-    assert auth_resp.type == MessageType.AUTH_RESPONSE, f"Expected AUTH_RESPONSE, got {auth_resp.type}"
+    assert auth_resp.type == MessageType.AUTH_RESPONSE, (
+        f"Expected AUTH_RESPONSE, got {auth_resp.type}"
+    )
     client_hash = auth_resp.payload.get("nonce_hash", "")
-    logger.info("[HOST] Got AUTH_RESPONSE, hash=%s...", client_hash[:16] if client_hash else "EMPTY")
+    logger.info(
+        "[HOST] Got AUTH_RESPONSE, hash=%s...",
+        client_hash[:16] if client_hash else "EMPTY",
+    )
 
     # Verifica e rispondi
     success = verify_response(nonce, PASSWORD, client_hash) if client_hash else False
@@ -112,7 +120,10 @@ async def run_host():
                 msg = await read_msg(reader, "HOST")
                 if msg.type == MessageType.ERROR:
                     logger.error("[HOST] ❌ Received ERROR: %s", msg.payload)
-                    logger.error("[HOST] ❌ BUG! Host received '%s' after auth!", msg.payload.get("message", ""))
+                    logger.error(
+                        "[HOST] ❌ BUG! Host received '%s' after auth!",
+                        msg.payload.get("message", ""),
+                    )
                     writer.close()
                     return False
                 elif msg.type == MessageType.RELAY_DEVICE_LIST:

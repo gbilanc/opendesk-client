@@ -20,10 +20,10 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
-from opendesk.utils.platform import current_platform, Platform, is_wayland
+from opendesk.utils.platform import Platform, current_platform, is_wayland
 
 if TYPE_CHECKING:
-    from opendesk.core.input_injection import InputBackend
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -326,7 +326,8 @@ class PlatformConfig:
         """Detect available codecs (SW + HW encoders)."""
         try:
             from opendesk.core.video_codec import (
-                VideoEncoder, _try_open_codec, _candidates,
+                _candidates,
+                _try_open_codec,
             )
 
             # HW encoders
@@ -403,7 +404,8 @@ class PlatformConfig:
         lines = [
             f"Platform:       {self.display_name}",
             f"Capture:        {self.capture_method.name}",
-            f"Available:      {', '.join(m.name for m in self.capture_methods_available) or 'none'}",
+            "Available:      ",
+            f"{', '.join(m.name for m in self.capture_methods_available) or 'none'}",
             f"Input backend:  {self.input_backend_name}",
             f"Codec:          {self.codec_hint}",
             f"HW encoders:    {', '.join(self.hw_encoders_available) or 'none'}",
@@ -458,7 +460,8 @@ class PlatformConfig:
             elif self.capture_method == CaptureMethod.DUMMY:
                 issues.append(HealthIssue(
                     HealthSeverity.CRITICAL, "capture",
-                    "Nessun backend di cattura funzionante — usato backend DUMMY (nessun frame reale).",
+                    "Nessun backend di cattura funzionante — usato backend "
+                    "DUMMY (nessun frame reale).",
                     "Verifica che XWayland o PipeWire + portal siano installati.",
                 ))
             elif self.capture_method == CaptureMethod.MSS and not self.has_x11:
@@ -471,7 +474,8 @@ class PlatformConfig:
                 issues.append(HealthIssue(
                     HealthSeverity.WARNING, "capture",
                     "PipeWire non disponibile — usato fallback XWayland (MSS)." if self.has_x11
-                    else "Né PipeWire né XWayland disponibili — la cattura schermo non funzionerà.",
+                    else "Né PipeWire né XWayland disponibili — la cattura "
+                    "schermo non funzionerà.",
                     "Installa gstreamer1.0-pipewire e python3-gi per cattura nativa Wayland.",
                 ))
             elif not self.has_portal and self.has_pipewire:
@@ -566,7 +570,8 @@ class PlatformConfig:
                 except ImportError:
                     issues.append(HealthIssue(
                         HealthSeverity.WARNING, "deps",
-                        f"Pacchetto '{pkg}' mancante — necessario per il supporto {self.pip_extra}.",
+                        f"Pacchetto '{pkg}' mancante — necessario per il "
+                        f"supporto {self.pip_extra}.",
                         f"Esegui: uv sync --extra {self.pip_extra}",
                     ))
 
@@ -644,7 +649,11 @@ class PlatformConfig:
             logger.info("✅ Health check: nessun problema rilevato.")
             return
         for issue in issues:
-            icon = {HealthSeverity.CRITICAL: "🔴", HealthSeverity.WARNING: "🟡", HealthSeverity.INFO: "ℹ️"}[issue.severity]
+            icon = {
+                HealthSeverity.CRITICAL: "🔴",
+                HealthSeverity.WARNING: "🟡",
+                HealthSeverity.INFO: "ℹ️",
+            }[issue.severity]
             msg = f"{icon} [{issue.component}] {issue.message}"
             if issue.fix:
                 msg += f" → {issue.fix}"

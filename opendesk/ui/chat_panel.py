@@ -7,15 +7,12 @@ from __future__ import annotations
 import logging
 import time
 
-from PySide6.QtCore import Qt, Signal, Slot, QSize
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
     QPushButton,
-    QScrollArea,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
@@ -85,7 +82,6 @@ class ChatPanel(QDialog):
             If ``True``, styles the message as coming from the remote peer.
         """
         timestamp = time.strftime("%H:%M")
-        prefix = "←" if is_remote else "→"
 
         # Truncate if too many messages — remove the oldest <div> block
         doc = self._display.document()

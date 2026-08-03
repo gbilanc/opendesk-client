@@ -95,7 +95,9 @@ class _PairedRelay:
             self._loop.call_soon_threadsafe(self._loop.stop)
 
 
-async def _connect_and_read_ok(host: str, port: int) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+async def _connect_and_read_ok(
+    host: str, port: int,
+) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
     """Connect and read the initial 'ok' byte."""
     r, w = await asyncio.wait_for(
         asyncio.open_connection(host, port), timeout=5.0,
@@ -111,9 +113,9 @@ class TestRelayHandshake:
     @pytest.mark.asyncio
     async def test_auth_handshake(self) -> None:
         """Host and client authenticate via challenge-response through relay."""
-        from opendesk.crypto.challenge import generate_nonce, compute_response, verify_response
+        from opendesk.crypto.challenge import compute_response, generate_nonce, verify_response
 
-        PASSWORD = "testpass123"
+        password = "testpass123"
 
         relay = _PairedRelay()
         relay.start_thread()
@@ -133,12 +135,12 @@ class TestRelayHandshake:
         assert req.payload["session_id"] == "SID123"
 
         # Client → Host: AUTH_RESPONSE with nonce_hash
-        client_hash = compute_response(nonce, PASSWORD)
+        client_hash = compute_response(nonce, password)
         await _write_async(c_w, Message.auth_response(client_hash))
 
         resp = await asyncio.wait_for(Message.from_reader(h_r), timeout=5.0)
         assert resp.type == MessageType.AUTH_RESPONSE
-        assert verify_response(nonce, PASSWORD, resp.payload["nonce_hash"])
+        assert verify_response(nonce, password, resp.payload["nonce_hash"])
 
         # Host → Client: AUTH_OK
         await _write_async(h_w, Message.auth_ok())
@@ -151,10 +153,10 @@ class TestRelayHandshake:
     @pytest.mark.asyncio
     async def test_wrong_password_rejected(self) -> None:
         """Wrong password causes AUTH_FAIL."""
-        from opendesk.crypto.challenge import generate_nonce, compute_response, verify_response
+        from opendesk.crypto.challenge import compute_response, generate_nonce, verify_response
 
-        PASSWORD = "realpass"
-        WRONG = "wrongpass"
+        password = "realpass"
+        wrong = "wrongpass"
 
         relay = _PairedRelay()
         relay.start_thread()
@@ -167,12 +169,12 @@ class TestRelayHandshake:
         await _write_async(h_w, Message.auth_request("SID", nonce=nonce))
 
         req = await asyncio.wait_for(Message.from_reader(c_r), timeout=5.0)
-        wrong_hash = compute_response(req.payload["nonce"], WRONG)
+        wrong_hash = compute_response(req.payload["nonce"], wrong)
         await _write_async(c_w, Message.auth_response(wrong_hash))
 
         resp = await asyncio.wait_for(Message.from_reader(h_r), timeout=5.0)
         assert resp.type == MessageType.AUTH_RESPONSE
-        assert not verify_response(nonce, PASSWORD, resp.payload["nonce_hash"])
+        assert not verify_response(nonce, password, resp.payload["nonce_hash"])
 
         await _write_async(h_w, Message.auth_fail("Bad password"))
         fail = await asyncio.wait_for(Message.from_reader(c_r), timeout=5.0)

@@ -7,13 +7,12 @@ between two simulated peers without actual network I/O.
 
 from __future__ import annotations
 
-import asyncio
-import pytest
 from dataclasses import dataclass, field
+
+import pytest
 
 from opendesk.crypto.e2ee import E2EEncryption
 from opendesk.network.protocol import Message, MessageType
-
 
 # ======================================================================
 # Simulated peer for integration testing

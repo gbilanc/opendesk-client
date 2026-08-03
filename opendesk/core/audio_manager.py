@@ -11,8 +11,9 @@ import logging
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, auto
+from importlib import util as importlib_util
 
 import av
 import numpy as np
@@ -281,7 +282,10 @@ class AudioManager:
             _system32 = r"C:\Windows\System32"
             # Must check exact PATH entry, not substring — otherwise
             # C:\Windows\System32\Wbem etc. cause a false positive.
-            if _os.path.isdir(_system32) and _system32 not in _os.environ["PATH"].split(_os.pathsep):
+            if (
+                _os.path.isdir(_system32)
+                and _system32 not in _os.environ["PATH"].split(_os.pathsep)
+            ):
                 _os.environ["PATH"] += _os.pathsep + _system32
 
         try:
@@ -351,9 +355,7 @@ class AudioManager:
         if self._direction not in (AudioDirection.OUTPUT_ONLY, AudioDirection.BOTH):
             return
 
-        try:
-            import soundcard as sc
-        except ImportError:
+        if importlib_util.find_spec("soundcard") is None:
             return
 
         # Ensure decoder is set up

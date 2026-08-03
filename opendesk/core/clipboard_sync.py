@@ -7,13 +7,10 @@ content to the remote peer.  Supports text and image (PNG) formats.
 
 from __future__ import annotations
 
-import io
 import logging
 import time
 
-from PIL import Image
-
-from PySide6.QtCore import QMimeData, QTimer, Signal, QObject
+from PySide6.QtCore import QMimeData, QObject, QTimer, Signal
 from PySide6.QtGui import QClipboard, QGuiApplication
 
 from opendesk.network.protocol import Message, MessageType
@@ -176,7 +173,6 @@ class ClipboardSync(QObject):
 
         # Check image (less frequently - skip every other poll)
         elif mime.hasImage() and int(time.time() * 2) % 2 == 0:
-            import hashlib
 
             image = self._clipboard.image()
             if image.isNull():

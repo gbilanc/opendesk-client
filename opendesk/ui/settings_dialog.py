@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, QSettings, Slot
+from PySide6.QtCore import QSettings, Qt, Slot
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -20,17 +21,15 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QCheckBox,
     QPushButton,
-    QSlider,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from opendesk.core.video_codec import QualityLevel
 from opendesk.core.device_registry import DeviceRegistry
+from opendesk.core.video_codec import QualityLevel
 
 logger = logging.getLogger(__name__)
 
@@ -307,7 +306,9 @@ class SettingsDialog(QDialog):
         if self._plat_cfg.capture_methods_available:
             self._plat_capture_label.setText(
                 self._plat_cfg.capture_method.name
-                + " (" + ", ".join(m.name for m in self._plat_cfg.capture_methods_available) + " disponibili)"
+                + " ("
+                + ", ".join(m.name for m in self._plat_cfg.capture_methods_available)
+                + " disponibili)"
             )
         plat_form.addRow("Cattura schermo:", self._plat_capture_label)
 
@@ -339,7 +340,8 @@ class SettingsDialog(QDialog):
 
         if self._plat_cfg.pip_extra:
             pip_label = QLabel(
-                f"<small>Installa con: <code>uv sync --extra {self._plat_cfg.pip_extra}</code></small>"
+                "<small>Installa con: <code>uv sync --extra "
+                f"{self._plat_cfg.pip_extra}</code></small>"
             )
             pip_label.setTextFormat(Qt.TextFormat.RichText)
             plat_layout.addWidget(pip_label)
@@ -507,7 +509,11 @@ class SettingsDialog(QDialog):
                     self._registry.set_trusted(dev.device_id, True)
             self._populate_trusted_devices()
             n = len(matches)
-            self._flash_status(f"✅ {n} dispositivo{'i' if n > 1 else ''} pre-autorizzato{'i' if n > 1 else ''}")
+            self._flash_status(
+                f"✅ {n} dispositivo"
+                f"{'i' if n > 1 else ''} pre-autorizzato"
+                f"{'i' if n > 1 else ''}"
+            )
             return
 
         # Non trovato — chiedi conferma prima di creare un nuovo entry

@@ -14,26 +14,22 @@ import time
 
 from PySide6.QtCore import QObject, QSettings, QTimer, Signal, Slot
 
-from opendesk.core.audio_manager import AudioManager, AudioConfig, AudioDirection
-from opendesk.core.camera_manager import CameraManager, CameraConfig
-from opendesk.core.platform_config import get_platform_config
-from opendesk.core.screen_capture import ScreenCapture, CapturedFrame
-from opendesk.core.video_codec import VideoEncoder, EncoderConfig, QualityLevel, _QUALITY_CRF
+from opendesk.core.audio_manager import AudioConfig, AudioDirection, AudioManager
+from opendesk.core.camera_manager import CameraConfig, CameraManager
 from opendesk.core.input_injection import (
     InputBackend,
-    MouseButton,
     KeyState,
+    MouseButton,
     create_input_backend,
 )
-from opendesk.services.pipeline import (
-    StreamingPipeline,
-    PipelineConfig,
-)
-import cv2
-import numpy as np
-
-from opendesk.network.protocol import Message, MessageType
+from opendesk.core.platform_config import get_platform_config
+from opendesk.core.video_codec import _QUALITY_CRF, QualityLevel, VideoEncoder
+from opendesk.network.protocol import Message
 from opendesk.network.relay_client import RelayClient
+from opendesk.services.pipeline import (
+    PipelineConfig,
+    StreamingPipeline,
+)
 
 logger = logging.getLogger(__name__)
 

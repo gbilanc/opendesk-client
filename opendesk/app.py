@@ -16,12 +16,11 @@ from pathlib import Path
 # Enable crash diagnostics — on segfault, prints a traceback to stderr
 faulthandler.enable()
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon, QPalette, QColor
-from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QColor, QIcon, QPalette  # noqa: E402
+from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from opendesk.utils.logger import parse_log_level, setup_logging
-from opendesk.ui.main_window import MainWindow
+from opendesk.ui.main_window import MainWindow  # noqa: E402
+from opendesk.utils.logger import parse_log_level, setup_logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

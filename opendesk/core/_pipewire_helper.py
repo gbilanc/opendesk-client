@@ -21,7 +21,6 @@ Usage
 from __future__ import annotations
 
 import argparse
-import os
 import struct
 import sys
 import time
@@ -31,7 +30,7 @@ import gi  # noqa: E402
 
 gi.require_version("Gst", "1.0")
 gi.require_version("GstApp", "1.0")
-from gi.repository import Gst, GLib  # noqa: E402
+from gi.repository import Gst  # noqa: E402
 
 Gst.init(sys.argv)  # noqa: E402
 
@@ -42,8 +41,14 @@ def main() -> None:
     parser.add_argument("--width", type=int, default=0, help="Target width (0 = auto)")
     parser.add_argument("--height", type=int, default=0, help="Target height (0 = auto)")
     parser.add_argument("--fps", type=int, default=30, help="Target framerate")
-    parser.add_argument("--fd", type=int, default=0, help="PipeWire fd from xdg-desktop-portal (optional)")
-    parser.add_argument("--node-id", type=int, default=0, help="PipeWire node ID from portal Start() response (preferred)")
+    parser.add_argument(
+        "--fd", type=int, default=0,
+        help="PipeWire fd from xdg-desktop-portal (optional)",
+    )
+    parser.add_argument(
+        "--node-id", type=int, default=0,
+        help="PipeWire node ID from portal Start() response (preferred)",
+    )
     args = parser.parse_args()
 
     # Build pipeline

@@ -7,18 +7,16 @@ and streams to the remote peer. Runs in a background thread.
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, auto
 
-import contextlib
-import os
-
 import cv2
-import numpy as np
 
 # ── Silence OpenCV's noisy backend errors (V4L2, FFMPEG) ──
 # These fire during camera enumeration on machines without a webcam.

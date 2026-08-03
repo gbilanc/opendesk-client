@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from opendesk.core.video_codec import VideoEncoder, EncoderConfig, QualityLevel
+from opendesk.core.video_codec import EncoderConfig, QualityLevel, VideoEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,10 @@ class BenchmarkReport:
         ]
         if self.results:
             best = max(self.results, key=lambda r: r.efficiency)
-            lines.append(f"Best efficiency: {best.width}x{best.height} @ {best.bitrate // 1000} kbps")
+            lines.append(
+                f"Best efficiency: {best.width}x{best.height} @ "
+                f"{best.bitrate // 1000} kbps"
+            )
         return " | ".join(lines)
 
 

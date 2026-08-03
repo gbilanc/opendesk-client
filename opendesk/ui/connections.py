@@ -13,14 +13,29 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import (
-    Qt, QAbstractListModel, QModelIndex, QSize, Signal, Slot, QMargins,
+    QAbstractListModel,
+    QModelIndex,
+    QSize,
+    Qt,
+    Signal,
+    Slot,
 )
-from PySide6.QtGui import QColor, QFont, QPainter, QBrush, QPen, QPalette
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit,
-    QListView, QMenu, QStyledItemDelegate, QStyleOptionViewItem,
-    QMessageBox, QPushButton, QWidget, QSizePolicy, QInputDialog,
     QAbstractItemView,
+    QFrame,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QListView,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from opendesk.core.device_registry import DeviceEntry
@@ -39,8 +54,8 @@ class DeviceListModel(QAbstractListModel):
     Emits ``countChanged`` when the list is populated or cleared.
     """
 
-    countChanged = Signal(int)
-    deviceSelected = Signal(str, str, bool)  # device_id, session_id, trusted
+    countChanged = Signal(int)  # noqa: N815
+    deviceSelected = Signal(str, str, bool)  # device_id, session_id, trusted  # noqa: N815
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -48,7 +63,7 @@ class DeviceListModel(QAbstractListModel):
 
     # ── QAbstractListModel interface ────────────────────────────────
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
         if parent.isValid():
             return 0
         return len(self._devices)
@@ -154,12 +169,20 @@ class DeviceDelegate(QStyledItemDelegate):
         painter.drawEllipse(rect.left() + 4, y_center - 5, 10, 10)
 
         # Device name
-        name = index.data(Qt.ItemDataRole.UserRole + 4) or index.data(Qt.ItemDataRole.DisplayRole) or ""
+        name = (
+            index.data(Qt.ItemDataRole.UserRole + 4)
+            or index.data(Qt.ItemDataRole.DisplayRole)
+            or ""
+        )
         painter.setPen(QColor(self._TEXT_PRIMARY))
         font = QFont("Segoe UI", 13, QFont.Weight.DemiBold)
         painter.setFont(font)
         name_rect = rect.adjusted(24, 4, 0, -18)
-        painter.drawText(name_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom, name)
+        painter.drawText(
+            name_rect,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+            name,
+        )
 
         # Session ID (small, muted)
         session_id = index.data(Qt.ItemDataRole.UserRole + 1) or ""
@@ -168,11 +191,15 @@ class DeviceDelegate(QStyledItemDelegate):
             font2 = QFont("Segoe UI", 11)
             painter.setFont(font2)
             id_rect = rect.adjusted(24, 18, 0, 0)
-            painter.drawText(id_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, session_id)
+            painter.drawText(
+                id_rect,
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                session_id,
+            )
 
         painter.restore()
 
-    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
+    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:  # noqa: N802
         return QSize(200, self._ITEM_HEIGHT)
 
 
@@ -414,7 +441,6 @@ class ConnectionPanel(QWidget):
             return
 
         device_id = index.data(Qt.ItemDataRole.UserRole) or ""
-        device_name = index.data(Qt.ItemDataRole.UserRole + 4) or ""
         trusted = index.data(Qt.ItemDataRole.UserRole + 2) or False
 
         menu = QMenu(self)
@@ -463,7 +489,6 @@ class ConnectionPanel(QWidget):
             return
         idx = indexes[0]
         session_id = idx.data(Qt.ItemDataRole.UserRole + 1) or ""
-        trusted = idx.data(Qt.ItemDataRole.UserRole + 2) or False
         can_connect = bool(session_id)
         self._connect_btn.setEnabled(can_connect)
         self._transfer_btn.setEnabled(can_connect)

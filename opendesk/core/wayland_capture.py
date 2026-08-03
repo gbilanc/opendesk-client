@@ -33,6 +33,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -236,7 +237,7 @@ class WaylandScreenCast:
     async def _ensure_bus(self) -> None:
         if self._bus is not None:
             return
-        from dbus_next import BusType, Message
+        from dbus_next import BusType
         from dbus_next.aio import MessageBus
 
         self._bus = await MessageBus(bus_type=BusType.SESSION).connect()
@@ -261,7 +262,9 @@ class WaylandScreenCast:
         from dbus_next import Variant
         return Variant(sig, value)
 
-    async def _wait_for_response(self, request_path: str, timeout: float = 30.0) -> tuple[int, dict]:
+    async def _wait_for_response(
+        self, request_path: str, timeout: float = 30.0,
+    ) -> tuple[int, dict]:
         """Wait for a portal ``Response`` signal on *request_path*.
 
         Returns a ``(response_code, results)`` tuple where *results*
@@ -288,7 +291,7 @@ class WaylandScreenCast:
         self._bus.add_message_handler(_handler)
         try:
             return await asyncio.wait_for(future, timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise RuntimeError(
                 f"Timeout waiting for portal response on {request_path}"
             )
@@ -420,7 +423,11 @@ class WaylandScreenCast:
 
         # First stream: (uint32 node_id, dict properties)
         pw_node_id = streams[0][0] if isinstance(streams[0], (list, tuple)) else streams[0]
-        properties = streams[0][1] if isinstance(streams[0], (list, tuple)) and len(streams[0]) > 1 else {}
+        properties = (
+            streams[0][1]
+            if isinstance(streams[0], (list, tuple)) and len(streams[0]) > 1
+            else {}
+        )
 
         # Extract resolution from properties
         size = properties.get("size")
@@ -546,8 +553,9 @@ async def capture_wayland_subprocess() -> np.ndarray | None:
         if proc.returncode != 0 or not png_data:
             return None
 
-        from PIL import Image
         import io
+
+        from PIL import Image
         img = Image.open(io.BytesIO(png_data))
         return np.array(img.convert("RGB"))
 

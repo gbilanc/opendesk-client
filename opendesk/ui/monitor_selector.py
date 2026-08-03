@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, Signal, Slot, QSize
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -23,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from opendesk.core.screen_capture import MonitorInfo, ScreenCapture
+from opendesk.core.screen_capture import MonitorInfo
 
 logger = logging.getLogger(__name__)
 

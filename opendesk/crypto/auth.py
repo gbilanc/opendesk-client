@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import random
 import string
 import time
@@ -156,7 +155,11 @@ class AuthManager:
     """
 
     def __init__(self, config_path: str | Path | None = None) -> None:
-        self._config_path = Path(config_path) if config_path else Path.home() / ".opendesk" / "credentials.json"
+        self._config_path = (
+            Path(config_path)
+            if config_path
+            else Path.home() / ".opendesk" / "credentials.json"
+        )
         self._credentials: dict[str, StoredCredential] = {}
         self._pending_sessions: dict[str, PendingSession] = {}
         self._load()

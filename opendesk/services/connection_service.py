@@ -16,12 +16,10 @@ import logging
 import uuid
 
 import numpy as np
-
 from PySide6.QtCore import QObject, QSettings, QTimer, Signal, Slot
 
+from opendesk.core.device_registry import DeviceRegistry
 from opendesk.crypto.auth import AuthManager
-from opendesk.core.device_registry import DeviceRegistry, DeviceEntry
-from opendesk.network.protocol import Message, MessageType
 from opendesk.network.relay_client import RelayClient, RelayRole
 
 logger = logging.getLogger(__name__)
@@ -204,7 +202,10 @@ class ConnectionService(QObject):
         """
         host, port = self._get_relay_config()
         self._host_session_id = self._session_id.replace(" ", "")
-        logger.info("Starting host on relay %s:%s with session %s", host, port, self._host_session_id)
+        logger.info(
+            "Starting host on relay %s:%s with session %s",
+            host, port, self._host_session_id,
+        )
         # Passa gli ID dei dispositivi trusted per l'auto-auth
         trusted_ids = {d.device_id for d in self._device_registry.trusted()}
         self._relay.start_hosting(
@@ -345,7 +346,9 @@ class ConnectionService(QObject):
         StreamService connects directly to RelayClient.host_keyframe_requested,
         so we just log here.
         """
-        logger.debug("Host keyframe request received (relayed by RelayClient.host_keyframe_requested)")
+        logger.debug(
+            "Host keyframe request received (relayed by RelayClient.host_keyframe_requested)"
+        )
 
     # ── client event handlers → forward as signals ──────────────────
 

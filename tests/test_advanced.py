@@ -8,18 +8,13 @@ import asyncio
 import tempfile
 from pathlib import Path
 
-import pytest
-
-from opendesk.core.file_transfer import (
-    FileTransferManager,
-    TransferJob,
-    TransferDirection,
-    TransferState,
-    FileInfo,
-)
 from opendesk.core.clipboard_sync import ClipboardSync
+from opendesk.core.file_transfer import (
+    FileInfo,
+    FileTransferManager,
+    TransferState,
+)
 from opendesk.core.unattended import UnattendedAccess
-from opendesk.crypto.auth import hash_password, verify_password
 
 # ======================================================================
 # File transfer tests
@@ -28,7 +23,6 @@ from opendesk.crypto.auth import hash_password, verify_password
 
 class TestFileTransferManager:
     def test_create_job(self) -> None:
-        mgr = FileTransferManager()
         info = FileInfo(name="test.txt", size=1024)
         assert info.name == "test.txt"
         assert info.size == 1024
@@ -352,10 +346,10 @@ class TestInputBackend:
     def test_backend_has_all_methods(self) -> None:
         from opendesk.core.input_injection import (
             InputBackend,
-            X11InputBackend,
+            MacOSInputBackend,
             WaylandInputBackend,
             WindowsInputBackend,
-            MacOSInputBackend,
+            X11InputBackend,
         )
 
         for cls in [X11InputBackend, WaylandInputBackend, WindowsInputBackend, MacOSInputBackend]:
@@ -391,8 +385,9 @@ class TestCaptureBackend:
         assert not m.is_primary
 
     def test_captured_frame_properties(self) -> None:
-        from opendesk.core.screen_capture import CapturedFrame
         import numpy as np
+
+        from opendesk.core.screen_capture import CapturedFrame
 
         data = np.zeros((100, 200, 3), dtype=np.uint8)
         f = CapturedFrame(data=data, monitor_index=0, timestamp=0.0, region=(0, 0, 200, 100))

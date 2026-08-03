@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from opendesk.core.screen_capture import frame_diff_ratio, compute_dirty_region
-from opendesk.core.video_codec import VideoEncoder, VideoDecoder, EncoderConfig, QualityLevel
+from opendesk.core.screen_capture import compute_dirty_region, frame_diff_ratio
+from opendesk.core.video_codec import EncoderConfig, QualityLevel, VideoDecoder, VideoEncoder
 
 
 class TestFrameDifferencing:

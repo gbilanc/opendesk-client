@@ -18,7 +18,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
-from typing import Union
 
 
 def generate_nonce() -> str:

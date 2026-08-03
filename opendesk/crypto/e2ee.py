@@ -13,7 +13,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from nacl import bindings as sodium
 from nacl.public import Box, PrivateKey, PublicKey

@@ -4,12 +4,11 @@ Tests for screen recording and Wayland capture modules.
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 import numpy as np
 
-from opendesk.core.screen_recorder import ScreenRecorder, RecordingStatus
+from opendesk.core.screen_recorder import RecordingStatus, ScreenRecorder
 
 
 class TestScreenRecorder:
@@ -54,7 +53,7 @@ class TestScreenRecorder:
         rec = ScreenRecorder(output_dir="/tmp")
         path = rec.start(filename="test_cancel", width=160, height=90, fps=5)
         # File doesn't exist until stop is called
-        
+
         # Write one frame
         frame = np.zeros((90, 160, 3), dtype=np.uint8)
         rec.write_frame(frame)

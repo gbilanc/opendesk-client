@@ -17,15 +17,13 @@ import logging
 import queue
 import threading
 import time
-from enum import Enum, auto
-from typing import Callable
+from collections.abc import Callable
 
 import cv2
 import numpy as np
 
-from opendesk.core.screen_capture import ScreenCapture, CapturedFrame
-from opendesk.core.video_codec import VideoEncoder, EncoderConfig, QualityLevel, _QUALITY_CRF
-from opendesk.network.protocol import Message
+from opendesk.core.screen_capture import ScreenCapture
+from opendesk.core.video_codec import _QUALITY_CRF, EncoderConfig, QualityLevel, VideoEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -231,7 +229,7 @@ class EncoderWorker(threading.Thread):
                 data, timestamp = self._frame_queue.get(block=True, timeout=0.5)
                 last_frame_time = time.monotonic()
                 encoded_count += 1
-                
+
                 # Status log ogni 5 secondi
                 now_mono = time.monotonic()
                 if now_mono - last_status_log >= 5.0:
@@ -263,7 +261,11 @@ class EncoderWorker(threading.Thread):
                     if crf is None:
                         crf = _QUALITY_CRF.get(self._config.quality)
                     # Build options with optional preset override
-                    enc_opts = {"preset": self._config.encoder_preset} if self._config.encoder_preset else {"preset": "veryfast"}
+                    enc_opts = (
+                        {"preset": self._config.encoder_preset}
+                        if self._config.encoder_preset
+                        else {"preset": "veryfast"}
+                    )
 
                     self._encoder = VideoEncoder(
                         EncoderConfig(
