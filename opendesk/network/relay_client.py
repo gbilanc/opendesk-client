@@ -230,6 +230,7 @@ class _RelaySession:
             MessageType.MOUSE_EVENT,
             MessageType.KEYBOARD_EVENT,
             MessageType.TEXT_INPUT,
+            MessageType.CAPS_LOCK_STATE,
             MessageType.CLIPBOARD_TEXT,
             MessageType.CLIPBOARD_IMAGE,
             MessageType.CLIPBOARD_SYNC,
@@ -265,6 +266,7 @@ class _RelaySession:
             MessageType.MOUSE_EVENT,
             MessageType.KEYBOARD_EVENT,
             MessageType.TEXT_INPUT,
+            MessageType.CAPS_LOCK_STATE,
             MessageType.CLIPBOARD_TEXT,
             MessageType.CLIPBOARD_IMAGE,
             MessageType.CLIPBOARD_SYNC,
@@ -412,7 +414,7 @@ class _RelaySession:
             )
             # Reset timeout counter on success
             self._drain_timeout_count = 0
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._drain_timeout_count = getattr(self, '_drain_timeout_count', 0) + 1
             logger.warning(
                 "Send drain timeout (%d/%d) — network congested or peer unresponsive",
@@ -430,7 +432,9 @@ class _RelaySession:
                     except Exception:
                         pass
                     self._writer = None
-                self.inbox.put(("error", "Connection stalled (send buffer full)", self.session_seq))
+                self.inbox.put(
+                    ("error", "Connection stalled (send buffer full)", self.session_seq)
+                )
                 self.inbox.put(("disconnected", None, self.session_seq))
         except asyncio.CancelledError:
             pass
@@ -507,7 +511,9 @@ class _RelaySession:
 
                 elif t == MessageType.KEY_EXCHANGE_ACK:
                     if not self._accept_remote_key(msg.payload):
-                        logger.warning("E2E key exchange ACK failed, continuing without encryption")
+                        logger.warning(
+                            "E2E key exchange ACK failed, continuing without encryption"
+                        )
 
                 elif t == MessageType.AUTH_RESPONSE:
                     client_hash = msg.payload.get("nonce_hash", "")
@@ -1160,6 +1166,10 @@ class RelayClient(QObject):
     def send_key_event(self, key: str, pressed: bool) -> None:
         """Send a keyboard event to the remote peer."""
         self.send_message(Message.keyboard_event(key, pressed))
+
+    def send_caps_lock_state(self, active: bool) -> None:
+        """Send the local Caps Lock state so the remote host can sync it."""
+        self.send_message(Message.caps_lock_state(active))
 
     def disconnect(self) -> None:
         """Disconnect from the relay — stops both host and client sessions."""

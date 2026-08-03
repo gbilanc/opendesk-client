@@ -364,7 +364,11 @@ class MainWindow(QMainWindow):
         warnings = [i for i in issues if i.severity == HealthSeverity.WARNING]
 
         if critical:
-            msg = f"🔴 {len(critical)} problema{'i' if len(critical) > 1 else ''} critico{'i' if len(critical) > 1 else ''}: "
+            msg = (
+                f"🔴 {len(critical)} problema"
+                f"{'i' if len(critical) > 1 else ''} critico"
+                f"{'i' if len(critical) > 1 else ''}: "
+            )
             msg += ", ".join(c.message.split(".")[0] for c in critical[:2])
             ToastNotification(self, msg, ToastNotification.Type.ERROR, duration_ms=6000).show()
         elif warnings:
@@ -654,6 +658,8 @@ class MainWindow(QMainWindow):
             self._inject_mouse(msg)
         elif msg.type == MessageType.KEYBOARD_EVENT and self._stream.input_backend:
             self._inject_keyboard(msg)
+        elif msg.type == MessageType.CAPS_LOCK_STATE and self._stream.input_backend:
+            self._sync_remote_caps_lock(msg.payload.get("active", False))
         elif msg.type == MessageType.CHAT_MESSAGE:
             text = msg.payload.get("text", "")
             self._chat_panel.add_message("Remote", text, is_remote=True)
@@ -828,6 +834,7 @@ class MainWindow(QMainWindow):
             self._viewer_window = ViewerWindow(
                 on_mouse_event=self._on_remote_mouse_event,
                 on_key_event=self._on_remote_key_event,
+                on_caps_sync=self._on_remote_caps_sync,
                 on_disconnect=self._on_disconnect,
                 on_mic_toggle=self._on_toggle_mic,
                 on_camera_toggle=self._on_toggle_camera,
@@ -961,6 +968,33 @@ class MainWindow(QMainWindow):
     def _on_remote_key_event(self, key: str, pressed: bool) -> None:
         if self._relay.is_connected and self._relay.role == RelayRole.CLIENT:
             self._relay.send_key_event(key, pressed)
+
+    @Slot(bool)
+    def _on_remote_caps_sync(self, active: bool) -> None:
+        """Forward the local Caps Lock state to the remote host."""
+        if self._relay.is_connected and self._relay.role == RelayRole.CLIENT:
+            self._relay.send_caps_lock_state(active)
+
+    def _sync_remote_caps_lock(self, remote_active: bool) -> None:
+        """Host side: align the local Caps Lock to the remote client's state.
+
+        If the states differ, press+release Caps Lock on the local backend
+        to toggle it into the requested state.
+        """
+        if not self._stream.input_backend:
+            return
+        try:
+            local_active = caps_lock_active()
+        except Exception:
+            logger.debug("Caps Lock check failed on host", exc_info=True)
+            return
+        if local_active != remote_active:
+            logger.info(
+                "Caps Lock sync: local=%s remote=%s → toggling",
+                local_active, remote_active,
+            )
+            self._stream.inject_keyboard(Message.keyboard_event("capslock", True))
+            self._stream.inject_keyboard(Message.keyboard_event("capslock", False))
 
     # ── Slots: session ──────────────────────────────────────────────
 

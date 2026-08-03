@@ -60,6 +60,7 @@ class MessageType(IntEnum):
     MOUSE_EVENT = 0x20  # Mouse movement / click
     KEYBOARD_EVENT = 0x21  # Key press / release
     TEXT_INPUT = 0x22  # Typed text
+    CAPS_LOCK_STATE = 0x23  # Caps Lock state sync (client → host)
 
     # ── Clipboard ──
     CLIPBOARD_TEXT = 0x30  # Clipboard text content
@@ -306,6 +307,11 @@ class Message:
             MessageType.KEYBOARD_EVENT,
             {"key": key, "pressed": pressed},
         )
+
+    @classmethod
+    def caps_lock_state(cls, active: bool) -> Message:
+        """Notifica al peer lo stato corrente di Caps Lock (client → host)."""
+        return cls(MessageType.CAPS_LOCK_STATE, {"active": bool(active)})
 
     @classmethod
     def clipboard_text(cls, text: str) -> Message:

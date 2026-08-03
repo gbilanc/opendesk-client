@@ -12,13 +12,13 @@ from __future__ import annotations
 
 import ctypes
 import logging
-import struct
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import IntEnum, auto
+from typing import Any
 
-from opendesk.utils.platform import current_platform, Platform, is_wayland
 from opendesk.core.platform_config import get_platform_config
+from opendesk.utils.platform import Platform, current_platform, is_wayland
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +118,7 @@ class X11InputBackend(InputBackend):
         "up": "Up", "down": "Down", "left": "Left", "right": "Right",
         "space": "space", "ctrl": "Control_L", "alt": "Alt_L", "shift": "Shift_L",
         "super": "Super_L", "menu": "Menu", "capslock": "Caps_Lock",
+        "altgr": "Alt_R",
     }
 
     def __init__(self) -> None:
@@ -130,7 +131,7 @@ class X11InputBackend(InputBackend):
 
     def _setup(self) -> None:
         try:
-            from Xlib import X, XK, display
+            from Xlib import XK, display
             from Xlib.ext import xtest
         except ImportError as exc:
             raise RuntimeError(f"python-xlib not available: {exc}") from exc
@@ -163,9 +164,15 @@ class X11InputBackend(InputBackend):
         if kc is not None:
             return kc
         if len(key) == 1:
-            kc = self._keycode_from_name(key)
-            if kc is not None:
-                return kc
+            # Le keysym X11 dei caratteri stampabili coincidono con il
+            # codepoint (ASCII 0x20-0x7E, Latin-1 0xA0-0xFF):
+            # keysym_to_keycode le risolve contro il layout dell'host
+            # (anche se la keysym è su livello shiftato/AltGr).
+            cp = ord(key)
+            if 0x20 <= cp <= 0xFF:
+                kc = self._display.keysym_to_keycode(cp)
+                if kc not in (None, 0):
+                    return kc
         logger.warning("Unknown key '%s'", key)
         return 0
 
@@ -272,8 +279,8 @@ class WaylandInputBackend(InputBackend):
 
     def _setup(self) -> None:
         try:
-            import evdev
-            from evdev import UInput, ecodes as e
+            from evdev import UInput
+            from evdev import ecodes as e
         except ImportError as exc:
             raise RuntimeError(
                 "Wayland input requires python-evdev. "
@@ -295,7 +302,6 @@ class WaylandInputBackend(InputBackend):
 
         # Check that /dev/uinput exists and we can write to it
         import os
-        import stat
         uinput_path = "/dev/uinput"
         if not os.path.exists(uinput_path):
             raise RuntimeError(
@@ -304,7 +310,6 @@ class WaylandInputBackend(InputBackend):
             )
         uinput_stat = os.stat(uinput_path)
         if not os.access(uinput_path, os.W_OK):
-            import pwd
             import grp
             group_info = grp.getgrgid(uinput_stat.st_gid) if uinput_stat.st_gid != 0 else None
             group_name = group_info.gr_name if group_info else "input"
@@ -386,7 +391,7 @@ class WaylandInputBackend(InputBackend):
             "up": e.KEY_UP, "down": e.KEY_DOWN, "left": e.KEY_LEFT, "right": e.KEY_RIGHT,
             "space": e.KEY_SPACE, "ctrl": e.KEY_LEFTCTRL, "alt": e.KEY_LEFTALT,
             "shift": e.KEY_LEFTSHIFT, "super": e.KEY_LEFTMETA, "menu": e.KEY_MENU,
-            "capslock": e.KEY_CAPSLOCK,
+            "capslock": e.KEY_CAPSLOCK, "altgr": e.KEY_RIGHTALT,
             "insert": e.KEY_INSERT, "print": e.KEY_PRINT,
             "scrolllock": e.KEY_SCROLLLOCK, "pause": e.KEY_PAUSE,
             "numlock": e.KEY_NUMLOCK,
@@ -405,11 +410,33 @@ class WaylandInputBackend(InputBackend):
             return getattr(e, f"KEY_{lower_key.upper()}")
         if len(key) == 1 and "0" <= key <= "9":
             return getattr(e, f"KEY_{key}")
+        # Carattere → keycode BASE (layout US). I simboli shiftati ("!", "@",
+        # ":") si mappano al tasto base ("1", "2", ";"): lo Shift/AltGr arriva
+        # già come evento separato dal client, quindi con layout coerenti il
+        # carattere risultante è quello digitato. I caratteri non-ASCII
+        # (accentate) non hanno keycode evdev → scartati con warning.
         sym_map = {
-            ",": e.KEY_COMMA, ".": e.KEY_DOT, ";": e.KEY_SEMICOLON,
-            "'": e.KEY_APOSTROPHE, "`": e.KEY_GRAVE, "-": e.KEY_MINUS,
-            "=": e.KEY_EQUAL, "[": e.KEY_LEFTBRACE, "]": e.KEY_RIGHTBRACE,
-            "\\": e.KEY_BACKSLASH, "/": e.KEY_SLASH,
+            "1": e.KEY_1, "!": e.KEY_1,
+            "2": e.KEY_2, "@": e.KEY_2,
+            "3": e.KEY_3, "#": e.KEY_3,
+            "4": e.KEY_4, "$": e.KEY_4,
+            "5": e.KEY_5, "%": e.KEY_5,
+            "6": e.KEY_6, "^": e.KEY_6,
+            "7": e.KEY_7, "&": e.KEY_7,
+            "8": e.KEY_8, "*": e.KEY_8,
+            "9": e.KEY_9, "(": e.KEY_9,
+            "0": e.KEY_0, ")": e.KEY_0,
+            "-": e.KEY_MINUS, "_": e.KEY_MINUS,
+            "=": e.KEY_EQUAL, "+": e.KEY_EQUAL,
+            "[": e.KEY_LEFTBRACE, "{": e.KEY_LEFTBRACE,
+            "]": e.KEY_RIGHTBRACE, "}": e.KEY_RIGHTBRACE,
+            "\\": e.KEY_BACKSLASH, "|": e.KEY_BACKSLASH,
+            ";": e.KEY_SEMICOLON, ":": e.KEY_SEMICOLON,
+            "'": e.KEY_APOSTROPHE, '"': e.KEY_APOSTROPHE,
+            "`": e.KEY_GRAVE, "~": e.KEY_GRAVE,
+            ",": e.KEY_COMMA, "<": e.KEY_COMMA,
+            ".": e.KEY_DOT, ">": e.KEY_DOT,
+            "/": e.KEY_SLASH, "?": e.KEY_SLASH,
         }
         if key in sym_map:
             return sym_map[key]
@@ -436,7 +463,7 @@ class WaylandInputBackend(InputBackend):
         dello schermo (set_screen_size), altrimenti il compositore
         le interpreta nel range 0-_ABS_MAX invece che in pixel.
         """
-        from evdev import UInput, AbsInfo
+        from evdev import AbsInfo, UInput
         try:
             abs_caps = {
                 self._e.EV_KEY: (
@@ -618,9 +645,46 @@ class WindowsInputBackend(InputBackend):
       target (non raccomandato).
     """
 
+    # Carattere → VK code (tasto base, layout US). I simboli shiftati
+    # ("!", "@", ":") si mappano al tasto base ("1", "2", ";"): lo
+    # Shift arriva già come evento separato dal client. Non usare
+    # ord(char): collide con i VK di navigazione (0x21 = VK_PRIOR,
+    # 0x2E = VK_DELETE, ...) producendo tasti completamente sbagliati.
+    _CHAR_VK = {
+        " ": 0x20,
+        "0": 0x30, "1": 0x31, "2": 0x32, "3": 0x33, "4": 0x34,
+        "5": 0x35, "6": 0x36, "7": 0x37, "8": 0x38, "9": 0x39,
+        "a": 0x41, "b": 0x42, "c": 0x43, "d": 0x44, "e": 0x45,
+        "f": 0x46, "g": 0x47, "h": 0x48, "i": 0x49, "j": 0x4A,
+        "k": 0x4B, "l": 0x4C, "m": 0x4D, "n": 0x4E, "o": 0x4F,
+        "p": 0x50, "q": 0x51, "r": 0x52, "s": 0x53, "t": 0x54,
+        "u": 0x55, "v": 0x56, "w": 0x57, "x": 0x58, "y": 0x59,
+        "z": 0x5A,
+        # riga cifre: base e shiftati → stesso tasto
+        "!": 0x31, "@": 0x32, "#": 0x33, "$": 0x34, "%": 0x35,
+        "^": 0x36, "&": 0x37, "*": 0x38, "(": 0x39, ")": 0x30,
+        "-": 0xBD, "_": 0xBD, "=": 0xBB, "+": 0xBB,
+        "[": 0xDB, "{": 0xDB, "]": 0xDD, "}": 0xDD,
+        "\\": 0xDC, "|": 0xDC, ";": 0xBA, ":": 0xBA,
+        "'": 0xDE, '"': 0xDE, "`": 0xC0, "~": 0xC0,
+        ",": 0xBC, "<": 0xBC, ".": 0xBE, ">": 0xBE,
+        "/": 0xBF, "?": 0xBF,
+    }
+
+    # Nomi tasto → VK code
+    _VK = {
+        "return": 0x0D, "enter": 0x0D, "tab": 0x09,
+        "escape": 0x1B, "backspace": 0x08, "delete": 0x2E,
+        "home": 0x24, "end": 0x23,
+        "pageup": 0x21, "pagedown": 0x22,
+        "up": 0x26, "down": 0x28, "left": 0x25, "right": 0x27,
+        "space": 0x20, "ctrl": 0x11, "alt": 0x12,
+        "shift": 0x10, "super": 0x5B, "menu": 0x5D,
+        "capslock": 0x14, "altgr": 0xA5,  # VK_RMENU
+        **{f"f{i}": 0x6F + i for i in range(1, 13)},
+    }
+
     def __init__(self) -> None:
-        import ctypes
-        from ctypes import wintypes
 
         self._user32 = ctypes.windll.user32
 
@@ -643,20 +707,6 @@ class WindowsInputBackend(InputBackend):
         self._MOUSEEVENTF_WHEEL = 0x0800
         self._MOUSEEVENTF_HWHEEL = 0x1000
 
-        # Virtual key codes
-        self._VK = {
-            "return": 0x0D, "enter": 0x0D, "tab": 0x09,
-            "escape": 0x1B, "backspace": 0x08, "delete": 0x2E,
-            "home": 0x24, "end": 0x23,
-            "pageup": 0x21, "pagedown": 0x22,
-            "up": 0x26, "down": 0x28, "left": 0x25, "right": 0x27,
-            "space": 0x20, "ctrl": 0x11, "alt": 0x12,
-            "shift": 0x10, "super": 0x5B, "menu": 0x5D,
-            "capslock": 0x14,
-        }
-        for i in range(1, 13):
-            self._VK[f"f{i}"] = 0x6F + i
-
         self._SendInput = self._user32.SendInput
         self._SendInput.argtypes = [
             ctypes.c_uint,  # cInputs
@@ -676,7 +726,7 @@ class WindowsInputBackend(InputBackend):
         if lower in self._VK:
             return self._VK[lower]
         if len(lower) == 1:
-            return ord(lower.upper())
+            return self._CHAR_VK.get(lower, 0)
         return 0
 
     def _send_mouse_input(self, flags: int, data: int = 0, dx: int = 0, dy: int = 0) -> None:
@@ -693,8 +743,6 @@ class WindowsInputBackend(InputBackend):
         dy : int
             Coordinata Y (o delta relativo).
         """
-        import ctypes
-        from ctypes import wintypes
 
         # Definisce la struttura MOUSEINPUT
         class MOUSEINPUT(ctypes.Structure):
@@ -707,13 +755,13 @@ class WindowsInputBackend(InputBackend):
                 ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
             ]
 
-        class INPUT_UNION(ctypes.Union):
+        class InputUnion(ctypes.Union):
             _fields_ = [("mi", MOUSEINPUT)]
 
         class INPUT(ctypes.Structure):
             _fields_ = [
                 ("type", ctypes.c_ulong),
-                ("u", INPUT_UNION),
+                ("u", InputUnion),
             ]
 
         inp = INPUT()
@@ -724,7 +772,6 @@ class WindowsInputBackend(InputBackend):
 
     def _send_keyboard_input(self, vk: int, flags: int) -> None:
         """Invia un evento tastiera con ``SendInput``."""
-        import ctypes
 
         class KEYBDINPUT(ctypes.Structure):
             _fields_ = [
@@ -735,13 +782,13 @@ class WindowsInputBackend(InputBackend):
                 ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
             ]
 
-        class INPUT_UNION(ctypes.Union):
+        class InputUnion(ctypes.Union):
             _fields_ = [("ki", KEYBDINPUT)]
 
         class INPUT(ctypes.Structure):
             _fields_ = [
                 ("type", ctypes.c_ulong),
-                ("u", INPUT_UNION),
+                ("u", InputUnion),
             ]
 
         inp = INPUT()
@@ -831,32 +878,35 @@ class MacOSInputBackend(InputBackend):
         try:
             import Quartz
             from Quartz import (
-                CGEventCreateMouseEvent,
                 CGEventCreateKeyboardEvent,
+                CGEventCreateMouseEvent,
+                CGEventCreateScrollWheelEvent,
                 CGEventPost,
-                kCGHIDEventTap,
-                kCGEventMouseMoved,
-                kCGEventLeftMouseDown, kCGEventLeftMouseUp,
-                kCGEventRightMouseDown, kCGEventRightMouseUp,
-                kCGEventOtherMouseDown, kCGEventOtherMouseUp,
-                kCGEventScrollWheel,
-                kCGEventKeyDown, kCGEventKeyUp,
-                kCGMouseButtonLeft, kCGMouseButtonRight, kCGMouseButtonCenter,
                 CGEventSetIntegerValueField,
-                kCGMouseEventDeltaX, kCGMouseEventDeltaY,
                 CGWarpMouseCursorPosition,
-                CGAssociateMouseAndMouseCursorPosition,
+                kCGEventLeftMouseDown,
+                kCGEventLeftMouseUp,
+                kCGEventMouseMoved,
+                kCGEventOtherMouseDown,
+                kCGEventOtherMouseUp,
+                kCGEventRightMouseDown,
+                kCGEventRightMouseUp,
+                kCGEventScrollWheel,
+                kCGHIDEventTap,
+                kCGMouseButtonCenter,
+                kCGMouseButtonLeft,
+                kCGMouseButtonRight,
+                kCGMouseEventDeltaX,
+                kCGMouseEventDeltaY,
             )
-            from Quartz.CoreGraphics import (
-                CGMainDisplayID,
-                CGDisplayPixelsWide,
-                CGDisplayPixelsHigh,
-            )
+            from Quartz.CoreGraphics import CGMainDisplayID
         except ImportError as exc:
             raise RuntimeError(
                 "macOS input requires pyobjc: pip install pyobjc-framework-Quartz"
             ) from exc
 
+        # Le funzioni/constanti Quartz vanno salvate su self: i nomi locali
+        # di __init__ non sono visibili nei metodi (NameError altrimenti).
         self._Quartz = Quartz
         self._kCGHIDEventTap = kCGHIDEventTap
         self._kCMouseButton = {
@@ -864,54 +914,66 @@ class MacOSInputBackend(InputBackend):
             MouseButton.RIGHT: kCGMouseButtonRight,
             MouseButton.MIDDLE: kCGMouseButtonCenter,
         }
+        self._kCGMouseButtonLeft = kCGMouseButtonLeft
+        self._kCGEventMouseMoved = kCGEventMouseMoved
+        self._kCGEventLeft = (kCGEventLeftMouseDown, kCGEventLeftMouseUp)
+        self._kCGEventRight = (kCGEventRightMouseDown, kCGEventRightMouseUp)
+        self._kCGEventOther = (kCGEventOtherMouseDown, kCGEventOtherMouseUp)
+        self._kCGEventScrollWheel = kCGEventScrollWheel
+        self._kCGMouseEventDeltaX = kCGMouseEventDeltaX
+        self._kCGMouseEventDeltaY = kCGMouseEventDeltaY
+        self._CGEventCreateMouseEvent = CGEventCreateMouseEvent
+        self._CGEventCreateKeyboardEvent = CGEventCreateKeyboardEvent
+        self._CGEventCreateScrollWheelEvent = CGEventCreateScrollWheelEvent
+        self._CGEventPost = CGEventPost
+        self._CGEventSetIntegerValueField = CGEventSetIntegerValueField
+        self._CGWarpMouseCursorPosition = CGWarpMouseCursorPosition
         self._main_display = CGMainDisplayID()
         logger.info("macOS input backend initialised")
 
     def move_mouse(self, x: int, y: int, absolute: bool = True) -> None:
         if absolute:
-            CGWarpMouseCursorPosition((x, y))
+            self._CGWarpMouseCursorPosition((x, y))
         else:
-            event = CGEventCreateMouseEvent(
-                None, kCGEventMouseMoved, (x, y), kCGMouseButtonLeft
+            event = self._CGEventCreateMouseEvent(
+                None, self._kCGEventMouseMoved, (x, y), self._kCGMouseButtonLeft
             )
-            CGEventSetIntegerValueField(event, kCGMouseEventDeltaX, x)
-            CGEventSetIntegerValueField(event, kCGMouseEventDeltaY, y)
-            CGEventPost(kCGHIDEventTap, event)
+            self._CGEventSetIntegerValueField(event, self._kCGMouseEventDeltaX, x)
+            self._CGEventSetIntegerValueField(event, self._kCGMouseEventDeltaY, y)
+            self._CGEventPost(self._kCGHIDEventTap, event)
 
     def click_mouse(self, button: MouseButton, state: KeyState) -> None:
-        btn_type = self._kCMouseButton.get(button, kCGMouseButtonLeft)
+        btn_type = self._kCMouseButton.get(button, self._kCGMouseButtonLeft)
         if button == MouseButton.LEFT:
-            down, up = kCGEventLeftMouseDown, kCGEventLeftMouseUp
+            down, up = self._kCGEventLeft
         elif button == MouseButton.RIGHT:
-            down, up = kCGEventRightMouseDown, kCGEventRightMouseUp
+            down, up = self._kCGEventRight
         else:
-            down, up = kCGEventOtherMouseDown, kCGEventOtherMouseUp
+            down, up = self._kCGEventOther
 
         if state in (KeyState.PRESSED, KeyState.TYPED):
-            event = CGEventCreateMouseEvent(None, down, (0, 0), btn_type)
-            CGEventPost(kCGHIDEventTap, event)
+            event = self._CGEventCreateMouseEvent(None, down, (0, 0), btn_type)
+            self._CGEventPost(self._kCGHIDEventTap, event)
         if state in (KeyState.RELEASED, KeyState.TYPED):
-            event = CGEventCreateMouseEvent(None, up, (0, 0), btn_type)
-            CGEventPost(kCGHIDEventTap, event)
+            event = self._CGEventCreateMouseEvent(None, up, (0, 0), btn_type)
+            self._CGEventPost(self._kCGHIDEventTap, event)
 
     def scroll_mouse(self, dx: int, dy: int) -> None:
-        event = CGEventCreateScrollWheelEvent(None, kCGEventScrollWheel, 2, dy, dx)
-        CGEventPost(kCGHIDEventTap, event)
+        event = self._CGEventCreateScrollWheelEvent(
+            None, self._kCGEventScrollWheel, 2, dy, dx
+        )
+        self._CGEventPost(self._kCGHIDEventTap, event)
 
     def key_event(self, key: str | int, state: KeyState) -> None:
-        from Quartz import (
-            CGEventCreateKeyboardEvent, CGEventPost, kCGHIDEventTap,
-            kCGEventKeyDown, kCGEventKeyUp,
-        )
         keycode = self._key_to_macos(key)
         if keycode == 0:
             return
         if state in (KeyState.PRESSED, KeyState.TYPED):
-            event = CGEventCreateKeyboardEvent(None, keycode, True)
-            CGEventPost(kCGHIDEventTap, event)
+            event = self._CGEventCreateKeyboardEvent(None, keycode, True)
+            self._CGEventPost(self._kCGHIDEventTap, event)
         if state in (KeyState.RELEASED, KeyState.TYPED):
-            event = CGEventCreateKeyboardEvent(None, keycode, False)
-            CGEventPost(kCGHIDEventTap, event)
+            event = self._CGEventCreateKeyboardEvent(None, keycode, False)
+            self._CGEventPost(self._kCGHIDEventTap, event)
 
     def type_text(self, text: str) -> None:
         for char in text:

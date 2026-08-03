@@ -14,17 +14,15 @@ from collections import deque
 from collections.abc import Callable
 
 import numpy as np
-from PIL import Image
-
 from PySide6.QtCore import (
-    Qt,
+    QPoint,
+    QPointF,
     QRectF,
     QSize,
+    Qt,
     QTimer,
     Signal,
     Slot,
-    QPoint,
-    QPointF,
 )
 from PySide6.QtGui import (
     QAction,
@@ -37,6 +35,8 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
     QWheelEvent,
+)
+from PySide6.QtGui import (
     Qt as QtKey,
 )
 from PySide6.QtWidgets import (
@@ -44,16 +44,14 @@ from PySide6.QtWidgets import (
     QGraphicsPixmapItem,
     QGraphicsScene,
     QGraphicsView,
-    QHBoxLayout,
     QLabel,
     QMainWindow,
-    QPushButton,
-    QSizePolicy,
     QStatusBar,
     QToolBar,
-    QVBoxLayout,
     QWidget,
 )
+
+from opendesk.core.keyboard_state import caps_lock_active
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +154,10 @@ class CameraOverlay(QWidget):
     def mousePressEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
-            self._drag_offset = event.globalPosition().toPoint() - self.parent().mapToGlobal(self.pos())
+            self._drag_offset = (
+                event.globalPosition().toPoint()
+                - self.parent().mapToGlobal(self.pos())
+            )
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
         if self._dragging:
@@ -196,6 +197,7 @@ class RemoteViewer(QGraphicsView):
     # Signal emitted with mouse/keyboard events for remote injection
     remote_mouse_event = Signal(int, int, int, bool, bool)  # x, y, button, pressed, abs
     remote_key_event = Signal(str, bool)  # key, pressed
+    caps_lock_sync = Signal(bool)  # Caps Lock state after a local toggle
     # Signal emitted when no frame has been received for a while
     frame_timeout = Signal()
 
@@ -393,6 +395,9 @@ class RemoteViewer(QGraphicsView):
         self._connection_active = active
         if active:
             self._frame_timeout_timer.start(_FRAME_TIMEOUT_MS)
+            # Sessione attiva: notifica subito lo stato Caps Lock corrente
+            # così l'host può allinearsi (prima di qualsiasi digitazione).
+            QTimer.singleShot(0, self._sync_caps_lock)
         else:
             self._frame_timeout_timer.stop()
             self.set_camera_active(False)
@@ -530,6 +535,11 @@ class RemoteViewer(QGraphicsView):
         key = self._key_to_name(event.key())
         if key:
             self.remote_key_event.emit(key, True)
+            if key == "capslock":
+                # Dopo il toggle locale, sincronizza lo stato con l'host:
+                # la lettura va posticipata per lasciare al sistema il
+                # tempo di aggiornare LED / bit di stato.
+                QTimer.singleShot(50, self._sync_caps_lock)
         super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event) -> None:  # noqa: N802
@@ -540,6 +550,10 @@ class RemoteViewer(QGraphicsView):
         super().keyReleaseEvent(event)
 
     # ── Internal ────────────────────────────────────────────────────
+
+    def _sync_caps_lock(self) -> None:
+        """Emit the current local Caps Lock state for host synchronization."""
+        self.caps_lock_sync.emit(caps_lock_active())
 
     def _on_frame_timeout(self) -> None:
         """Emitted when no frame arrives within the timeout window."""
@@ -640,7 +654,16 @@ class RemoteViewer(QGraphicsView):
             QtKey.Key_Alt: "alt",
             QtKey.Key_Shift: "shift",
             QtKey.Key_Meta: "super",
+            QtKey.Key_Super_L: "super",
+            QtKey.Key_Super_R: "super",
             QtKey.Key_CapsLock: "capslock",
+            QtKey.Key_AltGr: "altgr",
+            QtKey.Key_Insert: "insert",
+            QtKey.Key_Print: "print",
+            QtKey.Key_ScrollLock: "scrolllock",
+            QtKey.Key_Pause: "pause",
+            QtKey.Key_NumLock: "numlock",
+            QtKey.Key_Menu: "menu",
             QtKey.Key_F1: "f1",
             QtKey.Key_F2: "f2",
             QtKey.Key_F3: "f3",
@@ -654,12 +677,21 @@ class RemoteViewer(QGraphicsView):
             QtKey.Key_F11: "f11",
             QtKey.Key_F12: "f12",
         }
+        # F13–F24
+        for i in range(13, 25):
+            key_map[getattr(QtKey, f"Key_F{i}")] = f"f{i}"
         if qt_key in key_map:
             return key_map[qt_key]
 
-        # Printable characters
+        # Printable characters — invia il carattere BASE prodotto dal tasto
+        # nel layout del client (maiuscole/minuscole e accenti preservati).
+        # L'host lo risolve contro il proprio layout; i modificatori
+        # (shift/altgr/...) viaggiano come eventi separati, quindi con layout
+        # coerenti il carattere risultante è esattamente quello digitato.
         if 0x20 <= qt_key <= 0x7E:
-            return chr(qt_key).lower()
+            return chr(qt_key)
+        if 0xA0 <= qt_key <= 0xFFFF:  # Latin-1 / Unicode base (accentate)
+            return chr(qt_key)
 
         return None
 
@@ -882,6 +914,7 @@ class ViewerWindow(QMainWindow):
         self,
         on_mouse_event: Callable | None = None,
         on_key_event: Callable | None = None,
+        on_caps_sync: Callable | None = None,
         on_disconnect: Callable | None = None,
         on_mic_toggle: Callable | None = None,
         on_camera_toggle: Callable | None = None,
@@ -927,6 +960,8 @@ class ViewerWindow(QMainWindow):
             self._viewer.remote_mouse_event.connect(on_mouse_event)
         if on_key_event:
             self._viewer.remote_key_event.connect(on_key_event)
+        if on_caps_sync:
+            self._viewer.caps_lock_sync.connect(on_caps_sync)
         self._viewer.frame_timeout.connect(self._on_frame_timeout)
 
     # ── public API ──────────────────────────────────────────────────
