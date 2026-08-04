@@ -271,7 +271,9 @@ class CameraManager:
             actual_fps = cap.get(cv2.CAP_PROP_FPS)
             logger.info(
                 "Camera opened: %dx%d @ %.1ffps",
-                self._actual_width, self._actual_height, actual_fps,
+                self._actual_width,
+                self._actual_height,
+                actual_fps,
             )
 
             frame_interval = 1.0 / max(self._config.fps, 1)
@@ -300,6 +302,7 @@ class CameraManager:
                 # Send via callback
                 if self._send_fn:
                     from opendesk.network.protocol import Message, MessageType
+
                     msg = Message(
                         MessageType.CAMERA_FRAME,
                         {

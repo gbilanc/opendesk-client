@@ -108,15 +108,11 @@ class StreamService(QObject):
         self._bw_estimated_kbps: float = 0.0
 
         # Audio manager (microphone capture + playback)
-        self._audio_manager = AudioManager(
-            AudioConfig(enabled=False)
-        )
+        self._audio_manager = AudioManager(AudioConfig(enabled=False))
         self._audio_enabled: bool = False
 
         # Camera manager (webcam capture)
-        self._camera_manager = CameraManager(
-            CameraConfig(enabled=False)
-        )
+        self._camera_manager = CameraManager(CameraConfig(enabled=False))
         self._camera_enabled: bool = False
 
         # React when the remote peer requests a keyframe
@@ -184,11 +180,13 @@ class StreamService(QObject):
             if self._input_backend is not None:
                 try:
                     from PySide6.QtWidgets import QApplication
+
                     screen = QApplication.primaryScreen()
                     if screen is not None:
                         size = screen.size()
                         self._input_backend.set_screen_size(
-                            size.width(), size.height(),
+                            size.width(),
+                            size.height(),
                         )
                 except Exception:
                     logger.debug("Could not query screen size for input backend")
@@ -284,7 +282,9 @@ class StreamService(QObject):
 
             logger.info(
                 "Streaming started: pipeline 3-thread, %d FPS, %s, scale=%.2f",
-                fps, quality_name, resolution_scale,
+                fps,
+                quality_name,
+                resolution_scale,
             )
         except Exception as e:
             logger.exception("Failed to start streaming: %s", e)
@@ -402,7 +402,11 @@ class StreamService(QObject):
 
         logger.debug(
             "inject_mouse: x=%d y=%d button=%s pressed=%s abs=%s",
-            x, y, button, pressed, absolute,
+            x,
+            y,
+            button,
+            pressed,
+            absolute,
         )
 
         # button=0 dal movimento mouse (non un click)
@@ -441,7 +445,8 @@ class StreamService(QObject):
         if local_active != remote_active:
             logger.info(
                 "Caps Lock sync: local=%s remote=%s → toggling",
-                local_active, remote_active,
+                local_active,
+                remote_active,
             )
             self.inject_keyboard(Message.keyboard_event("capslock", True))
             self.inject_keyboard(Message.keyboard_event("capslock", False))

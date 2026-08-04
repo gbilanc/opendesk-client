@@ -414,8 +414,7 @@ class HostService(QObject):
                 self._stream.inject_mouse(msg)
             else:
                 logger.warning(
-                    "Host received MOUSE_EVENT but input_backend is None — "
-                    "remote input disabled"
+                    "Host received MOUSE_EVENT but input_backend is None — remote input disabled"
                 )
         elif t == MessageType.KEYBOARD_EVENT and self._stream and self._stream.input_backend:
             logger.debug(

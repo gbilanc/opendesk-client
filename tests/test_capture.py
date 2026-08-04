@@ -83,7 +83,10 @@ class TestVideoCodec:
 
         packets = enc.encode(frame)
         decoded = dec.decode(
-            packets[0].data, 320, 180, is_keyframe=packets[0].is_keyframe,
+            packets[0].data,
+            320,
+            180,
+            is_keyframe=packets[0].is_keyframe,
         )
 
         assert decoded is not None
@@ -144,6 +147,7 @@ class TestInputInjection:
     def test_platform_factory(self) -> None:
         """The factory should return a backend for the current platform."""
         from opendesk.core.input_injection import create_input_backend
+
         backend = create_input_backend()
         assert backend is not None
         backend.release()

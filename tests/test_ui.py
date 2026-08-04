@@ -109,7 +109,9 @@ class TestEmptyStateWidget:
         assert not no_action._action_btn.isVisible()
 
         with_action = EmptyStateWidget(
-            title="Empty", description="No items", action_text="Refresh",
+            title="Empty",
+            description="No items",
+            action_text="Refresh",
         )
         with_action.show()
         assert with_action._action_btn.isVisible()
@@ -126,8 +128,10 @@ class TestEmptyStateWidget:
             clicked = True
 
         widget = EmptyStateWidget(
-            title="Empty", description="No items",
-            action_text="Go", on_action=on_action,
+            title="Empty",
+            description="No items",
+            action_text="Go",
+            on_action=on_action,
         )
         widget.show()
         QTest.mouseClick(widget._action_btn, Qt.MouseButton.LeftButton)
@@ -229,7 +233,7 @@ class TestChatPanel:
         from opendesk.ui.chat_panel import ChatPanel
 
         panel = ChatPanel()
-        panel.message_sent.connect(lambda m: setattr(panel, '_emitted', True))
+        panel.message_sent.connect(lambda m: setattr(panel, "_emitted", True))
 
         panel._input.setText("   ")
         panel._send_message()
@@ -273,35 +277,41 @@ class TestChallengeResponse:
 
     def test_nonce_generation(self) -> None:
         from opendesk.crypto.challenge import generate_nonce
+
         nonce = generate_nonce()
         assert len(nonce) == 64  # 32 bytes = 64 hex chars
         assert isinstance(nonce, str)
 
     def test_compute_response(self) -> None:
         from opendesk.crypto.challenge import compute_response
+
         resp = compute_response("nonce123", "secret")
         assert len(resp) == 64
         assert isinstance(resp, str)
 
     def test_verify_valid(self) -> None:
         from opendesk.crypto.challenge import compute_response, generate_nonce, verify_response
+
         nonce = generate_nonce()
         resp = compute_response(nonce, "secret")
         assert verify_response(nonce, "secret", resp)
 
     def test_verify_wrong_password(self) -> None:
         from opendesk.crypto.challenge import compute_response, generate_nonce, verify_response
+
         nonce = generate_nonce()
         resp = compute_response(nonce, "secret")
         assert not verify_response(nonce, "wrong", resp)
 
     def test_verify_wrong_nonce(self) -> None:
         from opendesk.crypto.challenge import compute_response, verify_response
+
         resp = compute_response("nonce1", "secret")
         assert not verify_response("nonce2", "secret", resp)
 
     def test_verify_tampered_hash(self) -> None:
         from opendesk.crypto.challenge import generate_nonce, verify_response
+
         nonce = generate_nonce()
         assert not verify_response(nonce, "secret", "f" * 64)
 
@@ -321,7 +331,7 @@ class TestAuthSessionCleanup:
 
         from opendesk.crypto.auth import AuthManager
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write(json.dumps({"credentials": {}}))
             tmp = f.name
 
@@ -333,4 +343,5 @@ class TestAuthSessionCleanup:
             assert len(am._pending_sessions) == 5
         finally:
             import os
+
             os.unlink(tmp)

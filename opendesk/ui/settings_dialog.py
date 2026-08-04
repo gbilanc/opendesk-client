@@ -59,6 +59,7 @@ class SettingsDialog(QDialog):
 
         # Load platform config early — needed by _setup_ui (pixel format default)
         from opendesk.core.platform_config import get_platform_config
+
         self._plat_cfg = get_platform_config()
 
         self._setup_ui()
@@ -128,6 +129,7 @@ class SettingsDialog(QDialog):
         self._codec_combo.addItem("H.265/HEVC (SW)", "hevc")
         # HW encoders (if available)
         from opendesk.core.video_codec import VideoEncoder
+
         for hw in VideoEncoder.available_hw_encoders():
             label = hw.replace("_", " ").upper()
             self._codec_combo.addItem(f"{label}", hw)
@@ -153,14 +155,10 @@ class SettingsDialog(QDialog):
         # Etichetta informativa sui codec HW disponibili
         hw_list = VideoEncoder.available_hw_encoders()
         if hw_list:
-            hw_label = QLabel(
-                f"<small>HW encoders detected: {', '.join(hw_list)}</small>"
-            )
+            hw_label = QLabel(f"<small>HW encoders detected: {', '.join(hw_list)}</small>")
             hw_label.setStyleSheet("color: #22c55e;")
         else:
-            hw_label = QLabel(
-                "<small>No HW encoder detected — using software encoding</small>"
-            )
+            hw_label = QLabel("<small>No HW encoder detected — using software encoding</small>")
             hw_label.setStyleSheet("color: #f59e0b;")
         codec_form.addRow("", hw_label)
 
@@ -216,9 +214,7 @@ class SettingsDialog(QDialog):
         auth_dev_group = QGroupBox("Dispositivi pre-autorizzati")
         auth_dev_layout = QVBoxLayout(auth_dev_group)
 
-        desc = QLabel(
-            "Devices in this list can connect without entering a password."
-        )
+        desc = QLabel("Devices in this list can connect without entering a password.")
         desc.setWordWrap(True)
         desc.setStyleSheet("font-size: 12px;")
         auth_dev_layout.addWidget(desc)
@@ -377,21 +373,15 @@ class SettingsDialog(QDialog):
             self._resolution_scale.setCurrentIndex(scale_idx)
 
         self._fps_spin.setValue(int(self._settings.value("video/max_fps", 30)))
-        self._adaptive_fps.setChecked(
-            self._settings.value("video/adaptive_fps", True, type=bool)
-        )
+        self._adaptive_fps.setChecked(self._settings.value("video/adaptive_fps", True, type=bool))
 
         codec = self._settings.value("video/codec", "")
         codec_idx = self._codec_combo.findData(codec)
         if codec_idx >= 0:
             self._codec_combo.setCurrentIndex(codec_idx)
-        self._hw_check.setChecked(
-            self._settings.value("video/hw_encoding", True, type=bool)
-        )
+        self._hw_check.setChecked(self._settings.value("video/hw_encoding", True, type=bool))
 
-        pixel_fmt = self._settings.value(
-            "video/pixel_format", self._plat_cfg.default_pixel_format
-        )
+        pixel_fmt = self._settings.value("video/pixel_format", self._plat_cfg.default_pixel_format)
         pf_idx = self._pixel_format.findData(pixel_fmt)
         if pf_idx >= 0:
             self._pixel_format.setCurrentIndex(pf_idx)
@@ -408,12 +398,8 @@ class SettingsDialog(QDialog):
         self._stun_server.setText(
             self._settings.value("network/stun_server", "stun:stun.l.google.com:19302")
         )
-        self._relay_host.setText(
-            self._settings.value("network/relay_host", "")
-        )
-        self._relay_port.setValue(
-            int(self._settings.value("network/relay_port", 8474))
-        )
+        self._relay_host.setText(self._settings.value("network/relay_host", ""))
+        self._relay_port.setValue(int(self._settings.value("network/relay_port", 8474)))
         self._enable_relay.setChecked(
             self._settings.value("network/enable_relay", True, type=bool)
         )
@@ -421,20 +407,14 @@ class SettingsDialog(QDialog):
         self._require_auth.setChecked(
             self._settings.value("security/require_auth", True, type=bool)
         )
-        self._e2ee_check.setChecked(
-            self._settings.value("security/e2ee", True, type=bool)
-        )
+        self._e2ee_check.setChecked(self._settings.value("security/e2ee", True, type=bool))
 
         self._enable_clipboard_sync.setChecked(
             self._settings.value("general/clipboard_sync", False, type=bool)
         )
-        self._enable_audio.setChecked(
-            self._settings.value("audio/enabled", False, type=bool)
-        )
+        self._enable_audio.setChecked(self._settings.value("audio/enabled", False, type=bool))
 
-        self._enable_camera.setChecked(
-            self._settings.value("camera/enabled", False, type=bool)
-        )
+        self._enable_camera.setChecked(self._settings.value("camera/enabled", False, type=bool))
         camera_device = int(self._settings.value("camera/device", 0))
         cam_idx = self._camera_device_combo.findData(camera_device)
         if cam_idx >= 0:
@@ -450,13 +430,14 @@ class SettingsDialog(QDialog):
         """Populate the camera device combo with detected cameras."""
         try:
             from opendesk.core.camera_manager import list_cameras
+
             cameras = list_cameras()
             # Keep default entry at index 0
             for i, cam in enumerate(cameras):
                 label = f"{cam['name']} (dev {cam['index']})"
-                existing = self._camera_device_combo.findData(cam['index'])
+                existing = self._camera_device_combo.findData(cam["index"])
                 if existing < 0:
-                    self._camera_device_combo.addItem(label, cam['index'])
+                    self._camera_device_combo.addItem(label, cam["index"])
         except Exception as e:
             logger.debug("Could not enumerate cameras: %s", e)
 
@@ -487,7 +468,8 @@ class SettingsDialog(QDialog):
             return
 
         raw, ok = QInputDialog.getText(
-            self, "Aggiungi dispositivo pre-autorizzato",
+            self,
+            "Aggiungi dispositivo pre-autorizzato",
             "Incolla l'UUID del dispositivo remoto.\n\n"
             "Il proprietario del dispositivo remoto deve:\n"
             "  1. Aprire OpenDesk → cliccare 'Copy' accanto a 'Device ID'\n"
@@ -510,15 +492,14 @@ class SettingsDialog(QDialog):
             self._populate_trusted_devices()
             n = len(matches)
             self._flash_status(
-                f"✅ {n} dispositivo"
-                f"{'i' if n > 1 else ''} pre-autorizzato"
-                f"{'i' if n > 1 else ''}"
+                f"✅ {n} dispositivo{'i' if n > 1 else ''} pre-autorizzato{'i' if n > 1 else ''}"
             )
             return
 
         # Non trovato — chiedi conferma prima di creare un nuovo entry
         reply = QMessageBox.question(
-            self, "Dispositivo sconosciuto",
+            self,
+            "Dispositivo sconosciuto",
             f"Nessun dispositivo '{raw}' trovato nel registry.\n"
             f"Vuoi creare un nuovo entry e pre-autorizzarlo comunque?\n\n"
             f"Assicurati di aver incollato l'UUID corretto (non l'ID sessione).",
@@ -538,7 +519,7 @@ class SettingsDialog(QDialog):
     def _flash_status(self, msg: str) -> None:
         """Mostra un messaggio temporaneo nella parent dialog (se possibile)."""
         parent = self.parentWidget()
-        if parent and hasattr(parent, 'statusBar'):
+        if parent and hasattr(parent, "statusBar"):
             sb = parent.statusBar()
             sb.showMessage(msg, 3000)
 

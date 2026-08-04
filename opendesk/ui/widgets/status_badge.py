@@ -8,14 +8,14 @@ from PySide6.QtWidgets import QLabel, QSizePolicy
 # ── Palette stati ───────────────────────────────────────────────────
 # (sfondo, testo, label)
 _STATUS_PALETTE: dict[str, tuple[str, str, str]] = {
-    "online":    ("#d1fae5", "#065f46", "Online"),
-    "offline":   ("#fee2e2", "#991b1b", "Offline"),
+    "online": ("#d1fae5", "#065f46", "Online"),
+    "offline": ("#fee2e2", "#991b1b", "Offline"),
     "connected": ("#dbeafe", "#1e40af", "Connected"),
-    "transfer":  ("#fef3c7", "#92400e", "Transferring"),
-    "error":     ("#fee2e2", "#991b1b", "Error"),
-    "pending":   ("#f3f4f6", "#374151", "Pending"),
-    "active":    ("#d1fae5", "#065f46", "Active"),
-    "idle":      ("#f3f4f6", "#374151", "Idle"),
+    "transfer": ("#fef3c7", "#92400e", "Transferring"),
+    "error": ("#fee2e2", "#991b1b", "Error"),
+    "pending": ("#f3f4f6", "#374151", "Pending"),
+    "active": ("#d1fae5", "#065f46", "Active"),
+    "idle": ("#f3f4f6", "#374151", "Idle"),
 }
 
 

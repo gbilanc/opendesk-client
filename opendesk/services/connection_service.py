@@ -167,8 +167,7 @@ class ConnectionService(QObject):
     @property
     def is_connected(self) -> bool:
         """Check if the CLIENT session is active and connected."""
-        return self._relay.role == RelayRole.CLIENT and \
-               self._relay.is_connected
+        return self._relay.role == RelayRole.CLIENT and self._relay.is_connected
 
     @property
     def is_hosting(self) -> bool:
@@ -204,12 +203,17 @@ class ConnectionService(QObject):
         self._host_session_id = self._session_id.replace(" ", "")
         logger.info(
             "Starting host on relay %s:%s with session %s",
-            host, port, self._host_session_id,
+            host,
+            port,
+            self._host_session_id,
         )
         # Passa gli ID dei dispositivi trusted per l'auto-auth
         trusted_ids = {d.device_id for d in self._device_registry.trusted()}
         self._relay.start_hosting(
-            host, port, self._host_session_id, self._password,
+            host,
+            port,
+            self._host_session_id,
+            self._password,
             device_id=self._device_id,
             device_name=self._device_name,
             trusted_device_ids=trusted_ids,
@@ -220,8 +224,9 @@ class ConnectionService(QObject):
         self._host_retries = 0
         self._relay.stop_hosting()
 
-    def join_session(self, peer_id: str, password: str,
-                     connection_mode: str = "remote_desktop") -> None:
+    def join_session(
+        self, peer_id: str, password: str, connection_mode: str = "remote_desktop"
+    ) -> None:
         """Connetti come client a una sessione remota.
 
         NON ferma la sessione host — l'hosting continua in background.
@@ -236,10 +241,16 @@ class ConnectionService(QObject):
         host, port = self._get_relay_config()
         logger.info(
             "Joining session %s on relay %s:%s (mode=%s)",
-            clean_id, host, port, connection_mode,
+            clean_id,
+            host,
+            port,
+            connection_mode,
         )
         self._relay.join_session(
-            host, port, clean_id, password,
+            host,
+            port,
+            clean_id,
+            password,
             device_id=self._device_id,
             connection_mode=connection_mode,
         )
@@ -279,7 +290,7 @@ class ConnectionService(QObject):
         if self._host_retries >= 5:
             status_callback("⚠ Relay unavailable — local session only")
             return
-        delay = min(2 ** self._host_retries * 2, 30)
+        delay = min(2**self._host_retries * 2, 30)
         self._host_retries += 1
         logger.info("Retrying relay in %ds (attempt %d/5)", delay, self._host_retries)
         QTimer.singleShot(int(delay * 1000), lambda: self._retry_now(status_callback))
@@ -292,7 +303,10 @@ class ConnectionService(QObject):
         status_callback("Reconnecting to relay...")
         trusted_ids = {d.device_id for d in self._device_registry.trusted()}
         self._relay.start_hosting(
-            host, port, self._host_session_id, self._password,
+            host,
+            port,
+            self._host_session_id,
+            self._password,
             device_id=self._device_id,
             device_name=self._device_name,
             trusted_device_ids=trusted_ids,

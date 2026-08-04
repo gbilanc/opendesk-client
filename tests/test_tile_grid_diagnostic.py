@@ -33,22 +33,23 @@ from opendesk.services.stream_service import (
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
+
 def make_ui_frame(h: int = 200, w: int = 320) -> np.ndarray:
     """Crea un frame simile a una schermata desktop realistica."""
     frame = np.full((h, w, 3), 240, dtype=np.uint8)  # sfondo chiaro
-    frame[0:30, :] = (30, 30, 40)                    # barra titolo
-    frame[40:60, 20:100] = (220, 220, 230)            # pulsante grigio
-    frame[40:60, 110:190] = (50, 120, 200)            # pulsante blu
-    frame[80:85, 30:290] = (0, 0, 0)                  # linea testo
-    frame[95:100, 30:250] = (0, 0, 0)                 # linea testo
-    frame[130:150, 30:50] = (200, 200, 50)            # icona gialla
-    frame[130:150, 60:80] = (50, 200, 50)             # icona verde
-    frame[130:150, 90:110] = (200, 50, 50)            # icona rossa
+    frame[0:30, :] = (30, 30, 40)  # barra titolo
+    frame[40:60, 20:100] = (220, 220, 230)  # pulsante grigio
+    frame[40:60, 110:190] = (50, 120, 200)  # pulsante blu
+    frame[80:85, 30:290] = (0, 0, 0)  # linea testo
+    frame[95:100, 30:250] = (0, 0, 0)  # linea testo
+    frame[130:150, 30:50] = (200, 200, 50)  # icona gialla
+    frame[130:150, 60:80] = (50, 200, 50)  # icona verde
+    frame[130:150, 90:110] = (200, 50, 50)  # icona rossa
     # Sfumatura delicata per simulare gradienti UI
     for y in range(160, 185):
         v = int(200 + 55 * np.sin(y * 0.1))
         frame[y, :] = (v, v - 20, v - 40)
-    frame[185:200, :] = (220, 220, 225)               # barra stato
+    frame[185:200, :] = (220, 220, 225)  # barra stato
     return frame
 
 
@@ -62,10 +63,15 @@ def test_h264_keyframe_quality() -> None:
     frame = make_ui_frame()
     h, w = frame.shape[:2]
 
-    enc = VideoEncoder(EncoderConfig(
-        width=w, height=h, fps=15,
-        bitrate=4_000_000, quality=QualityLevel.HIGH,
-    ))
+    enc = VideoEncoder(
+        EncoderConfig(
+            width=w,
+            height=h,
+            fps=15,
+            bitrate=4_000_000,
+            quality=QualityLevel.HIGH,
+        )
+    )
     dec = VideoDecoder()
 
     packets = enc.encode(frame)
@@ -82,12 +88,14 @@ def test_h264_keyframe_quality() -> None:
     total_pixels = w * h
     bad_ratio = bad_pixels / total_pixels
 
-    print(f"[H.264 keyframe] max_err={max_err}, mean_err={mean_err:.2f}, "
-          f"bad_pixels={bad_pixels}/{total_pixels} ({bad_ratio*100:.1f}%)")
+    print(
+        f"[H.264 keyframe] max_err={max_err}, mean_err={mean_err:.2f}, "
+        f"bad_pixels={bad_pixels}/{total_pixels} ({bad_ratio * 100:.1f}%)"
+    )
 
     # La qualità deve essere buona: max_err < 30, bad_pixels < 10%
     assert max_err < 30, f"max_err troppo alto: {max_err}"
-    assert bad_ratio < 0.10, f"troppi pixel degradati: {bad_ratio*100:.1f}%"
+    assert bad_ratio < 0.10, f"troppi pixel degradati: {bad_ratio * 100:.1f}%"
 
     enc.release()
     dec.release()
@@ -115,12 +123,13 @@ def test_jpeg_tile_quality() -> None:
         th = min(_TILE_SIZE, h - y)
         for x in range(0, w, _TILE_SIZE):
             tw = min(_TILE_SIZE, w - x)
-            tile = frame[y:y+th, x:x+tw]
+            tile = frame[y : y + th, x : x + tw]
 
             # Codifica JPEG
             tile_bgr = cv2.cvtColor(tile, cv2.COLOR_RGB2BGR)
             success, encoded = cv2.imencode(
-                '.jpg', tile_bgr,
+                ".jpg",
+                tile_bgr,
                 [cv2.IMWRITE_JPEG_QUALITY, _TILE_JPEG_QUALITY[QualityLevel.HIGH]],
             )
             assert success, f"JPEG encode fallito a ({x},{y})"
@@ -137,8 +146,7 @@ def test_jpeg_tile_quality() -> None:
 
     avg_mae = total_mae / max(total_tiles, 1)
     # MAE medio <= 1.5 significa percettivamente lossless
-    assert avg_mae <= 2.0, \
-        f"JPEG qualita troppo bassa: MAE medio = {avg_mae:.3f}"
+    assert avg_mae <= 2.0, f"JPEG qualita troppo bassa: MAE medio = {avg_mae:.3f}"
     print(f"[JPEG tile] Qualita OK: MAE medio = {avg_mae:.3f} (soglia <= 2.0), tile={total_tiles}")
 
 
@@ -152,10 +160,15 @@ def test_tile_grid_drift() -> None:
     frame = make_ui_frame()
     h, w = frame.shape[:2]
 
-    enc = VideoEncoder(EncoderConfig(
-        width=w, height=h, fps=15,
-        bitrate=4_000_000, quality=QualityLevel.HIGH,
-    ))
+    enc = VideoEncoder(
+        EncoderConfig(
+            width=w,
+            height=h,
+            fps=15,
+            bitrate=4_000_000,
+            quality=QualityLevel.HIGH,
+        )
+    )
     dec = VideoDecoder()
 
     prev_frame = None
@@ -168,7 +181,7 @@ def test_tile_grid_drift() -> None:
         offset = int(30 * np.sin(i * 0.1))
         x_pos = 50 + offset
         if 0 <= x_pos < w - 40:
-            current[80:85, x_pos:x_pos + 40] = (200, 50, 50)  # cursore/testo che si muove
+            current[80:85, x_pos : x_pos + 40] = (200, 50, 50)  # cursore/testo che si muove
 
         # ── Primo frame: full keyframe ──
         if prev_frame is None:
@@ -201,15 +214,16 @@ def test_tile_grid_drift() -> None:
             for x in range(0, w, _TILE_SIZE):
                 tw = min(_TILE_SIZE, w - x)
                 total_tiles += 1
-                cur_tile = current[y:y+th, x:x+tw]
-                prev_tile = prev_frame[y:y+th, x:x+tw]
+                cur_tile = current[y : y + th, x : x + tw]
+                prev_tile = prev_frame[y : y + th, x : x + tw]
                 diff = np.abs(cur_tile.astype(np.int16) - prev_tile.astype(np.int16))
                 changed = np.any(diff > _TILE_THRESHOLD, axis=2)
                 change_ratio = float(changed.sum()) / changed.size
                 if change_ratio > 0.005:
                     tile_bgr = cv2.cvtColor(cur_tile, cv2.COLOR_RGB2BGR)
                     success, encoded = cv2.imencode(
-                        '.jpg', tile_bgr,
+                        ".jpg",
+                        tile_bgr,
                         [cv2.IMWRITE_JPEG_QUALITY, _TILE_JPEG_QUALITY[QualityLevel.HIGH]],
                     )
                     if success:
@@ -234,7 +248,7 @@ def test_tile_grid_drift() -> None:
                 tile_rgb = cv2.cvtColor(tile_bgr, cv2.COLOR_BGR2RGB)
                 ref_h, ref_w = ref_frame.shape[:2]
                 if ty + th <= ref_h and tx + tw <= ref_w:
-                    ref_frame[ty:ty+th, tx:tx+tw] = tile_rgb
+                    ref_frame[ty : ty + th, tx : tx + tw] = tile_rgb
 
         prev_frame = current.copy()
 
@@ -245,8 +259,10 @@ def test_tile_grid_drift() -> None:
             mean_drift = drift.mean()
             bad_pixels = int(np.any(drift > 5, axis=2).sum())
             status = "✅" if max_drift < 30 and bad_pixels < w * h * 0.05 else "⚠️"
-            print(f"{status} Frame {i+1}: max_drift={max_drift}, "
-                  f"mean_drift={mean_drift:.2f}, bad_pixels={bad_pixels}/{w*h}")
+            print(
+                f"{status} Frame {i + 1}: max_drift={max_drift}, "
+                f"mean_drift={mean_drift:.2f}, bad_pixels={bad_pixels}/{w * h}"
+            )
 
     # Verifica finale:
     # - max_drift può essere alto ai bordi netti (testo nero su sfondo chiaro)
@@ -257,16 +273,18 @@ def test_tile_grid_drift() -> None:
     mean_drift = final_drift.mean()
     final_bad = int(np.any(final_drift > 5, axis=2).sum())
 
-    assert mean_drift < 3.0, \
+    assert mean_drift < 3.0, (
         f"Deriva media troppo alta: {mean_drift:.2f} (limite: 3.0) — indica drift progressivo"
-    assert final_bad < w * h * 0.05, \
-        f"Troppi pixel degradati: {final_bad}/{w*h} (limite: 5%)"
+    )
+    assert final_bad < w * h * 0.05, f"Troppi pixel degradati: {final_bad}/{w * h} (limite: 5%)"
 
     enc.release()
     dec.release()
-    print(f"\n✅ Drift test superato: max_drift={final_drift.max()}, "
-          f"mean_drift={mean_drift:.2f}, bad_pixels={final_bad}/{w*h} "
-          f"({final_bad/(w*h)*100:.1f}%)")
+    print(
+        f"\n✅ Drift test superato: max_drift={final_drift.max()}, "
+        f"mean_drift={mean_drift:.2f}, bad_pixels={final_bad}/{w * h} "
+        f"({final_bad / (w * h) * 100:.1f}%)"
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -278,10 +296,15 @@ def test_sudden_scene_change() -> None:
     """Cambio scena improvviso deve attivare il fallback a keyframe."""
     h, w = 200, 320
 
-    enc = VideoEncoder(EncoderConfig(
-        width=w, height=h, fps=15,
-        bitrate=4_000_000, quality=QualityLevel.HIGH,
-    ))
+    enc = VideoEncoder(
+        EncoderConfig(
+            width=w,
+            height=h,
+            fps=15,
+            bitrate=4_000_000,
+            quality=QualityLevel.HIGH,
+        )
+    )
     dec = VideoDecoder()
 
     # Frame A: scena scura
@@ -312,19 +335,20 @@ def test_sudden_scene_change() -> None:
         for x in range(0, w2, _TILE_SIZE):
             tw = min(_TILE_SIZE, w2 - x)
             total += 1
-            ct = current[y:y+th, x:x+tw]
-            pt = prev[y:y+th, x:x+tw]
+            ct = current[y : y + th, x : x + tw]
+            pt = prev[y : y + th, x : x + tw]
             d = np.abs(ct.astype(np.int16) - pt.astype(np.int16))
             if np.any(d > _TILE_THRESHOLD):
                 changed += 1
 
     change_ratio = changed / total
-    print(f"[Sudden change] Tile cambiati: {changed}/{total} ({change_ratio*100:.0f}%)")
+    print(f"[Sudden change] Tile cambiati: {changed}/{total} ({change_ratio * 100:.0f}%)")
 
     # Il cambio scena deve superare la soglia del fallback keyframe
-    assert change_ratio > _TILE_MAX_CHANGED_RATIO, \
-        f"Il cambio scena dovrebbe attivare il fallback keyframe " \
-        f"({change_ratio*100:.0f}% < {_TILE_MAX_CHANGED_RATIO*100:.0f}%)"
+    assert change_ratio > _TILE_MAX_CHANGED_RATIO, (
+        f"Il cambio scena dovrebbe attivare il fallback keyframe "
+        f"({change_ratio * 100:.0f}% < {_TILE_MAX_CHANGED_RATIO * 100:.0f}%)"
+    )
 
     # Fallback: invia keyframe
     enc.request_keyframe()
@@ -362,8 +386,7 @@ def test_keyframe_watchdog_logic() -> None:
             if last_keyframe_time > 0 and time.time() - last_keyframe_time > 5.0:
                 watchdog_triggered = True
                 print(
-                    f"  Watchdog trigger: {time.time() - last_keyframe_time:.1f}s "
-                    "senza keyframe"
+                    f"  Watchdog trigger: {time.time() - last_keyframe_time:.1f}s senza keyframe"
                 )
                 last_keyframe_time = time.time()
 
@@ -384,12 +407,12 @@ def test_tile_bounds_check() -> None:
 
     # Compositazione di tile a varie posizioni (inclusi bordi)
     test_positions = [
-        (0, 0, 64, 64),           # angolo superiore sinistro
-        (w - 64, 0, 64, 64),      # angolo superiore destro
-        (0, h - 64, 64, 64),      # angolo inferiore sinistro
-        (w - 64, h - 64, 64, 64), # angolo inferiore destro
-        (w - 10, h - 10, 10, 10), # bordo dx inferiore (tile piccolo)
-        (150, 50, 30, 30),        # tile non allineato alla griglia
+        (0, 0, 64, 64),  # angolo superiore sinistro
+        (w - 64, 0, 64, 64),  # angolo superiore destro
+        (0, h - 64, 64, 64),  # angolo inferiore sinistro
+        (w - 64, h - 64, 64, 64),  # angolo inferiore destro
+        (w - 10, h - 10, 10, 10),  # bordo dx inferiore (tile piccolo)
+        (150, 50, 30, 30),  # tile non allineato alla griglia
     ]
 
     for tx, ty, tw, th in test_positions:
@@ -399,10 +422,11 @@ def test_tile_bounds_check() -> None:
         # Bounds check (stessa logica del receiver)
         ref_h, ref_w = ref.shape[:2]
         if ty + th <= ref_h and tx + tw <= ref_w:
-            ref[ty:ty+th, tx:tx+tw] = tile
+            ref[ty : ty + th, tx : tx + tw] = tile
             # Verifica che il tile sia stato compositato correttamente
-            assert np.array_equal(ref[ty:ty+th, tx:tx+tw], tile), \
+            assert np.array_equal(ref[ty : ty + th, tx : tx + tw], tile), (
                 f"Composit fallita a ({tx},{ty},{tw}x{th})"
+            )
         else:
             # Tile fuori dai bounds → deve essere scartato
             print(f"  Tile ({tx},{ty},{tw}x{th}) fuori bounds — scartato (corretto)")

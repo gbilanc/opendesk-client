@@ -65,6 +65,7 @@ class TestScreenRecorder:
 
     def test_recording_status(self) -> None:
         import time
+
         now = time.time()
         status = RecordingStatus(
             active=True,
@@ -92,6 +93,7 @@ class TestScreenRecorder:
 class TestWaylandCapture:
     def test_availability_check(self) -> None:
         from opendesk.core.wayland_capture import WaylandScreenCast
+
         wsc = WaylandScreenCast()
         # Should return False on most CI/headless systems
         available = wsc.is_available()
@@ -118,9 +120,13 @@ class TestWaylandCapture:
     def test_benchmark_encoder(self) -> None:
         """Quick benchmark smoke test."""
         from opendesk.core.benchmark import benchmark_encoder
+
         result = benchmark_encoder(
-            width=320, height=180, bitrate=500_000,
-            num_frames=5, warmup=2,
+            width=320,
+            height=180,
+            bitrate=500_000,
+            num_frames=5,
+            warmup=2,
         )
         assert result.width == 320
         assert result.height == 180

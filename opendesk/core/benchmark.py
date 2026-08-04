@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 _WARMUP_FRAMES = 10
 _BENCH_FRAMES = 50
 _TEST_RESOLUTIONS = [
-    (640, 360),    # nHD
-    (1280, 720),   # HD
+    (640, 360),  # nHD
+    (1280, 720),  # HD
     (1920, 1080),  # Full HD
 ]
 _TEST_BITRATES = [200_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000]
@@ -78,8 +78,7 @@ class BenchmarkReport:
         if self.results:
             best = max(self.results, key=lambda r: r.efficiency)
             lines.append(
-                f"Best efficiency: {best.width}x{best.height} @ "
-                f"{best.bitrate // 1000} kbps"
+                f"Best efficiency: {best.width}x{best.height} @ {best.bitrate // 1000} kbps"
             )
         return " | ".join(lines)
 
@@ -145,7 +144,10 @@ def benchmark_encoder(
     EncoderBenchResult
     """
     config = EncoderConfig(
-        width=width, height=height, fps=30, bitrate=bitrate,
+        width=width,
+        height=height,
+        fps=30,
+        bitrate=bitrate,
         quality=QualityLevel.MEDIUM,
     )
     enc = VideoEncoder(config)
@@ -178,7 +180,9 @@ def benchmark_encoder(
     total_seconds = sum(encode_times) / 1000
 
     result = EncoderBenchResult(
-        width=width, height=height, bitrate=bitrate,
+        width=width,
+        height=height,
+        bitrate=bitrate,
         avg_encode_ms=round(avg_ms, 2),
         p99_encode_ms=round(p99_ms, 2),
         avg_frame_size=avg_size,
@@ -211,8 +215,12 @@ def run_full_benchmark() -> BenchmarkReport:
                 results.append(result)
                 logger.info(
                     "  %4dx%-4d @ %8d bps → %.1f ms/frame, %.0f kbps, %.1f FPS",
-                    width, height, bitrate,
-                    result.avg_encode_ms, result.bitrate_kbps, result.fps,
+                    width,
+                    height,
+                    bitrate,
+                    result.avg_encode_ms,
+                    result.bitrate_kbps,
+                    result.fps,
                 )
             except Exception as e:
                 logger.warning("  %4dx%-4d @ %d bps → FAILED: %s", width, height, bitrate, e)

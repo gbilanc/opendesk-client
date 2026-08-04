@@ -154,9 +154,8 @@ class CameraOverlay(QWidget):
     def mousePressEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
-            self._drag_offset = (
-                event.globalPosition().toPoint()
-                - self.parent().mapToGlobal(self.pos())
+            self._drag_offset = event.globalPosition().toPoint() - self.parent().mapToGlobal(
+                self.pos()
             )
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
@@ -174,6 +173,8 @@ class CameraOverlay(QWidget):
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = False
+
+
 # ---------------------------------------------------------------------------
 # RemoteViewer — main display widget
 # ---------------------------------------------------------------------------
@@ -205,9 +206,10 @@ class RemoteViewer(QGraphicsView):
 
     class FitMode:
         """Scaling behaviour for remote content."""
-        FIT_WINDOW = 0      # Scale to fit the viewport
-        FIXED_RATIO = 1     # Original 1:1 pixel mapping
-        CUSTOM_ZOOM = 2     # User-controlled zoom level
+
+        FIT_WINDOW = 0  # Scale to fit the viewport
+        FIXED_RATIO = 1  # Original 1:1 pixel mapping
+        CUSTOM_ZOOM = 2  # User-controlled zoom level
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -216,8 +218,7 @@ class RemoteViewer(QGraphicsView):
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
         self.setRenderHints(
-            QPainter.RenderHint.SmoothPixmapTransform
-            | QPainter.RenderHint.Antialiasing
+            QPainter.RenderHint.SmoothPixmapTransform | QPainter.RenderHint.Antialiasing
         )
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
@@ -273,7 +274,6 @@ class RemoteViewer(QGraphicsView):
         self._camera_overlay = CameraOverlay(self.viewport())
         self._camera_overlay.setVisible(False)
 
-
         # Placeholder while disconnected
         self._show_placeholder()
 
@@ -324,10 +324,7 @@ class RemoteViewer(QGraphicsView):
                 expected_size = w * h * 3
 
                 # Get a pre-allocated buffer from the ring buffer
-                if (
-                    not self._frame_buffers
-                    or len(self._frame_buffers[-1]) != expected_size
-                ):
+                if not self._frame_buffers or len(self._frame_buffers[-1]) != expected_size:
                     buf = bytearray(expected_size)
                 else:
                     buf = self._frame_buffers.popleft()
@@ -379,7 +376,10 @@ class RemoteViewer(QGraphicsView):
             if t_total > 16:  # >16ms (60fps budget)
                 logger.debug(
                     "display_frame: %.0fms total (pixmap %.0fms) %dx%d",
-                    t_total, t_pixmap, width, height,
+                    t_total,
+                    t_pixmap,
+                    width,
+                    height,
                 )
 
         except Exception:
@@ -494,8 +494,11 @@ class RemoteViewer(QGraphicsView):
             self._flush_pending_mouse()
             scene_pos = self.mapToScene(event.pos())
             self.remote_mouse_event.emit(
-                int(scene_pos.x()), int(scene_pos.y()),
-                btn, True, True,
+                int(scene_pos.x()),
+                int(scene_pos.y()),
+                btn,
+                True,
+                True,
             )
         super().mousePressEvent(event)
 
@@ -506,8 +509,11 @@ class RemoteViewer(QGraphicsView):
             self._flush_pending_mouse()
             scene_pos = self.mapToScene(event.pos())
             self.remote_mouse_event.emit(
-                int(scene_pos.x()), int(scene_pos.y()),
-                btn, False, True,
+                int(scene_pos.x()),
+                int(scene_pos.y()),
+                btn,
+                False,
+                True,
             )
         super().mouseReleaseEvent(event)
 
@@ -516,8 +522,11 @@ class RemoteViewer(QGraphicsView):
         if self._connection_active:
             scene_pos = self.mapToScene(event.pos())
             self._pending_mouse = (
-                int(scene_pos.x()), int(scene_pos.y()),
-                0, False, True,
+                int(scene_pos.x()),
+                int(scene_pos.y()),
+                0,
+                False,
+                True,
             )
             if not self._mouse_coalesce_timer.isActive():
                 self._mouse_coalesce_timer.start(self._MOUSE_COALESCE_MS)
@@ -720,12 +729,10 @@ class RemoteViewer(QGraphicsView):
         except Exception as e:
             logger.warning("Camera overlay update error: %s", e)
 
-
-
     def _reposition_camera_overlay(self) -> None:
         """Ensure the overlay is visible. First time places it at top-right."""
         if self._camera_overlay and self._camera_overlay.isVisible():
-            if getattr(self._camera_overlay, '_user_moved', False):
+            if getattr(self._camera_overlay, "_user_moved", False):
                 # Clamp user-placed position so it stays on-screen after a resize
                 vp = self.viewport()
                 ox, oy = self._camera_overlay.pos().x(), self._camera_overlay.pos().y()
@@ -755,8 +762,8 @@ class RemoteViewer(QGraphicsView):
         font = QFont("Monospace", 11)
         painter.setFont(font)
 
-        quality_color = "#22c55e" if self._fps >= 15 else (
-            "#f59e0b" if self._fps >= 5 else "#ef4444"
+        quality_color = (
+            "#22c55e" if self._fps >= 15 else ("#f59e0b" if self._fps >= 5 else "#ef4444")
         )
 
         lines = [
@@ -1029,10 +1036,14 @@ class ViewerWindow(QMainWindow):
     def _on_ctrl_alt_del(self) -> None:
         """Send Ctrl+Alt+Del to the remote peer."""
         # Send Ctrl down, Alt down, Delete down, Delete up, Alt up, Ctrl up
-        if hasattr(self._viewer, 'remote_key_event'):
+        if hasattr(self._viewer, "remote_key_event"):
             for key, pressed in [
-                ("ctrl", True), ("alt", True), ("delete", True),
-                ("delete", False), ("alt", False), ("ctrl", False),
+                ("ctrl", True),
+                ("alt", True),
+                ("delete", True),
+                ("delete", False),
+                ("alt", False),
+                ("ctrl", False),
             ]:
                 self._viewer.remote_key_event.emit(key, pressed)
 

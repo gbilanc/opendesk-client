@@ -57,9 +57,7 @@ class MonitorSelector(QDialog):
         title.setStyleSheet("font-size: 16px; font-weight: 600; color: #0f172a;")
         layout.addWidget(title)
 
-        subtitle = QLabel(
-            f"{len(self._monitors)} monitor(s) detected on the remote computer."
-        )
+        subtitle = QLabel(f"{len(self._monitors)} monitor(s) detected on the remote computer.")
         subtitle.setStyleSheet("font-size: 13px; color: #64748b;")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)

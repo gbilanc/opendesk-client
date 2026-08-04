@@ -32,9 +32,11 @@ class SimulatedPeer:
         """Simulate sending a message to another peer."""
         # Encrypt if E2E keys have been exchanged
         if self.remote_key_set and msg.type not in (
-            MessageType.HELLO, MessageType.KEY_EXCHANGE,
+            MessageType.HELLO,
+            MessageType.KEY_EXCHANGE,
         ):
             from opendesk.crypto.e2ee import encrypt_json
+
             encrypted = encrypt_json(self.encryption, msg.payload)
             msg.payload = {"encrypted": encrypted.encode().hex()}
             msg.encrypted = True
@@ -46,9 +48,11 @@ class SimulatedPeer:
         # Decrypt if needed
         if msg.encrypted and self.remote_key_set:
             from opendesk.crypto.e2ee import EncryptedMessage
+
             em = EncryptedMessage.decode(bytes.fromhex(msg.payload["encrypted"]))
             plain = self.encryption.decrypt(em)
             import json
+
             msg.payload = json.loads(plain.decode("utf-8"))
             msg.encrypted = False
 
@@ -64,7 +68,6 @@ class TestP2PIntegration:
     """Full handshake + E2E encrypted communication."""
 
     async def _handshake(self, alice: SimulatedPeer, bob: SimulatedPeer) -> None:
-
         """Simulate the initial handshake between two peers."""
         # 1. Hello
         await alice.send(Message.hello(version=1), bob)
@@ -181,9 +184,14 @@ class TestP2PIntegration:
 
         # File request
         await alice.send(
-            Message(MessageType.FILE_REQUEST, {
-                "name": "document.pdf", "size": 50000, "sha256": "abc",
-            }),
+            Message(
+                MessageType.FILE_REQUEST,
+                {
+                    "name": "document.pdf",
+                    "size": 50000,
+                    "sha256": "abc",
+                },
+            ),
             bob,
         )
         assert len(bob.received_messages) == 1

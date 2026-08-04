@@ -145,16 +145,22 @@ class PipeWireCapture:
             return False
 
         import subprocess
+
         try:
             # Check GStreamer + pipewiresrc + GstApp (all needed by _pipewire_helper.py)
             r = subprocess.run(
-                [system_python, "-c",
-                 "import gi; gi.require_version('Gst', '1.0');"
-                 "gi.require_version('GstApp', '1.0');"
-                 "from gi.repository import Gst, GstApp; Gst.init(None);"
-                 "e = Gst.ElementFactory.make('pipewiresrc', None);"
-                 "exit(0 if e else 1)"],
-                capture_output=True, text=True, timeout=5,
+                [
+                    system_python,
+                    "-c",
+                    "import gi; gi.require_version('Gst', '1.0');"
+                    "gi.require_version('GstApp', '1.0');"
+                    "from gi.repository import Gst, GstApp; Gst.init(None);"
+                    "e = Gst.ElementFactory.make('pipewiresrc', None);"
+                    "exit(0 if e else 1)",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if r.returncode == 0:
                 self._available = True
@@ -199,19 +205,19 @@ class PipeWireCapture:
 
         logger.info(
             "Starting PipeWire capture (monitor %d) via %s",
-            monitor_index, helper,
+            monitor_index,
+            helper,
         )
 
         self._helper_process = subprocess.Popen(
-            [system_python, str(helper),
-             "--monitor", str(monitor_index),
-             "--fps", "30"],
+            [system_python, str(helper), "--monitor", str(monitor_index), "--fps", "30"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
 
         # Make stdout non-blocking for header read attempts
         import fcntl
+
         if self._helper_process.stdout:
             fd = self._helper_process.stdout.fileno()
             fl = fcntl.fcntl(fd, fcntl.F_GETFL)
@@ -255,13 +261,14 @@ class PipeWireCapture:
                 pass
             logger.warning(
                 "PipeWire helper exited with code %d: %s",
-                poll, err_text.strip() or "(no output)",
+                poll,
+                err_text.strip() or "(no output)",
             )
             self.release()
             return None
 
         # Lazy init frame buffer
-        if not hasattr(self, '_frame_buf'):
+        if not hasattr(self, "_frame_buf"):
             self._frame_buf = b""
 
         frame_size = self._resolved_w * self._resolved_h * 3
@@ -282,7 +289,9 @@ class PipeWireCapture:
         self._frame_buf = self._frame_buf[frame_size:]  # keep overflow
 
         rgb = np.frombuffer(data, dtype=np.uint8).reshape(
-            self._resolved_h, self._resolved_w, 3,
+            self._resolved_h,
+            self._resolved_w,
+            3,
         )
         return CapturedFrame(
             data=rgb.copy(),
@@ -301,7 +310,7 @@ class PipeWireCapture:
         import struct
 
         # Lazy init header buffer
-        if not hasattr(self, '_header_buf'):
+        if not hasattr(self, "_header_buf"):
             self._header_buf = b""
 
         if self._helper_process is None or self._helper_process.stdout is None:
@@ -319,7 +328,8 @@ class PipeWireCapture:
                 pass
             logger.error(
                 "PipeWire helper exited with code %d: %s",
-                poll, err_text.strip() or "(no output)",
+                poll,
+                err_text.strip() or "(no output)",
             )
             self.release()
             self._header_ready = None
@@ -334,8 +344,8 @@ class PipeWireCapture:
             except Exception:
                 pass
             logger.error(
-                "PipeWire: timed out waiting for portal approval (10 s). "
-                "stderr: %s", err_text.strip() or "(no output)",
+                "PipeWire: timed out waiting for portal approval (10 s). stderr: %s",
+                err_text.strip() or "(no output)",
             )
             self.release()
             self._header_ready = None
@@ -358,7 +368,8 @@ class PipeWireCapture:
         self._header_ready = True
         logger.info(
             "PipeWire capture started: %dx%d",
-            self._resolved_w, self._resolved_h,
+            self._resolved_w,
+            self._resolved_h,
         )
         return None
 
@@ -384,7 +395,10 @@ class PipeWireCapture:
         if shutil.which("wlr-randr"):
             try:
                 r = subprocess.run(
-                    ["wlr-randr"], capture_output=True, text=True, timeout=3,
+                    ["wlr-randr"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
                 )
                 current_name = ""
                 for line in r.stdout.splitlines():
@@ -397,20 +411,33 @@ class PipeWireCapture:
                         w, h = int(m_size.group(1)), int(m_size.group(2))
                         x, y = (int(m_pos.group(1)), int(m_pos.group(2))) if m_pos else (0, 0)
                         idx = len(self._monitors)
-                        self._monitors.append(MonitorInfo(
-                            index=idx, name=current_name,
-                            left=x, top=y, width=w, height=h,
-                            is_primary=idx == 0,
-                        ))
+                        self._monitors.append(
+                            MonitorInfo(
+                                index=idx,
+                                name=current_name,
+                                left=x,
+                                top=y,
+                                width=w,
+                                height=h,
+                                is_primary=idx == 0,
+                            )
+                        )
                         current_name = ""
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
 
         if not self._monitors:
-            self._monitors.append(MonitorInfo(
-                index=0, name="Wayland Output",
-                left=0, top=0, width=1920, height=1080, is_primary=True,
-            ))
+            self._monitors.append(
+                MonitorInfo(
+                    index=0,
+                    name="Wayland Output",
+                    left=0,
+                    top=0,
+                    width=1920,
+                    height=1080,
+                    is_primary=True,
+                )
+            )
         return self._monitors
 
     def release(self) -> None:
@@ -442,8 +469,6 @@ class PipeWireCapture:
 # ---------------------------------------------------------------------------
 # Backend auto-detection
 # ---------------------------------------------------------------------------
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -509,19 +534,30 @@ class ScreenCapture:
         if self._method == CaptureMethod.PORTAL:
             # PORTAL captures full desktop — single virtual monitor
             pw = self._get_pw()
-            return pw.monitors() if pw.is_available() else [
-                MonitorInfo(
-                    index=0, name="Wayland Desktop",
-                    left=0, top=0, width=1920, height=1080, is_primary=True,
-                )
-            ]
+            return (
+                pw.monitors()
+                if pw.is_available()
+                else [
+                    MonitorInfo(
+                        index=0,
+                        name="Wayland Desktop",
+                        left=0,
+                        top=0,
+                        width=1920,
+                        height=1080,
+                        is_primary=True,
+                    )
+                ]
+            )
         sct = self._get_sct()
         return [
             MonitorInfo(
                 index=i,
                 name=m.get("name", f"Monitor {i}"),
-                left=m["left"], top=m["top"],
-                width=m["width"], height=m["height"],
+                left=m["left"],
+                top=m["top"],
+                width=m["width"],
+                height=m["height"],
                 is_primary=m.get("is_primary", i == 0),
             )
             for i, m in enumerate(sct.monitors[1:])
@@ -627,7 +663,8 @@ class ScreenCapture:
             diff = frame_diff_ratio(rgb, prev, threshold=12)
             self._prev_frames[monitor_index] = rgb
             yield CapturedFrame(
-                data=rgb, monitor_index=monitor_index,
+                data=rgb,
+                monitor_index=monitor_index,
                 timestamp=t0,
                 region=(mon["left"], mon["top"], mon["width"], mon["height"]),
             )
@@ -702,6 +739,7 @@ class ScreenCapture:
         if loop is not None:
             # Already inside an event loop — delegate to a thread
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 future = pool.submit(lambda: asyncio.run(wsc.setup()))
                 ok = future.result(timeout=30)
@@ -784,12 +822,14 @@ class ScreenCapture:
         if self._portal is None:
             return
         import asyncio
+
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
         if loop is not None:
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 future = pool.submit(lambda: asyncio.run(self._portal.shutdown()))
                 future.result(timeout=10)
@@ -853,4 +893,5 @@ def _find_system_python() -> str | None:
     duplicating the detection logic.
     """
     from opendesk.core.platform_config import _find_system_python_gi
+
     return _find_system_python_gi()

@@ -89,7 +89,8 @@ class OpusCodec:
         self._encoder_stream.bit_rate = 64000
         logger.info(
             "Opus encoder ready: %d Hz, %d ch",
-            self._sample_rate, self._channels,
+            self._sample_rate,
+            self._channels,
         )
 
     def encode(self, pcm: np.ndarray) -> bytes | None:
@@ -99,7 +100,9 @@ class OpusCodec:
 
         # Build an AudioFrame in fltp planar format
         frame = av.AudioFrame(
-            format="fltp", layout="stereo", samples=len(pcm),
+            format="fltp",
+            layout="stereo",
+            samples=len(pcm),
         )
         frame.sample_rate = self._sample_rate
         frame.pts = 0
@@ -128,7 +131,8 @@ class OpusCodec:
         self._decoder.layout = av.AudioLayout("stereo")
         logger.info(
             "Opus decoder ready: %d Hz, %d ch",
-            self._sample_rate, self._channels,
+            self._sample_rate,
+            self._channels,
         )
 
     def decode(self, data: bytes) -> np.ndarray | None:
@@ -160,7 +164,9 @@ class OpusCodec:
         else:
             logger.warning(
                 "Unhandled decoder output format: %s, planes=%d, num_channels=%d",
-                fmt_name, len(f.planes), num_channels,
+                fmt_name,
+                len(f.planes),
+                num_channels,
             )
             return None
 
@@ -192,9 +198,7 @@ class AudioManager:
 
     def __init__(self, config: AudioConfig | None = None) -> None:
         self._config = config or AudioConfig()
-        self._opus = OpusCodec(
-            self._config.sample_rate, self._config.channels
-        )
+        self._opus = OpusCodec(self._config.sample_rate, self._config.channels)
         self._direction = AudioDirection.NONE
         self._send_fn: Callable | None = None
 
@@ -277,14 +281,15 @@ class AudioManager:
         # Git Bash). cffi (used by soundcard) calls find_library to locate
         # ole32.dll, so we ensure System32 is on PATH before importing.
         import platform as _platform
+
         if _platform.system() == "Windows":
             import os as _os
+
             _system32 = r"C:\Windows\System32"
             # Must check exact PATH entry, not substring — otherwise
             # C:\Windows\System32\Wbem etc. cause a false positive.
-            if (
-                _os.path.isdir(_system32)
-                and _system32 not in _os.environ["PATH"].split(_os.pathsep)
+            if _os.path.isdir(_system32) and _system32 not in _os.environ["PATH"].split(
+                _os.pathsep
             ):
                 _os.environ["PATH"] += _os.pathsep + _system32
 
@@ -328,6 +333,7 @@ class AudioManager:
                     encoded = self._opus.encode(pcm_float)
                     if encoded and self._send_fn:
                         from opendesk.network.protocol import Message, MessageType
+
                         msg = Message(
                             MessageType.AUDIO_FRAME,
                             {"data": encoded, "pts": int(time.time() * 1000)},
@@ -368,6 +374,7 @@ class AudioManager:
 
         # ── Offload blocking play() to a background thread ───────
         import threading
+
         threading.Thread(
             target=self._play_blocking,
             args=(pcm,),

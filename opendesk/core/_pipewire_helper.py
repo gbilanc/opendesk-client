@@ -42,11 +42,15 @@ def main() -> None:
     parser.add_argument("--height", type=int, default=0, help="Target height (0 = auto)")
     parser.add_argument("--fps", type=int, default=30, help="Target framerate")
     parser.add_argument(
-        "--fd", type=int, default=0,
+        "--fd",
+        type=int,
+        default=0,
         help="PipeWire fd from xdg-desktop-portal (optional)",
     )
     parser.add_argument(
-        "--node-id", type=int, default=0,
+        "--node-id",
+        type=int,
+        default=0,
         help="PipeWire node ID from portal Start() response (preferred)",
     )
     args = parser.parse_args()
@@ -151,7 +155,7 @@ def main() -> None:
             row_size = width * 3
             for y in range(height):
                 row_start = y * stride
-                sys.stdout.buffer.write(data[row_start:row_start + row_size])
+                sys.stdout.buffer.write(data[row_start : row_start + row_size])
         else:
             sys.stdout.buffer.write(data)
 

@@ -121,10 +121,7 @@ class HealthSummaryDialog(QFrame):
         issues = cfg.check_health()
 
         if not issues:
-            self._label.setText(
-                f"<b>{cfg.display_name}</b><br>"
-                "✅ Nessun problema rilevato."
-            )
+            self._label.setText(f"<b>{cfg.display_name}</b><br>✅ Nessun problema rilevato.")
         else:
             lines = [f"<b>{cfg.display_name}</b> — problemi rilevati:<br>"]
             for i in issues:

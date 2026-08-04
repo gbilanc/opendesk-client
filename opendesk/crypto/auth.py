@@ -40,9 +40,9 @@ _SESSION_MAX_AGE = 86400  # 24 hours — discard sessions older than this
 # ---------------------------------------------------------------------------
 
 _hasher = PasswordHasher(
-    time_cost=3,       # number of iterations
-    memory_cost=65536, # 64 MiB
-    parallelism=4,     # number of threads
+    time_cost=3,  # number of iterations
+    memory_cost=65536,  # 64 MiB
+    parallelism=4,  # number of threads
     hash_len=32,
     salt_len=16,
 )
@@ -156,9 +156,7 @@ class AuthManager:
 
     def __init__(self, config_path: str | Path | None = None) -> None:
         self._config_path = (
-            Path(config_path)
-            if config_path
-            else Path.home() / ".opendesk" / "credentials.json"
+            Path(config_path) if config_path else Path.home() / ".opendesk" / "credentials.json"
         )
         self._credentials: dict[str, StoredCredential] = {}
         self._pending_sessions: dict[str, PendingSession] = {}
@@ -175,7 +173,8 @@ class AuthManager:
             logger.info("Password updated for '%s'", username)
         else:
             self._credentials[username] = StoredCredential(
-                username=username, password_hash=h,
+                username=username,
+                password_hash=h,
             )
             logger.info("Password created for '%s'", username)
         self._save()
@@ -254,7 +253,9 @@ class AuthManager:
         )
         self._pending_sessions[session_id] = session
         logger.info(
-            "Session %s created (one_time=%s)", session_id, one_time,
+            "Session %s created (one_time=%s)",
+            session_id,
+            one_time,
         )
         return session
 
@@ -306,7 +307,8 @@ class AuthManager:
         """
         now = time.time()
         expired = [
-            sid for sid, s in self._pending_sessions.items()
+            sid
+            for sid, s in self._pending_sessions.items()
             if (s.is_one_time and now > s.expires_at)
             or (not s.is_one_time and now - s.created_at > _SESSION_MAX_AGE)
         ]

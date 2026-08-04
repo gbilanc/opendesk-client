@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _FRAME_QUEUE_MAX = 3  # max frames in flight (back-pressure)
-_PKT_QUEUE_MAX = 30   # max encoded packets queued for network
+_PKT_QUEUE_MAX = 30  # max encoded packets queued for network
 
 
 @dataclasses.dataclass
@@ -41,6 +41,7 @@ class PipelineConfig:
 
     Snapshot of settings read from QSettings at pipeline start.
     """
+
     fps: int = 30
     quality: QualityLevel = QualityLevel.HIGH
     bitrate: int = 8_000_000
@@ -281,8 +282,11 @@ class EncoderWorker(threading.Thread):
                         )
                     )
                     if self._encoder.codec_name:
-                        logger.info("EncoderWorker: using %s CRF=%s",
-                                    self._encoder.codec_name, crf or "(bitrate)")
+                        logger.info(
+                            "EncoderWorker: using %s CRF=%s",
+                            self._encoder.codec_name,
+                            crf or "(bitrate)",
+                        )
 
                 # ── Adaptive quality: idle counter ──
                 if self._last_change_ratio < 0.05:
@@ -360,9 +364,7 @@ class EncoderWorker(threading.Thread):
 
     # ── internals ──────────────────────────────────────────────────
 
-    def _do_full_keyframe(
-        self, rgb: np.ndarray, w: int, h: int, pts: int
-    ) -> None:
+    def _do_full_keyframe(self, rgb: np.ndarray, w: int, h: int, pts: int) -> None:
         if self._encoder is None:
             return
         self._encoder.request_keyframe()
@@ -403,12 +405,13 @@ class EncoderWorker(threading.Thread):
             for x in range(0, w, tile_size):
                 tw = min(tile_size, w - x)
                 total_tiles += 1
-                tile_mask = any_changed[y:y + th, x:x + tw]
+                tile_mask = any_changed[y : y + th, x : x + tw]
                 if tile_mask.sum() / tile_mask.size > 0.005:
-                    cur_tile = current[y:y + th, x:x + tw]
+                    cur_tile = current[y : y + th, x : x + tw]
                     tile_bgr = cv2.cvtColor(cur_tile, cv2.COLOR_RGB2BGR)
                     success, encoded = cv2.imencode(
-                        ".jpg", tile_bgr,
+                        ".jpg",
+                        tile_bgr,
                         [cv2.IMWRITE_JPEG_QUALITY, jpeg_q],
                     )
                     if success:
@@ -458,7 +461,9 @@ class EncoderWorker(threading.Thread):
 
         logger.info(
             "Adaptive quality: idle=%d frames, boosting CRF %d→%d",
-            self._idle_frames, crf, boosted,
+            self._idle_frames,
+            crf,
+            boosted,
         )
         self._config.crf = boosted
         self._encoder.release()
@@ -573,7 +578,9 @@ class StreamingPipeline:
         self._stop_event = threading.Event()
 
         self._capture_worker = CaptureWorker(
-            config, self._frame_queue, self._stop_event,
+            config,
+            self._frame_queue,
+            self._stop_event,
             on_error=on_error,
         )
         self._encoder_worker = EncoderWorker(
@@ -643,8 +650,6 @@ class StreamingPipeline:
         if self.on_keyframe_sent:
             self.on_keyframe_sent(data, w, h, pts, is_keyframe)
 
-    def _on_send_tile(
-        self, data: bytes, x: int, y: int, tw: int, th: int, pts: int
-    ) -> None:
+    def _on_send_tile(self, data: bytes, x: int, y: int, tw: int, th: int, pts: int) -> None:
         if self.on_tile_sent:
             self.on_tile_sent(data, x, y, tw, th, pts)

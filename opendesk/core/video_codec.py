@@ -66,8 +66,10 @@ def _try_open_codec(name: str, fps: int = 30) -> bool:
         stream.options = {"preset": "veryfast"}
         # Try a dummy frame
         import numpy as np
+
         frame = av.VideoFrame.from_ndarray(
-            np.zeros((32, 32, 3), dtype=np.uint8), format="rgb24",
+            np.zeros((32, 32, 3), dtype=np.uint8),
+            format="rgb24",
         )
         list(stream.encode(frame))
         container.close()
@@ -152,9 +154,11 @@ class EncoderConfig:
     crf: int | None = None  # None = use bitrate, int = CRF mode
     gop_size: int = 60  # keyframe interval (in frames)
     pixel_format: str = "yuv420p"  # "yuv420p" or "yuv444p"
-    options: dict[str, str] = field(default_factory=lambda: {
-        "preset": "veryfast",
-    })
+    options: dict[str, str] = field(
+        default_factory=lambda: {
+            "preset": "veryfast",
+        }
+    )
 
 
 @dataclass
@@ -296,13 +300,15 @@ class VideoEncoder:
             has_keyframe = any(p.is_keyframe for p in raw_packets)
             combined = b"".join(bytes(p) for p in raw_packets)
             last = raw_packets[-1]
-            return [EncodedPacket(
-                data=combined,
-                pts=last.pts or 0,
-                is_keyframe=has_keyframe,
-                width=self._config.width,
-                height=self._config.height,
-            )]
+            return [
+                EncodedPacket(
+                    data=combined,
+                    pts=last.pts or 0,
+                    is_keyframe=has_keyframe,
+                    width=self._config.width,
+                    height=self._config.height,
+                )
+            ]
 
         return [self._packet_from_av(raw_packets[0])]
 
@@ -404,7 +410,8 @@ class VideoEncoder:
             except Exception:
                 logger.info(
                     "Pixel format %s not supported by %s, falling back to yuv420p",
-                    requested_pix_fmt, codec,
+                    requested_pix_fmt,
+                    codec,
                 )
                 self._stream.pix_fmt = "yuv420p"
 
@@ -461,10 +468,14 @@ class VideoEncoder:
             self._initialised = True
             logger.info(
                 "Encoder initialised: %s  %dx%d @ %.1f fps  pix_fmt=%s%s",
-                codec, width, height, self._config.fps,
+                codec,
+                width,
+                height,
+                self._config.fps,
                 self._stream.pix_fmt,
-                f", crf={self._actual_crf}" if use_crf else
-                f", bitrate={self._actual_bitrate:,} bps",
+                f", crf={self._actual_crf}"
+                if use_crf
+                else f", bitrate={self._actual_bitrate:,} bps",
             )
 
     def _reinitialise(self) -> None:
@@ -612,8 +623,7 @@ class VideoDecoder:
                     codec_to_use = self._codec_requested
                     if not codec_to_use or codec_to_use not in ("h264", "hevc"):
                         codec_to_use = self._detect_codec(
-                            payload if is_keyframe
-                            else self._buffer[:16] + data[:16],
+                            payload if is_keyframe else self._buffer[:16] + data[:16],
                         )
                         self._codec_requested = codec_to_use
                     self._codec_name = codec_to_use
@@ -640,8 +650,6 @@ class VideoDecoder:
             self._needs_keyframe = True
             self._buffer = b""
             logger.debug("VideoDecoder reset — awaiting keyframe")
-
-
 
     def release(self) -> None:
         """Release decoder resources."""

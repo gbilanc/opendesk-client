@@ -30,9 +30,9 @@ logger = logging.getLogger(__name__)
 
 
 class HealthSeverity(Enum):
-    CRITICAL = "critical"   # Feature non funzionante
-    WARNING = "warning"     # Feature degradata / dep mancante
-    INFO = "info"           # Informazione / suggerimento
+    CRITICAL = "critical"  # Feature non funzionante
+    WARNING = "warning"  # Feature degradata / dep mancante
+    INFO = "info"  # Informazione / suggerimento
 
 
 @dataclass
@@ -89,12 +89,17 @@ def _find_system_python_gi() -> str | None:
             continue
         try:
             r = subprocess.run(
-                [py, "-c",
-                 "import gi; gi.require_version('Gst', '1.0');"
-                 "gi.require_version('GstApp', '1.0');"
-                 "from gi.repository import Gst; Gst.init(None);"
-                 "print('ok')"],
-                capture_output=True, text=True, timeout=3,
+                [
+                    py,
+                    "-c",
+                    "import gi; gi.require_version('Gst', '1.0');"
+                    "gi.require_version('GstApp', '1.0');"
+                    "from gi.repository import Gst; Gst.init(None);"
+                    "print('ok')",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=3,
             )
             if r.returncode == 0:
                 return py
@@ -110,13 +115,18 @@ def _check_pipewire_element() -> bool:
         return False
     try:
         r = subprocess.run(
-            [system_python, "-c",
-             "import gi; gi.require_version('Gst', '1.0');"
-             "gi.require_version('GstApp', '1.0');"
-             "from gi.repository import Gst; Gst.init(None);"
-             "e = Gst.ElementFactory.make('pipewiresrc', None);"
-             "exit(0 if e else 1)"],
-            capture_output=True, text=True, timeout=5,
+            [
+                system_python,
+                "-c",
+                "import gi; gi.require_version('Gst', '1.0');"
+                "gi.require_version('GstApp', '1.0');"
+                "from gi.repository import Gst; Gst.init(None);"
+                "e = Gst.ElementFactory.make('pipewiresrc', None);"
+                "exit(0 if e else 1)",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return r.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
@@ -132,7 +142,9 @@ def _check_portal_available() -> bool:
     try:
         r = subprocess.run(
             ["busctl", "--user", "list", "--no-pager"],
-            capture_output=True, text=True, timeout=2,
+            capture_output=True,
+            text=True,
+            timeout=2,
         )
         if "org.freedesktop.portal.Desktop" in r.stdout:
             return True
@@ -168,22 +180,22 @@ class PlatformConfig:
     # ── Screen capture ─────────────────────────────────────────────
     capture_method: CaptureMethod = CaptureMethod.MSS
     capture_methods_available: list[CaptureMethod] = field(default_factory=list)
-    has_portal: bool = False      # xdg-desktop-portal + dbus-next + gi
-    has_pipewire: bool = False    # GStreamer pipewiresrc + gi
-    has_x11: bool = False         # X11 display available (for MSS fallback)
+    has_portal: bool = False  # xdg-desktop-portal + dbus-next + gi
+    has_pipewire: bool = False  # GStreamer pipewiresrc + gi
+    has_x11: bool = False  # X11 display available (for MSS fallback)
 
     # ── Input injection ────────────────────────────────────────────
     input_backend_name: str = ""
     _input_backend_cls: type | None = None  # InputBackend subclass (lazy)
 
     # ── Codec / encoding ───────────────────────────────────────────
-    codec_hint: str = "h264"      # preferred codec name
+    codec_hint: str = "h264"  # preferred codec name
     default_pixel_format: str = "yuv444p"
     supports_hw_encoding: bool = False
     hw_encoders_available: list[str] = field(default_factory=list)
 
     # ── Dependencies ───────────────────────────────────────────────
-    pip_extra: str = ""            # "wayland", "x11", "macos", or ""
+    pip_extra: str = ""  # "wayland", "x11", "macos", or ""
     required_system_packages: list[str] = field(default_factory=list)
 
     # ── Features ───────────────────────────────────────────────────
@@ -359,6 +371,7 @@ class PlatformConfig:
                 from opendesk.core.input_injection import (  # noqa: F401
                     WaylandInputBackend,
                 )
+
                 self._input_backend_cls = WaylandInputBackend  # type: ignore[attr-defined]
             except ImportError:
                 self._input_backend_cls = None
@@ -367,6 +380,7 @@ class PlatformConfig:
         elif self.platform == Platform.LINUX and not self.is_wayland:
             try:
                 from opendesk.core.input_injection import X11InputBackend
+
                 self._input_backend_cls = X11InputBackend
             except ImportError:
                 self._input_backend_cls = None
@@ -374,11 +388,13 @@ class PlatformConfig:
 
         elif self.platform == Platform.WINDOWS:
             from opendesk.core.input_injection import WindowsInputBackend
+
             self._input_backend_cls = WindowsInputBackend
 
         elif self.platform == Platform.MACOS:
             try:
                 from opendesk.core.input_injection import MacOSInputBackend
+
                 self._input_backend_cls = MacOSInputBackend
             except ImportError:
                 self._input_backend_cls = None
@@ -430,10 +446,13 @@ class PlatformConfig:
         issues: list[HealthIssue] = []
 
         if self.platform == Platform.UNKNOWN:
-            issues.append(HealthIssue(
-                HealthSeverity.WARNING, "platform",
-                "Sistema operativo non riconosciuto.",
-            ))
+            issues.append(
+                HealthIssue(
+                    HealthSeverity.WARNING,
+                    "platform",
+                    "Sistema operativo non riconosciuto.",
+                )
+            )
             return issues
 
         self._check_capture_health(issues)
@@ -448,107 +467,150 @@ class PlatformConfig:
         """Check screen capture backend availability."""
         if self.platform == Platform.LINUX and self.is_wayland:
             if not self.capture_methods_available:
-                issues.append(HealthIssue(
-                    HealthSeverity.CRITICAL, "capture",
-                    "Nessun backend di cattura disponibile su Wayland.",
-                    "Installa xdg-desktop-portal, gstreamer1.0-pipewire, python3-gi, e XWayland.",
-                ))
+                issues.append(
+                    HealthIssue(
+                        HealthSeverity.CRITICAL,
+                        "capture",
+                        "Nessun backend di cattura disponibile su Wayland.",
+                        "Installa xdg-desktop-portal, gstreamer1.0-pipewire, python3-gi, e XWayland.",
+                    )
+                )
             elif self.capture_method == CaptureMethod.DUMMY:
-                issues.append(HealthIssue(
-                    HealthSeverity.CRITICAL, "capture",
-                    "Nessun backend di cattura funzionante — usato backend "
-                    "DUMMY (nessun frame reale).",
-                    "Verifica che XWayland o PipeWire + portal siano installati.",
-                ))
+                issues.append(
+                    HealthIssue(
+                        HealthSeverity.CRITICAL,
+                        "capture",
+                        "Nessun backend di cattura funzionante — usato backend "
+                        "DUMMY (nessun frame reale).",
+                        "Verifica che XWayland o PipeWire + portal siano installati.",
+                    )
+                )
             elif self.capture_method == CaptureMethod.MSS and not self.has_x11:
-                issues.append(HealthIssue(
-                    HealthSeverity.CRITICAL, "capture",
-                    "MSS (X11) selezionato ma XWayland non disponibile.",
-                    "Avvia l'app con XWayland o installa xdg-desktop-portal + PipeWire.",
-                ))
+                issues.append(
+                    HealthIssue(
+                        HealthSeverity.CRITICAL,
+                        "capture",
+                        "MSS (X11) selezionato ma XWayland non disponibile.",
+                        "Avvia l'app con XWayland o installa xdg-desktop-portal + PipeWire.",
+                    )
+                )
             if not self.has_portal and not self.has_pipewire:
-                issues.append(HealthIssue(
-                    HealthSeverity.WARNING, "capture",
-                    "PipeWire non disponibile — usato fallback XWayland (MSS)." if self.has_x11
-                    else "Né PipeWire né XWayland disponibili — la cattura "
-                    "schermo non funzionerà.",
-                    "Installa gstreamer1.0-pipewire e python3-gi per cattura nativa Wayland.",
-                ))
+                issues.append(
+                    HealthIssue(
+                        HealthSeverity.WARNING,
+                        "capture",
+                        "PipeWire non disponibile — usato fallback XWayland (MSS)."
+                        if self.has_x11
+                        else "Né PipeWire né XWayland disponibili — la cattura "
+                        "schermo non funzionerà.",
+                        "Installa gstreamer1.0-pipewire e python3-gi per cattura nativa Wayland.",
+                    )
+                )
             elif not self.has_portal and self.has_pipewire:
-                issues.append(HealthIssue(
-                    HealthSeverity.WARNING, "capture",
-                    "Portal D-Bus non disponibile — PipeWire mostrerà il proprio dialog.",
-                    "Installa dbus-next (pip) e xdg-desktop-portal + backend.",
-                ))
+                issues.append(
+                    HealthIssue(
+                        HealthSeverity.WARNING,
+                        "capture",
+                        "Portal D-Bus non disponibile — PipeWire mostrerà il proprio dialog.",
+                        "Installa dbus-next (pip) e xdg-desktop-portal + backend.",
+                    )
+                )
             if not self.has_portal:
                 if not shutil.which("busctl"):
                     pass  # already covered
                 try:
                     import dbus_next  # noqa: F401
                 except ImportError:
-                    issues.append(HealthIssue(
-                        HealthSeverity.WARNING, "capture",
-                        "dbus-next non installato — il portal D-Bus non può essere usato.",
-                        "Esegui: uv sync --extra wayland  (o pip install dbus-next)",
-                    ))
+                    issues.append(
+                        HealthIssue(
+                            HealthSeverity.WARNING,
+                            "capture",
+                            "dbus-next non installato — il portal D-Bus non può essere usato.",
+                            "Esegui: uv sync --extra wayland  (o pip install dbus-next)",
+                        )
+                    )
 
         elif self.platform == Platform.LINUX and not self.is_wayland:
             if not _check_x11_display():
-                issues.append(HealthIssue(
-                    HealthSeverity.CRITICAL, "capture",
-                    "Nessun display X11 trovato (variabile DISPLAY non impostata).",
-                    "Avvia l'applicazione in una sessione X11.",
-                ))
+                issues.append(
+                    HealthIssue(
+                        HealthSeverity.CRITICAL,
+                        "capture",
+                        "Nessun display X11 trovato (variabile DISPLAY non impostata).",
+                        "Avvia l'applicazione in una sessione X11.",
+                    )
+                )
 
     def _check_input_health(self, issues: list[HealthIssue]) -> None:
         """Check input backend availability."""
         if self._input_backend_cls is None:
             if self.platform == Platform.LINUX and self.is_wayland:
-                issues.append(HealthIssue(
-                    HealthSeverity.WARNING, "input",
-                    "Input remoto non disponibile su Wayland — evdev non installato.",
-                    "Esegui: uv sync --extra wayland  (o pip install evdev)",
-                ))
+                issues.append(
+                    HealthIssue(
+                        HealthSeverity.WARNING,
+                        "input",
+                        "Input remoto non disponibile su Wayland — evdev non installato.",
+                        "Esegui: uv sync --extra wayland  (o pip install evdev)",
+                    )
+                )
             elif self.platform == Platform.LINUX and not self.is_wayland:
-                issues.append(HealthIssue(
-                    HealthSeverity.WARNING, "input",
-                    "Input remoto X11 non disponibile — python-xlib non installato.",
-                    "Esegui: uv sync --extra x11  (o pip install python-xlib)",
-                ))
+                issues.append(
+                    HealthIssue(
+                        HealthSeverity.WARNING,
+                        "input",
+                        "Input remoto X11 non disponibile — python-xlib non installato.",
+                        "Esegui: uv sync --extra x11  (o pip install python-xlib)",
+                    )
+                )
             elif self.platform == Platform.MACOS:
-                issues.append(HealthIssue(
-                    HealthSeverity.WARNING, "input",
-                    "Input remoto macOS non disponibile — pyobjc non installato.",
-                    "Esegui: uv sync --extra macos  (o pip install pyobjc-framework-Quartz)",
-                ))
+                issues.append(
+                    HealthIssue(
+                        HealthSeverity.WARNING,
+                        "input",
+                        "Input remoto macOS non disponibile — pyobjc non installato.",
+                        "Esegui: uv sync --extra macos  (o pip install pyobjc-framework-Quartz)",
+                    )
+                )
             else:
-                issues.append(HealthIssue(
-                    HealthSeverity.WARNING, "input",
-                    "Nessun backend di input remoto disponibile per questa piattaforma.",
-                ))
+                issues.append(
+                    HealthIssue(
+                        HealthSeverity.WARNING,
+                        "input",
+                        "Nessun backend di input remoto disponibile per questa piattaforma.",
+                    )
+                )
 
     def _check_codec_health(self, issues: list[HealthIssue]) -> None:
         """Check codec / encoding availability."""
         if not self.codec_hint:
-            issues.append(HealthIssue(
-                HealthSeverity.CRITICAL, "codec",
-                "Nessun codec video disponibile — lo streaming non funzionerà.",
-                "Verifica che PyAV sia installato correttamente e che libx264 sia presente.",
-            ))
+            issues.append(
+                HealthIssue(
+                    HealthSeverity.CRITICAL,
+                    "codec",
+                    "Nessun codec video disponibile — lo streaming non funzionerà.",
+                    "Verifica che PyAV sia installato correttamente e che libx264 sia presente.",
+                )
+            )
 
         # Check HW encoding availability per-platform
         if self.platform == Platform.MACOS and not self.hw_encoders_available:
-            issues.append(HealthIssue(
-                HealthSeverity.INFO, "codec",
-                "Nessun HW encoder video trovato — usato software H.264.",
-                "Su macOS il Videotoolbox dovrebbe essere disponibile. Verifica PyAV.",
-            ))
+            issues.append(
+                HealthIssue(
+                    HealthSeverity.INFO,
+                    "codec",
+                    "Nessun HW encoder video trovato — usato software H.264.",
+                    "Su macOS il Videotoolbox dovrebbe essere disponibile. Verifica PyAV.",
+                )
+            )
         elif self.platform == Platform.WINDOWS and not self.hw_encoders_available:
-            issues.append(HealthIssue(
-                HealthSeverity.INFO, "codec",
-                "Nessun HW encoder video trovato — usato software H.264.",
-                "Installa driver NVIDIA/AMD o verifica che NVENC/AMF sia supportato.",
-            ))
+            issues.append(
+                HealthIssue(
+                    HealthSeverity.INFO,
+                    "codec",
+                    "Nessun HW encoder video trovato — usato software H.264.",
+                    "Installa driver NVIDIA/AMD o verifica che NVENC/AMF sia supportato.",
+                )
+            )
 
     def _check_deps_health(self, issues: list[HealthIssue]) -> None:
         """Check that required pip extras are installed."""
@@ -564,27 +626,36 @@ class PlatformConfig:
                 try:
                     __import__(pkg)
                 except ImportError:
-                    issues.append(HealthIssue(
-                        HealthSeverity.WARNING, "deps",
-                        f"Pacchetto '{pkg}' mancante — necessario per il "
-                        f"supporto {self.pip_extra}.",
-                        f"Esegui: uv sync --extra {self.pip_extra}",
-                    ))
+                    issues.append(
+                        HealthIssue(
+                            HealthSeverity.WARNING,
+                            "deps",
+                            f"Pacchetto '{pkg}' mancante — necessario per il "
+                            f"supporto {self.pip_extra}.",
+                            f"Esegui: uv sync --extra {self.pip_extra}",
+                        )
+                    )
 
         # Check system packages on Linux
         if self.platform == Platform.LINUX:
             if not _find_system_python_gi():
-                issues.append(HealthIssue(
-                    HealthSeverity.WARNING, "deps",
-                    "python3-gi (GObject Introspection) non trovato — serve per PipeWire.",
-                    "Installa: sudo apt install python3-gi  (o equivalente per la tua distro)",
-                ))
+                issues.append(
+                    HealthIssue(
+                        HealthSeverity.WARNING,
+                        "deps",
+                        "python3-gi (GObject Introspection) non trovato — serve per PipeWire.",
+                        "Installa: sudo apt install python3-gi  (o equivalente per la tua distro)",
+                    )
+                )
             if self.is_wayland and not shutil.which("pipewire"):
-                issues.append(HealthIssue(
-                    HealthSeverity.WARNING, "deps",
-                    "PipeWire non trovato — necessario per cattura schermo su Wayland.",
-                    "Installa: sudo apt install pipewire gstreamer1.0-pipewire  (o equivalente)",
-                ))
+                issues.append(
+                    HealthIssue(
+                        HealthSeverity.WARNING,
+                        "deps",
+                        "PipeWire non trovato — necessario per cattura schermo su Wayland.",
+                        "Installa: sudo apt install pipewire gstreamer1.0-pipewire  (o equivalente)",
+                    )
+                )
 
     def _check_extra_features(self, issues: list[HealthIssue]) -> None:
         """Check optional features (audio, camera, clipboard sync)."""
@@ -593,11 +664,14 @@ class PlatformConfig:
             import soundcard  # noqa: F401
         except (ImportError, OSError):
             if self.supports_audio:
-                issues.append(HealthIssue(
-                    HealthSeverity.INFO, "audio",
-                    "Microfono non disponibile — pacchetto 'soundcard' non installato.",
-                    "Esegui: uv sync --extra audio  (o pip install soundcard)",
-                ))
+                issues.append(
+                    HealthIssue(
+                        HealthSeverity.INFO,
+                        "audio",
+                        "Microfono non disponibile — pacchetto 'soundcard' non installato.",
+                        "Esegui: uv sync --extra audio  (o pip install soundcard)",
+                    )
+                )
                 self.supports_audio = False
 
         # Camera: check OpenCV (already a dependency, but verify)
@@ -605,20 +679,20 @@ class PlatformConfig:
             import cv2  # noqa: F401
         except ImportError:
             if self.supports_camera:
-                issues.append(HealthIssue(
-                    HealthSeverity.INFO, "camera",
-                    "Webcam non disponibile — OpenCV (opencv-python) non installato.",
-                    "Installa: uv sync  (opencv-python è una dipendenza base)",
-                ))
+                issues.append(
+                    HealthIssue(
+                        HealthSeverity.INFO,
+                        "camera",
+                        "Webcam non disponibile — OpenCV (opencv-python) non installato.",
+                        "Installa: uv sync  (opencv-python è una dipendenza base)",
+                    )
+                )
                 self.supports_camera = False
 
     @property
     def has_critical_issues(self) -> bool:
         """True if at least one CRITICAL issue was found."""
-        return any(
-            i.severity == HealthSeverity.CRITICAL
-            for i in self.check_health()
-        )
+        return any(i.severity == HealthSeverity.CRITICAL for i in self.check_health())
 
     def health_summary_lines(self) -> list[str]:
         """Human-readable health report lines."""

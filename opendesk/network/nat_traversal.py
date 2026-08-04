@@ -58,6 +58,7 @@ async def discover_stun(
     # Transaction ID (random 12 bytes)
     import random
     import struct
+
     transaction_id = bytes(random.randint(0, 255) for _ in range(12))
 
     # Message header: type=0x0001 (binding request), length=0, magic cookie=0x2112A442
@@ -71,9 +72,7 @@ async def discover_stun(
         )
 
         try:
-            result = await asyncio.wait_for(
-                protocol.result_future, timeout=timeout
-            )
+            result = await asyncio.wait_for(protocol.result_future, timeout=timeout)
             return result
         except TimeoutError:
             logger.warning("STUN request timed out")
@@ -110,9 +109,9 @@ class STUNProtocol(asyncio.DatagramProtocol):
             # Parse attributes to find XOR-MAPPED-ADDRESS (0x0020)
             offset = 20  # skip header + transaction id (12 bytes after magic cookie)
             while offset < len(data):
-                attr_type, attr_len = struct.unpack("!HH", data[offset:offset + 4])
+                attr_type, attr_len = struct.unpack("!HH", data[offset : offset + 4])
                 if attr_type == 0x0020:  # XOR-MAPPED-ADDRESS
-                    value = data[offset + 4:offset + 4 + attr_len]
+                    value = data[offset + 4 : offset + 4 + attr_len]
                     # First byte: reserved, second byte: address family
                     family = value[1]
                     # XOR with magic cookie high bits

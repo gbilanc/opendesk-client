@@ -30,13 +30,16 @@ class TestProtocolEdgeCases:
     def test_large_payload(self) -> None:
         """Large binary payloads should survive roundtrip."""
         large_data = b"x" * 100_000  # 100 KB
-        msg = Message(MessageType.VIDEO_FRAME, {
-            "data": large_data,
-            "width": 1920,
-            "height": 1080,
-            "pts": 12345,
-            "keyframe": True,
-        })
+        msg = Message(
+            MessageType.VIDEO_FRAME,
+            {
+                "data": large_data,
+                "width": 1920,
+                "height": 1080,
+                "pts": 12345,
+                "keyframe": True,
+            },
+        )
         data = msg.encode()
         restored = Message.decode(data)
         assert restored.payload["data"] == large_data
@@ -51,13 +54,16 @@ class TestProtocolEdgeCases:
 
     def test_nested_payload(self) -> None:
         """Nested dicts in payload should work."""
-        msg = Message(MessageType.RELAY_PEER_LIST, {
-            "peers": [
-                {"id": "peer1", "name": "Alice"},
-                {"id": "peer2", "name": "Bob"},
-            ],
-            "metadata": {"version": 1, "protocol": "opendesk"},
-        })
+        msg = Message(
+            MessageType.RELAY_PEER_LIST,
+            {
+                "peers": [
+                    {"id": "peer1", "name": "Alice"},
+                    {"id": "peer2", "name": "Bob"},
+                ],
+                "metadata": {"version": 1, "protocol": "opendesk"},
+            },
+        )
         data = msg.encode()
         restored = Message.decode(data)
         assert len(restored.payload["peers"]) == 2
@@ -65,14 +71,17 @@ class TestProtocolEdgeCases:
 
     def test_all_numeric_types(self) -> None:
         """All numeric types should survive (int, float, bool)."""
-        msg = Message(MessageType.MOUSE_EVENT, {
-            "x": -100,
-            "y": 200,
-            "button": 1,
-            "pressed": True,
-            "absolute": False,
-            "pressure": 0.75,
-        })
+        msg = Message(
+            MessageType.MOUSE_EVENT,
+            {
+                "x": -100,
+                "y": 200,
+                "button": 1,
+                "pressed": True,
+                "absolute": False,
+                "pressure": 0.75,
+            },
+        )
         data = msg.encode()
         restored = Message.decode(data)
         assert restored.payload["x"] == -100
@@ -113,9 +122,9 @@ class TestProtocolEdgeCases:
         restored = []
         offset = 0
         while offset < len(all_data):
-            header = all_data[offset:offset + _HEADER_SIZE]
+            header = all_data[offset : offset + _HEADER_SIZE]
             body_len = struct.unpack(_HEADER_FORMAT, header)[0]
-            chunk = all_data[offset:offset + _HEADER_SIZE + body_len]
+            chunk = all_data[offset : offset + _HEADER_SIZE + body_len]
             restored.append(Message.decode(chunk))
             offset += _HEADER_SIZE + body_len
 
@@ -133,9 +142,15 @@ class TestProtocolEdgeCases:
 
     def test_none_values(self) -> None:
         """None values in payload should survive."""
-        msg = Message(MessageType.MOUSE_EVENT, {
-            "x": 100, "y": 200, "button": None, "pressed": None,
-        })
+        msg = Message(
+            MessageType.MOUSE_EVENT,
+            {
+                "x": 100,
+                "y": 200,
+                "button": None,
+                "pressed": None,
+            },
+        )
         data = msg.encode()
         restored = Message.decode(data)
         assert restored.payload["button"] is None

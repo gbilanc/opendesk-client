@@ -35,6 +35,7 @@ def _check_x11() -> bool:
     if not hasattr(_check_x11, "_display"):
         try:
             from Xlib import display as xdisplay  # type: ignore[import-untyped]
+
             _check_x11._display = xdisplay.Display()  # type: ignore[attr-defined]
         except Exception:
             logger.debug("Xlib Display open failed, falling back", exc_info=True)
@@ -75,6 +76,7 @@ def _check_win32() -> bool:
     """Check Caps Lock via Win32 API."""
     try:
         import ctypes
+
         return bool(ctypes.windll.user32.GetKeyState(0x14) & 0x0001)
     except Exception:
         logger.debug("Win32 Caps Lock check failed", exc_info=True)
@@ -85,7 +87,10 @@ def _check_subprocess() -> bool:
     """Fallback: parse ``xset -q`` output (X11 only)."""
     try:
         out = subprocess.check_output(
-            ["xset", "-q"], stderr=subprocess.STDOUT, timeout=2, text=True,
+            ["xset", "-q"],
+            stderr=subprocess.STDOUT,
+            timeout=2,
+            text=True,
         )
         for line in out.splitlines():
             if "Caps Lock" in line:
@@ -114,6 +119,7 @@ def _init_checker() -> _Checker:
     # X11 fallback
     try:
         from Xlib import display  # noqa: F401
+
         return _check_x11
     except ImportError:
         pass

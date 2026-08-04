@@ -165,15 +165,13 @@ class ClipboardSync(QObject):
             if text and text != self._last_text:
                 self._last_text = text
                 import asyncio
-                task = asyncio.ensure_future(
-                    self._send_fn(Message.clipboard_text(text))
-                )
+
+                task = asyncio.ensure_future(self._send_fn(Message.clipboard_text(text)))
                 self._pending_tasks.add(task)
                 logger.debug("Clipboard text synced: %d chars", len(text))
 
         # Check image (less frequently - skip every other poll)
         elif mime.hasImage() and int(time.time() * 2) % 2 == 0:
-
             image = self._clipboard.image()
             if image.isNull():
                 return
@@ -198,6 +196,7 @@ class ClipboardSync(QObject):
                     {"data": img_data},
                 )
                 import asyncio
+
                 task = asyncio.ensure_future(self._send_fn(msg))
                 self._pending_tasks.add(task)
                 logger.debug("Clipboard image synced: %d bytes", len(img_data))

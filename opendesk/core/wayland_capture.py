@@ -96,18 +96,20 @@ class WaylandScreenCast:
 
         # Also need gi bindings for the GStreamer helper subprocess
         from opendesk.core.platform_config import _find_system_python_gi
+
         if _find_system_python_gi() is None:
-            logger.debug(
-                "Wayland screencast: no system Python with gi bindings"
-            )
+            logger.debug("Wayland screencast: no system Python with gi bindings")
             self._available = False
             return False
 
         import subprocess
+
         try:
             r = subprocess.run(
                 ["busctl", "--user", "list", "--no-pager"],
-                capture_output=True, text=True, timeout=2,
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
             if "org.freedesktop.portal.Desktop" in r.stdout:
                 self._available = True
@@ -172,13 +174,20 @@ class WaylandScreenCast:
         if len(data) < frame_size:
             logger.warning(
                 "Wayland: incomplete frame %d / %d bytes",
-                len(data), frame_size,
+                len(data),
+                frame_size,
             )
             return None
 
-        return np.frombuffer(data, dtype=np.uint8).reshape(
-            self._helper_height, self._helper_width, 3,
-        ).copy()
+        return (
+            np.frombuffer(data, dtype=np.uint8)
+            .reshape(
+                self._helper_height,
+                self._helper_width,
+                3,
+            )
+            .copy()
+        )
 
     @property
     def width(self) -> int:
@@ -243,10 +252,15 @@ class WaylandScreenCast:
         self._bus = await MessageBus(bus_type=BusType.SESSION).connect()
 
     def _make_msg(
-        self, path: str, interface: str, member: str,
-        signature: str = "", body: list | None = None,
+        self,
+        path: str,
+        interface: str,
+        member: str,
+        signature: str = "",
+        body: list | None = None,
     ) -> Any:  # noqa: ANN401
         from dbus_next import Message
+
         return Message(
             destination="org.freedesktop.portal.Desktop",
             path=path,
@@ -260,10 +274,13 @@ class WaylandScreenCast:
     def _v(sig: str, value):  # noqa: ANN401
         """Shortcut for dbus-next Variant creation."""
         from dbus_next import Variant
+
         return Variant(sig, value)
 
     async def _wait_for_response(
-        self, request_path: str, timeout: float = 30.0,
+        self,
+        request_path: str,
+        timeout: float = 30.0,
     ) -> tuple[int, dict]:
         """Wait for a portal ``Response`` signal on *request_path*.
 
@@ -277,9 +294,11 @@ class WaylandScreenCast:
         def _handler(msg):
             if future.done():
                 return
-            if msg.interface == "org.freedesktop.portal.Request" and \
-               msg.member == "Response" and \
-               msg.path == request_path:
+            if (
+                msg.interface == "org.freedesktop.portal.Request"
+                and msg.member == "Response"
+                and msg.path == request_path
+            ):
                 code = msg.body[0] if msg.body else 2
                 raw = msg.body[1] if len(msg.body) > 1 else {}
                 # Unwrap Variant values to plain Python
@@ -292,9 +311,7 @@ class WaylandScreenCast:
         try:
             return await asyncio.wait_for(future, timeout=timeout)
         except TimeoutError:
-            raise RuntimeError(
-                f"Timeout waiting for portal response on {request_path}"
-            )
+            raise RuntimeError(f"Timeout waiting for portal response on {request_path}")
         finally:
             self._bus.remove_message_handler(_handler)
 
@@ -315,9 +332,11 @@ class WaylandScreenCast:
             "org.freedesktop.portal.ScreenCast",
             "CreateSession",
             "a{sv}",
-            [{
-                "session_handle_token": self._v("s", token),
-            }],
+            [
+                {
+                    "session_handle_token": self._v("s", token),
+                }
+            ],
         )
         response = await self._bus.call(msg)
         if not response.body:
@@ -329,15 +348,11 @@ class WaylandScreenCast:
         # Wait for the Response signal — the session handle is in results
         code, results = await self._wait_for_response(request_path)
         if code != 0:
-            raise RuntimeError(
-                f"CreateSession rejected (response={code})"
-            )
+            raise RuntimeError(f"CreateSession rejected (response={code})")
 
         session_handle = results.get("session_handle")
         if not session_handle:
-            raise RuntimeError(
-                f"CreateSession response missing session_handle: {results}"
-            )
+            raise RuntimeError(f"CreateSession response missing session_handle: {results}")
 
         self._session = WaylandCaptureSession(
             session_handle=str(session_handle),
@@ -377,9 +392,7 @@ class WaylandScreenCast:
         # Wait for the Response signal on the request path
         code, results = await self._wait_for_response(request_path)
         if code != 0:
-            raise RuntimeError(
-                f"SelectSources rejected (response={code})"
-            )
+            raise RuntimeError(f"SelectSources rejected (response={code})")
         logger.debug("ScreenCast sources selected")
 
     async def _start_session(self) -> None:
@@ -412,9 +425,7 @@ class WaylandScreenCast:
         # Wait for the Start Response signal
         code, results = await self._wait_for_response(request_handle)
         if code != 0:
-            raise RuntimeError(
-                f"ScreenCast Start rejected (response={code})"
-            )
+            raise RuntimeError(f"ScreenCast Start rejected (response={code})")
 
         # Extract streams: a(sa{sv}) → list of (node_id, properties)
         streams = results.get("streams", [])
@@ -424,9 +435,7 @@ class WaylandScreenCast:
         # First stream: (uint32 node_id, dict properties)
         pw_node_id = streams[0][0] if isinstance(streams[0], (list, tuple)) else streams[0]
         properties = (
-            streams[0][1]
-            if isinstance(streams[0], (list, tuple)) and len(streams[0]) > 1
-            else {}
+            streams[0][1] if isinstance(streams[0], (list, tuple)) and len(streams[0]) > 1 else {}
         )
 
         # Extract resolution from properties
@@ -472,9 +481,12 @@ class WaylandScreenCast:
         # Use pipewiresrc path=<node_id> to connect to the portal stream
         self._helper_process = subprocess.Popen(
             [
-                system_python, str(helper),
-                "--node-id", str(node_id),
-                "--fps", "30",
+                system_python,
+                str(helper),
+                "--node-id",
+                str(node_id),
+                "--fps",
+                "30",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -488,7 +500,10 @@ class WaylandScreenCast:
             if remaining <= 0:
                 break
             r, _, _ = select.select(
-                [self._helper_process.stdout], [], [], min(remaining, 1.0),
+                [self._helper_process.stdout],
+                [],
+                [],
+                min(remaining, 1.0),
             )
             if r:
                 chunk = self._helper_process.stdout.read(8 - len(header))
@@ -515,7 +530,8 @@ class WaylandScreenCast:
         self._helper_width, self._helper_height = struct.unpack("<II", header)
         logger.info(
             "PipeWire helper stream: %dx%d",
-            self._helper_width, self._helper_height,
+            self._helper_width,
+            self._helper_height,
         )
 
     async def _read_pipewire_frame(self) -> np.ndarray | None:
@@ -545,7 +561,10 @@ async def capture_wayland_subprocess() -> np.ndarray | None:
     try:
         # grim outputs PNG to stdout
         proc = await asyncio.create_subprocess_exec(
-            "grim", "-t", "png", "-",
+            "grim",
+            "-t",
+            "png",
+            "-",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -556,6 +575,7 @@ async def capture_wayland_subprocess() -> np.ndarray | None:
         import io
 
         from PIL import Image
+
         img = Image.open(io.BytesIO(png_data))
         return np.array(img.convert("RGB"))
 

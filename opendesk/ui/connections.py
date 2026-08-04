@@ -145,6 +145,7 @@ class DeviceDelegate(QStyledItemDelegate):
         painter.save()
 
         from PySide6.QtWidgets import QStyle
+
         state = option.state
         # Background — use QStyle.State_* (Qt6 API)
         if state & QStyle.State_Selected:
@@ -456,6 +457,7 @@ class ConnectionPanel(QWidget):
 
         if selected == action_copy_id:
             from PySide6.QtWidgets import QApplication
+
             QApplication.clipboard().setText(device_id)
             return
 
@@ -504,8 +506,7 @@ class ConnectionPanel(QWidget):
         visible = not self._manual_form.isVisible()
         self._manual_form.setVisible(visible)
         self._manual_toggle.setText(
-            "✕ Hide manual form" if visible
-            else "➕ Connect to new device..."
+            "✕ Hide manual form" if visible else "➕ Connect to new device..."
         )
         if visible:
             self._manual_id.setFocus()
@@ -541,9 +542,9 @@ class ConnectionPanel(QWidget):
 
         if not session_id:
             QMessageBox.warning(
-                self, "Device offline",
-                "This device is not currently connected to the relay.\n"
-                "Please try again later.",
+                self,
+                "Device offline",
+                "This device is not currently connected to the relay.\nPlease try again later.",
             )
             return
 
@@ -566,9 +567,9 @@ class ConnectionPanel(QWidget):
 
         if not session_id:
             QMessageBox.warning(
-                self, "Device offline",
-                "This device is not currently connected to the relay.\n"
-                "Please try again later.",
+                self,
+                "Device offline",
+                "This device is not currently connected to the relay.\nPlease try again later.",
             )
             return
 
@@ -583,7 +584,8 @@ class ConnectionPanel(QWidget):
 
     def _prompt_password(self, device_id: str) -> str | None:
         pwd, ok = QInputDialog.getText(
-            self, "Password Required",
+            self,
+            "Password Required",
             f"Enter the password for:\n{device_id[:8]}…",
             QLineEdit.EchoMode.Password,
         )

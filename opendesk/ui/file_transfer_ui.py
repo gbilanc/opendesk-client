@@ -169,6 +169,7 @@ class RemoteFileSystemModel(QAbstractItemModel):
                     mtime = node.get("mtime", 0)
                     if mtime:
                         from datetime import datetime
+
                         return datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
                     return ""
                 case _:
@@ -191,7 +192,9 @@ class RemoteFileSystemModel(QAbstractItemModel):
         return None
 
     def headerData(  # noqa: N802
-        self, section: int, orientation: Qt.Orientation,
+        self,
+        section: int,
+        orientation: Qt.Orientation,
         role: int = Qt.ItemDataRole.DisplayRole,
     ):
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
@@ -238,7 +241,8 @@ class RemoteFileSystemModel(QAbstractItemModel):
             self.beginRemoveRows(parent_index, 0, max(0, len(node.get("children") or []) - 1))
         else:
             self.beginRemoveRows(
-                QModelIndex(), 0,
+                QModelIndex(),
+                0,
                 max(0, len(self._root.get("children") or []) - 1),
             )
 
@@ -540,6 +544,7 @@ class TransferDelegate(QStyledItemDelegate):
         rect = option.rect
         # Background — use QStyle.State_Selected (Qt6 API)
         from PySide6.QtWidgets import QStyle
+
         selected = bool(option.state & QStyle.State_Selected)
         painter.fillRect(rect, QColor("#f8fafc") if selected else QColor("#ffffff"))
         # Bottom border
@@ -561,8 +566,11 @@ class TransferDelegate(QStyledItemDelegate):
         font_name = QFont("Segoe UI", 12, QFont.Weight.DemiBold)
         painter.setFont(font_name)
         name_rect = QRect(content.left(), content.top(), content.width() - 80, 20)
-        painter.drawText(name_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                         f"{dir_icon}  {name}")
+        painter.drawText(
+            name_rect,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            f"{dir_icon}  {name}",
+        )
 
         # State
         state_color = self._TEXT_STATE.get(state, "#94a3b8")
@@ -571,8 +579,9 @@ class TransferDelegate(QStyledItemDelegate):
         font_state = QFont("Segoe UI", 10, QFont.Weight.Medium)
         painter.setFont(font_state)
         state_rect = QRect(content.right() - 80, content.top(), 80, 20)
-        painter.drawText(state_rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                         state_label)
+        painter.drawText(
+            state_rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, state_label
+        )
 
         # ── Row 2: Size info (left) + Progress bar (right) ──
         size_total = index.data(Qt.ItemDataRole.UserRole + 3) or 0
@@ -584,8 +593,9 @@ class TransferDelegate(QStyledItemDelegate):
         font_size = QFont("Segoe UI", 10)
         painter.setFont(font_size)
         size_rect = QRect(content.left(), content.top() + 22, content.width() - 6, 16)
-        painter.drawText(size_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                         size_text)
+        painter.drawText(
+            size_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, size_text
+        )
 
         # Progress bar
         bar_top = content.top() + 42
@@ -596,8 +606,12 @@ class TransferDelegate(QStyledItemDelegate):
 
         fill_w = int(bar_rect.width() * min(1.0, progress))
         if fill_w > 0:
-            fill_color = self._FG_PROGRESS_DONE if state == TransferState.COMPLETED else (
-                self._FG_PROGRESS_ERROR if state == TransferState.FAILED else self._FG_PROGRESS
+            fill_color = (
+                self._FG_PROGRESS_DONE
+                if state == TransferState.COMPLETED
+                else (
+                    self._FG_PROGRESS_ERROR if state == TransferState.FAILED else self._FG_PROGRESS
+                )
             )
             painter.setBrush(QBrush(QColor(fill_color)))
             fill_rect = QRect(bar_rect.left(), bar_rect.top(), fill_w, bar_rect.height())
@@ -1092,9 +1106,7 @@ class FileBrowserDock(QDialog):
         if paths:
             remote_dest = self._remote_path or "/"
             self.file_upload_requested.emit(list(paths), remote_dest)
-            self._status_label.setText(
-                f"Uploading {len(paths)} file(s) to {remote_dest}..."
-            )
+            self._status_label.setText(f"Uploading {len(paths)} file(s) to {remote_dest}...")
 
     @Slot()
     def _on_download_clicked(self) -> None:
@@ -1110,9 +1122,7 @@ class FileBrowserDock(QDialog):
         if paths:
             local_dest = self._local_root or str(Path.home())
             self.file_download_requested.emit(list(paths), local_dest)
-            self._status_label.setText(
-                f"Downloading {len(paths)} file(s) to {local_dest}..."
-            )
+            self._status_label.setText(f"Downloading {len(paths)} file(s) to {local_dest}...")
 
     def _on_refresh_clicked(self) -> None:
         """Refresh the current remote directory."""

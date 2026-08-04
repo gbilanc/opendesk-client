@@ -173,6 +173,7 @@ def install_system_deps() -> None:
 def _ensure_desktop_entry() -> None:
     """Create desktop / start-menu entry if missing (silent)."""
     import platform as _platform
+
     system = _platform.system()
 
     if system == "Linux":
@@ -188,15 +189,15 @@ def _ensure_desktop_entry() -> None:
         icons_dir.mkdir(parents=True, exist_ok=True)
 
         # Find the icon from the installed package
-        icon_src = (
-            Path(__file__).parent / "ui" / "resources" / "opendesk.svg"
-        )
+        icon_src = Path(__file__).parent / "ui" / "resources" / "opendesk.svg"
         if icon_src.exists():
             import shutil
+
             shutil.copy2(icon_src, icons_dir / "opendesk.svg")
 
         # Find the executable path (pip-installed script)
         import shutil as _shutil
+
         exe_path = _shutil.which("opendesk") or _shutil.which("opendesk-host") or sys.executable
 
         desktop_content = f"""[Desktop Entry]
@@ -277,6 +278,7 @@ def main(log_level: int | None = None) -> None:
 
     # Log platform configuration at startup
     from opendesk.core.platform_config import get_platform_config
+
     get_platform_config()
 
     # Ensure desktop entry on first run (silent if already present)

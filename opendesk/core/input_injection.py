@@ -112,12 +112,27 @@ class X11InputBackend(InputBackend):
     """Input backend for Linux X11 via XTest extension."""
 
     _KEY_MAP = {
-        "return": "Return", "enter": "Return", "tab": "Tab",
-        "escape": "Escape", "backspace": "BackSpace", "delete": "Delete",
-        "home": "Home", "end": "End", "pageup": "Page_Up", "pagedown": "Page_Down",
-        "up": "Up", "down": "Down", "left": "Left", "right": "Right",
-        "space": "space", "ctrl": "Control_L", "alt": "Alt_L", "shift": "Shift_L",
-        "super": "Super_L", "menu": "Menu", "capslock": "Caps_Lock",
+        "return": "Return",
+        "enter": "Return",
+        "tab": "Tab",
+        "escape": "Escape",
+        "backspace": "BackSpace",
+        "delete": "Delete",
+        "home": "Home",
+        "end": "End",
+        "pageup": "Page_Up",
+        "pagedown": "Page_Down",
+        "up": "Up",
+        "down": "Down",
+        "left": "Left",
+        "right": "Right",
+        "space": "space",
+        "ctrl": "Control_L",
+        "alt": "Alt_L",
+        "shift": "Shift_L",
+        "super": "Super_L",
+        "menu": "Menu",
+        "capslock": "Caps_Lock",
         "altgr": "Alt_R",
     }
 
@@ -186,8 +201,11 @@ class X11InputBackend(InputBackend):
 
     def click_mouse(self, button: MouseButton, state: KeyState) -> None:
         btn_map = {
-            MouseButton.LEFT: 1, MouseButton.MIDDLE: 2, MouseButton.RIGHT: 3,
-            MouseButton.SCROLL_UP: 4, MouseButton.SCROLL_DOWN: 5,
+            MouseButton.LEFT: 1,
+            MouseButton.MIDDLE: 2,
+            MouseButton.RIGHT: 3,
+            MouseButton.SCROLL_UP: 4,
+            MouseButton.SCROLL_DOWN: 5,
         }
         xbtn = btn_map.get(button, 1)
         if state == KeyState.PRESSED:
@@ -216,6 +234,7 @@ class X11InputBackend(InputBackend):
 
     def type_text(self, text: str) -> None:
         from Xlib import XK
+
         for char in text:
             ks = XK.string_to_keysym(char)
             if ks == 0:
@@ -223,7 +242,7 @@ class X11InputBackend(InputBackend):
             kc = self._display.keysym_to_keycode(ks)
             if kc is None or kc == 0:
                 continue
-            need_shift = char.isupper() or char in "~!@#$%^&*()_+{}|:\"<>?"
+            need_shift = char.isupper() or char in '~!@#$%^&*()_+{}|:"<>?'
             if need_shift and self._shift_keycode:
                 self._xtest.fake_input(self._display, 2, self._shift_keycode)
             self._xtest.fake_input(self._display, 2, kc)
@@ -283,8 +302,7 @@ class WaylandInputBackend(InputBackend):
             from evdev import ecodes as e
         except ImportError as exc:
             raise RuntimeError(
-                "Wayland input requires python-evdev. "
-                "Install it with: pip install evdev"
+                "Wayland input requires python-evdev. Install it with: pip install evdev"
             ) from exc
 
         self._e = e
@@ -302,6 +320,7 @@ class WaylandInputBackend(InputBackend):
 
         # Check that /dev/uinput exists and we can write to it
         import os
+
         uinput_path = "/dev/uinput"
         if not os.path.exists(uinput_path):
             raise RuntimeError(
@@ -311,6 +330,7 @@ class WaylandInputBackend(InputBackend):
         uinput_stat = os.stat(uinput_path)
         if not os.access(uinput_path, os.W_OK):
             import grp
+
             group_info = grp.getgrgid(uinput_stat.st_gid) if uinput_stat.st_gid != 0 else None
             group_name = group_info.gr_name if group_info else "input"
             raise PermissionError(
@@ -322,10 +342,7 @@ class WaylandInputBackend(InputBackend):
 
         # Check that the uinput module is actually loaded
         if not os.path.exists("/sys/module/uinput"):
-            raise RuntimeError(
-                "uinput kernel module not loaded. "
-                "Run: sudo modprobe uinput"
-            )
+            raise RuntimeError("uinput kernel module not loaded. Run: sudo modprobe uinput")
 
         try:
             # NOTE: EV_SYN / SYN_REPORT must NOT be included — the kernel
@@ -333,34 +350,110 @@ class WaylandInputBackend(InputBackend):
             # explicitly causes UI_SET_EVBIT to fail with EINVAL.
             capabilities = {
                 e.EV_KEY: (
-                    e.BTN_LEFT, e.BTN_MIDDLE, e.BTN_RIGHT,
-                    e.KEY_A, e.KEY_B, e.KEY_C, e.KEY_D, e.KEY_E,
-                    e.KEY_F, e.KEY_G, e.KEY_H, e.KEY_I, e.KEY_J,
-                    e.KEY_K, e.KEY_L, e.KEY_M, e.KEY_N, e.KEY_O,
-                    e.KEY_P, e.KEY_Q, e.KEY_R, e.KEY_S, e.KEY_T,
-                    e.KEY_U, e.KEY_V, e.KEY_W, e.KEY_X, e.KEY_Y,
-                    e.KEY_Z, e.KEY_1, e.KEY_2, e.KEY_3, e.KEY_4,
-                    e.KEY_5, e.KEY_6, e.KEY_7, e.KEY_8, e.KEY_9,
-                    e.KEY_0, e.KEY_SPACE, e.KEY_ENTER, e.KEY_BACKSPACE,
-                    e.KEY_TAB, e.KEY_ESC, e.KEY_DELETE, e.KEY_HOME,
-                    e.KEY_END, e.KEY_PAGEUP, e.KEY_PAGEDOWN,
-                    e.KEY_UP, e.KEY_DOWN, e.KEY_LEFT, e.KEY_RIGHT,
-                    e.KEY_LEFTSHIFT, e.KEY_LEFTCTRL, e.KEY_LEFTALT,
-                    e.KEY_LEFTMETA, e.KEY_CAPSLOCK, e.KEY_MENU,
-                    e.KEY_F1, e.KEY_F2, e.KEY_F3, e.KEY_F4,
-                    e.KEY_F5, e.KEY_F6, e.KEY_F7, e.KEY_F8,
-                    e.KEY_F9, e.KEY_F10, e.KEY_F11, e.KEY_F12,
-                    e.KEY_COMMA, e.KEY_DOT, e.KEY_SEMICOLON,
-                    e.KEY_APOSTROPHE, e.KEY_GRAVE, e.KEY_MINUS,
-                    e.KEY_EQUAL, e.KEY_LEFTBRACE, e.KEY_RIGHTBRACE,
-                    e.KEY_BACKSLASH, e.KEY_SLASH,
-                    e.KEY_INSERT, e.KEY_PRINT, e.KEY_SCROLLLOCK,
-                    e.KEY_PAUSE, e.KEY_SYSRQ,
-                    e.KEY_NUMLOCK, e.KEY_KPSLASH, e.KEY_KPASTERISK,
-                    e.KEY_KPMINUS, e.KEY_KPPLUS, e.KEY_KPENTER,
-                    e.KEY_KP0, e.KEY_KP1, e.KEY_KP2, e.KEY_KP3,
-                    e.KEY_KP4, e.KEY_KP5, e.KEY_KP6, e.KEY_KP7,
-                    e.KEY_KP8, e.KEY_KP9, e.KEY_KPDOT,
+                    e.BTN_LEFT,
+                    e.BTN_MIDDLE,
+                    e.BTN_RIGHT,
+                    e.KEY_A,
+                    e.KEY_B,
+                    e.KEY_C,
+                    e.KEY_D,
+                    e.KEY_E,
+                    e.KEY_F,
+                    e.KEY_G,
+                    e.KEY_H,
+                    e.KEY_I,
+                    e.KEY_J,
+                    e.KEY_K,
+                    e.KEY_L,
+                    e.KEY_M,
+                    e.KEY_N,
+                    e.KEY_O,
+                    e.KEY_P,
+                    e.KEY_Q,
+                    e.KEY_R,
+                    e.KEY_S,
+                    e.KEY_T,
+                    e.KEY_U,
+                    e.KEY_V,
+                    e.KEY_W,
+                    e.KEY_X,
+                    e.KEY_Y,
+                    e.KEY_Z,
+                    e.KEY_1,
+                    e.KEY_2,
+                    e.KEY_3,
+                    e.KEY_4,
+                    e.KEY_5,
+                    e.KEY_6,
+                    e.KEY_7,
+                    e.KEY_8,
+                    e.KEY_9,
+                    e.KEY_0,
+                    e.KEY_SPACE,
+                    e.KEY_ENTER,
+                    e.KEY_BACKSPACE,
+                    e.KEY_TAB,
+                    e.KEY_ESC,
+                    e.KEY_DELETE,
+                    e.KEY_HOME,
+                    e.KEY_END,
+                    e.KEY_PAGEUP,
+                    e.KEY_PAGEDOWN,
+                    e.KEY_UP,
+                    e.KEY_DOWN,
+                    e.KEY_LEFT,
+                    e.KEY_RIGHT,
+                    e.KEY_LEFTSHIFT,
+                    e.KEY_LEFTCTRL,
+                    e.KEY_LEFTALT,
+                    e.KEY_LEFTMETA,
+                    e.KEY_CAPSLOCK,
+                    e.KEY_MENU,
+                    e.KEY_F1,
+                    e.KEY_F2,
+                    e.KEY_F3,
+                    e.KEY_F4,
+                    e.KEY_F5,
+                    e.KEY_F6,
+                    e.KEY_F7,
+                    e.KEY_F8,
+                    e.KEY_F9,
+                    e.KEY_F10,
+                    e.KEY_F11,
+                    e.KEY_F12,
+                    e.KEY_COMMA,
+                    e.KEY_DOT,
+                    e.KEY_SEMICOLON,
+                    e.KEY_APOSTROPHE,
+                    e.KEY_GRAVE,
+                    e.KEY_MINUS,
+                    e.KEY_EQUAL,
+                    e.KEY_LEFTBRACE,
+                    e.KEY_RIGHTBRACE,
+                    e.KEY_BACKSLASH,
+                    e.KEY_SLASH,
+                    e.KEY_INSERT,
+                    e.KEY_PRINT,
+                    e.KEY_SCROLLLOCK,
+                    e.KEY_PAUSE,
+                    e.KEY_SYSRQ,
+                    e.KEY_NUMLOCK,
+                    e.KEY_KPSLASH,
+                    e.KEY_KPASTERISK,
+                    e.KEY_KPMINUS,
+                    e.KEY_KPPLUS,
+                    e.KEY_KPENTER,
+                    e.KEY_KP0,
+                    e.KEY_KP1,
+                    e.KEY_KP2,
+                    e.KEY_KP3,
+                    e.KEY_KP4,
+                    e.KEY_KP5,
+                    e.KEY_KP6,
+                    e.KEY_KP7,
+                    e.KEY_KP8,
+                    e.KEY_KP9,
+                    e.KEY_KPDOT,
                 ),
                 e.EV_REL: (e.REL_X, e.REL_Y, e.REL_WHEEL, e.REL_HWHEEL),
             }
@@ -381,27 +474,61 @@ class WaylandInputBackend(InputBackend):
 
     def _key_to_evdev(self, key: str | int) -> int:
         from evdev import ecodes as e
+
         if isinstance(key, int):
             return key
         key_map = {
-            "return": e.KEY_ENTER, "enter": e.KEY_ENTER, "tab": e.KEY_TAB,
-            "escape": e.KEY_ESC, "backspace": e.KEY_BACKSPACE, "delete": e.KEY_DELETE,
-            "home": e.KEY_HOME, "end": e.KEY_END,
-            "pageup": e.KEY_PAGEUP, "pagedown": e.KEY_PAGEDOWN,
-            "up": e.KEY_UP, "down": e.KEY_DOWN, "left": e.KEY_LEFT, "right": e.KEY_RIGHT,
-            "space": e.KEY_SPACE, "ctrl": e.KEY_LEFTCTRL, "alt": e.KEY_LEFTALT,
-            "shift": e.KEY_LEFTSHIFT, "super": e.KEY_LEFTMETA, "menu": e.KEY_MENU,
-            "capslock": e.KEY_CAPSLOCK, "altgr": e.KEY_RIGHTALT,
-            "insert": e.KEY_INSERT, "print": e.KEY_PRINT,
-            "scrolllock": e.KEY_SCROLLLOCK, "pause": e.KEY_PAUSE,
+            "return": e.KEY_ENTER,
+            "enter": e.KEY_ENTER,
+            "tab": e.KEY_TAB,
+            "escape": e.KEY_ESC,
+            "backspace": e.KEY_BACKSPACE,
+            "delete": e.KEY_DELETE,
+            "home": e.KEY_HOME,
+            "end": e.KEY_END,
+            "pageup": e.KEY_PAGEUP,
+            "pagedown": e.KEY_PAGEDOWN,
+            "up": e.KEY_UP,
+            "down": e.KEY_DOWN,
+            "left": e.KEY_LEFT,
+            "right": e.KEY_RIGHT,
+            "space": e.KEY_SPACE,
+            "ctrl": e.KEY_LEFTCTRL,
+            "alt": e.KEY_LEFTALT,
+            "shift": e.KEY_LEFTSHIFT,
+            "super": e.KEY_LEFTMETA,
+            "menu": e.KEY_MENU,
+            "capslock": e.KEY_CAPSLOCK,
+            "altgr": e.KEY_RIGHTALT,
+            "insert": e.KEY_INSERT,
+            "print": e.KEY_PRINT,
+            "scrolllock": e.KEY_SCROLLLOCK,
+            "pause": e.KEY_PAUSE,
             "numlock": e.KEY_NUMLOCK,
-            "f1": e.KEY_F1, "f2": e.KEY_F2, "f3": e.KEY_F3, "f4": e.KEY_F4,
-            "f5": e.KEY_F5, "f6": e.KEY_F6, "f7": e.KEY_F7, "f8": e.KEY_F8,
-            "f9": e.KEY_F9, "f10": e.KEY_F10, "f11": e.KEY_F11, "f12": e.KEY_F12,
-            "f13": e.KEY_F13, "f14": e.KEY_F14, "f15": e.KEY_F15,
-            "f16": e.KEY_F16, "f17": e.KEY_F17, "f18": e.KEY_F18,
-            "f19": e.KEY_F19, "f20": e.KEY_F20,
-            "f21": e.KEY_F21, "f22": e.KEY_F22, "f23": e.KEY_F23, "f24": e.KEY_F24,
+            "f1": e.KEY_F1,
+            "f2": e.KEY_F2,
+            "f3": e.KEY_F3,
+            "f4": e.KEY_F4,
+            "f5": e.KEY_F5,
+            "f6": e.KEY_F6,
+            "f7": e.KEY_F7,
+            "f8": e.KEY_F8,
+            "f9": e.KEY_F9,
+            "f10": e.KEY_F10,
+            "f11": e.KEY_F11,
+            "f12": e.KEY_F12,
+            "f13": e.KEY_F13,
+            "f14": e.KEY_F14,
+            "f15": e.KEY_F15,
+            "f16": e.KEY_F16,
+            "f17": e.KEY_F17,
+            "f18": e.KEY_F18,
+            "f19": e.KEY_F19,
+            "f20": e.KEY_F20,
+            "f21": e.KEY_F21,
+            "f22": e.KEY_F22,
+            "f23": e.KEY_F23,
+            "f24": e.KEY_F24,
         }
         lower_key = key.lower()
         if lower_key in key_map:
@@ -416,27 +543,48 @@ class WaylandInputBackend(InputBackend):
         # carattere risultante è quello digitato. I caratteri non-ASCII
         # (accentate) non hanno keycode evdev → scartati con warning.
         sym_map = {
-            "1": e.KEY_1, "!": e.KEY_1,
-            "2": e.KEY_2, "@": e.KEY_2,
-            "3": e.KEY_3, "#": e.KEY_3,
-            "4": e.KEY_4, "$": e.KEY_4,
-            "5": e.KEY_5, "%": e.KEY_5,
-            "6": e.KEY_6, "^": e.KEY_6,
-            "7": e.KEY_7, "&": e.KEY_7,
-            "8": e.KEY_8, "*": e.KEY_8,
-            "9": e.KEY_9, "(": e.KEY_9,
-            "0": e.KEY_0, ")": e.KEY_0,
-            "-": e.KEY_MINUS, "_": e.KEY_MINUS,
-            "=": e.KEY_EQUAL, "+": e.KEY_EQUAL,
-            "[": e.KEY_LEFTBRACE, "{": e.KEY_LEFTBRACE,
-            "]": e.KEY_RIGHTBRACE, "}": e.KEY_RIGHTBRACE,
-            "\\": e.KEY_BACKSLASH, "|": e.KEY_BACKSLASH,
-            ";": e.KEY_SEMICOLON, ":": e.KEY_SEMICOLON,
-            "'": e.KEY_APOSTROPHE, '"': e.KEY_APOSTROPHE,
-            "`": e.KEY_GRAVE, "~": e.KEY_GRAVE,
-            ",": e.KEY_COMMA, "<": e.KEY_COMMA,
-            ".": e.KEY_DOT, ">": e.KEY_DOT,
-            "/": e.KEY_SLASH, "?": e.KEY_SLASH,
+            "1": e.KEY_1,
+            "!": e.KEY_1,
+            "2": e.KEY_2,
+            "@": e.KEY_2,
+            "3": e.KEY_3,
+            "#": e.KEY_3,
+            "4": e.KEY_4,
+            "$": e.KEY_4,
+            "5": e.KEY_5,
+            "%": e.KEY_5,
+            "6": e.KEY_6,
+            "^": e.KEY_6,
+            "7": e.KEY_7,
+            "&": e.KEY_7,
+            "8": e.KEY_8,
+            "*": e.KEY_8,
+            "9": e.KEY_9,
+            "(": e.KEY_9,
+            "0": e.KEY_0,
+            ")": e.KEY_0,
+            "-": e.KEY_MINUS,
+            "_": e.KEY_MINUS,
+            "=": e.KEY_EQUAL,
+            "+": e.KEY_EQUAL,
+            "[": e.KEY_LEFTBRACE,
+            "{": e.KEY_LEFTBRACE,
+            "]": e.KEY_RIGHTBRACE,
+            "}": e.KEY_RIGHTBRACE,
+            "\\": e.KEY_BACKSLASH,
+            "|": e.KEY_BACKSLASH,
+            ";": e.KEY_SEMICOLON,
+            ":": e.KEY_SEMICOLON,
+            "'": e.KEY_APOSTROPHE,
+            '"': e.KEY_APOSTROPHE,
+            "`": e.KEY_GRAVE,
+            "~": e.KEY_GRAVE,
+            ",": e.KEY_COMMA,
+            "<": e.KEY_COMMA,
+            ".": e.KEY_DOT,
+            ">": e.KEY_DOT,
+            "/": e.KEY_SLASH,
+            "?": e.KEY_SLASH,
         }
         if key in sym_map:
             return sym_map[key]
@@ -449,7 +597,8 @@ class WaylandInputBackend(InputBackend):
         self._screen_height = height
         logger.info(
             "Wayland: screen size set to %dx%d for ABS scaling",
-            width, height,
+            width,
+            height,
         )
 
     def _try_create_abs_device(self) -> None:
@@ -464,10 +613,13 @@ class WaylandInputBackend(InputBackend):
         le interpreta nel range 0-_ABS_MAX invece che in pixel.
         """
         from evdev import AbsInfo, UInput
+
         try:
             abs_caps = {
                 self._e.EV_KEY: (
-                    self._e.BTN_LEFT, self._e.BTN_MIDDLE, self._e.BTN_RIGHT,
+                    self._e.BTN_LEFT,
+                    self._e.BTN_MIDDLE,
+                    self._e.BTN_RIGHT,
                 ),
                 self._e.EV_ABS: [
                     (self._e.ABS_X, AbsInfo(0, 0, _ABS_MAX, 0, 0, 0)),
@@ -506,9 +658,11 @@ class WaylandInputBackend(InputBackend):
         if absolute and self._ydotool:
             # ydotool supports absolute positioning
             import subprocess
+
             subprocess.run(
                 [self._ydotool, "mousemove", "--absolute", str(x), str(y)],
-                capture_output=True, timeout=1,
+                capture_output=True,
+                timeout=1,
             )
             self._virtual_x = x
             self._virtual_y = y
@@ -532,8 +686,9 @@ class WaylandInputBackend(InputBackend):
             else:
                 # Screen size non ancora nota → REL fallback
                 logger.debug(
-                    "Wayland ABS: screen size unknown, falling back to REL "
-                    "for move to (%d, %d)", x, y,
+                    "Wayland ABS: screen size unknown, falling back to REL for move to (%d, %d)",
+                    x,
+                    y,
                 )
 
         if absolute:
@@ -602,7 +757,7 @@ class WaylandInputBackend(InputBackend):
             kc = self._key_to_evdev(char)
             if kc == 0:
                 continue
-            need_shift = char.isupper() or char in "~!@#$%^&*()_+{}|:\"<>?"
+            need_shift = char.isupper() or char in '~!@#$%^&*()_+{}|:"<>?'
             if need_shift:
                 self._ui.write(self._e.EV_KEY, self._e.KEY_LEFTSHIFT, 1)
             self._ui.write(self._e.EV_KEY, kc, 1)
@@ -652,35 +807,101 @@ class WindowsInputBackend(InputBackend):
     # 0x2E = VK_DELETE, ...) producendo tasti completamente sbagliati.
     _CHAR_VK = {
         " ": 0x20,
-        "0": 0x30, "1": 0x31, "2": 0x32, "3": 0x33, "4": 0x34,
-        "5": 0x35, "6": 0x36, "7": 0x37, "8": 0x38, "9": 0x39,
-        "a": 0x41, "b": 0x42, "c": 0x43, "d": 0x44, "e": 0x45,
-        "f": 0x46, "g": 0x47, "h": 0x48, "i": 0x49, "j": 0x4A,
-        "k": 0x4B, "l": 0x4C, "m": 0x4D, "n": 0x4E, "o": 0x4F,
-        "p": 0x50, "q": 0x51, "r": 0x52, "s": 0x53, "t": 0x54,
-        "u": 0x55, "v": 0x56, "w": 0x57, "x": 0x58, "y": 0x59,
+        "0": 0x30,
+        "1": 0x31,
+        "2": 0x32,
+        "3": 0x33,
+        "4": 0x34,
+        "5": 0x35,
+        "6": 0x36,
+        "7": 0x37,
+        "8": 0x38,
+        "9": 0x39,
+        "a": 0x41,
+        "b": 0x42,
+        "c": 0x43,
+        "d": 0x44,
+        "e": 0x45,
+        "f": 0x46,
+        "g": 0x47,
+        "h": 0x48,
+        "i": 0x49,
+        "j": 0x4A,
+        "k": 0x4B,
+        "l": 0x4C,
+        "m": 0x4D,
+        "n": 0x4E,
+        "o": 0x4F,
+        "p": 0x50,
+        "q": 0x51,
+        "r": 0x52,
+        "s": 0x53,
+        "t": 0x54,
+        "u": 0x55,
+        "v": 0x56,
+        "w": 0x57,
+        "x": 0x58,
+        "y": 0x59,
         "z": 0x5A,
         # riga cifre: base e shiftati → stesso tasto
-        "!": 0x31, "@": 0x32, "#": 0x33, "$": 0x34, "%": 0x35,
-        "^": 0x36, "&": 0x37, "*": 0x38, "(": 0x39, ")": 0x30,
-        "-": 0xBD, "_": 0xBD, "=": 0xBB, "+": 0xBB,
-        "[": 0xDB, "{": 0xDB, "]": 0xDD, "}": 0xDD,
-        "\\": 0xDC, "|": 0xDC, ";": 0xBA, ":": 0xBA,
-        "'": 0xDE, '"': 0xDE, "`": 0xC0, "~": 0xC0,
-        ",": 0xBC, "<": 0xBC, ".": 0xBE, ">": 0xBE,
-        "/": 0xBF, "?": 0xBF,
+        "!": 0x31,
+        "@": 0x32,
+        "#": 0x33,
+        "$": 0x34,
+        "%": 0x35,
+        "^": 0x36,
+        "&": 0x37,
+        "*": 0x38,
+        "(": 0x39,
+        ")": 0x30,
+        "-": 0xBD,
+        "_": 0xBD,
+        "=": 0xBB,
+        "+": 0xBB,
+        "[": 0xDB,
+        "{": 0xDB,
+        "]": 0xDD,
+        "}": 0xDD,
+        "\\": 0xDC,
+        "|": 0xDC,
+        ";": 0xBA,
+        ":": 0xBA,
+        "'": 0xDE,
+        '"': 0xDE,
+        "`": 0xC0,
+        "~": 0xC0,
+        ",": 0xBC,
+        "<": 0xBC,
+        ".": 0xBE,
+        ">": 0xBE,
+        "/": 0xBF,
+        "?": 0xBF,
     }
 
     # Nomi tasto → VK code
     _VK = {
-        "return": 0x0D, "enter": 0x0D, "tab": 0x09,
-        "escape": 0x1B, "backspace": 0x08, "delete": 0x2E,
-        "home": 0x24, "end": 0x23,
-        "pageup": 0x21, "pagedown": 0x22,
-        "up": 0x26, "down": 0x28, "left": 0x25, "right": 0x27,
-        "space": 0x20, "ctrl": 0x11, "alt": 0x12,
-        "shift": 0x10, "super": 0x5B, "menu": 0x5D,
-        "capslock": 0x14, "altgr": 0xA5,  # VK_RMENU
+        "return": 0x0D,
+        "enter": 0x0D,
+        "tab": 0x09,
+        "escape": 0x1B,
+        "backspace": 0x08,
+        "delete": 0x2E,
+        "home": 0x24,
+        "end": 0x23,
+        "pageup": 0x21,
+        "pagedown": 0x22,
+        "up": 0x26,
+        "down": 0x28,
+        "left": 0x25,
+        "right": 0x27,
+        "space": 0x20,
+        "ctrl": 0x11,
+        "alt": 0x12,
+        "shift": 0x10,
+        "super": 0x5B,
+        "menu": 0x5D,
+        "capslock": 0x14,
+        "altgr": 0xA5,  # VK_RMENU
         **{f"f{i}": 0x6F + i for i in range(1, 13)},
     }
 
@@ -811,7 +1032,10 @@ class WindowsInputBackend(InputBackend):
             self._user32.SetCursorPos(x, y)
         else:
             self._send_mouse_input(
-                self._MOUSEEVENTF_MOVE, 0, x, y,
+                self._MOUSEEVENTF_MOVE,
+                0,
+                x,
+                y,
             )
 
     def click_mouse(self, button: MouseButton, state: KeyState) -> None:
@@ -852,7 +1076,7 @@ class WindowsInputBackend(InputBackend):
             vk = self._vk_from_key(char)
             if vk == 0:
                 continue
-            need_shift = char.isupper() or char in "~!@#$%^&*()_+{}|:\"<>?"
+            need_shift = char.isupper() or char in '~!@#$%^&*()_+{}|:"<>?'
             if need_shift:
                 self._send_keyboard_input(0x10, self._KEYEVENTF_KEYDOWN)  # VK_SHIFT
             self._send_keyboard_input(vk, self._KEYEVENTF_KEYDOWN)
@@ -959,9 +1183,7 @@ class MacOSInputBackend(InputBackend):
             self._CGEventPost(self._kCGHIDEventTap, event)
 
     def scroll_mouse(self, dx: int, dy: int) -> None:
-        event = self._CGEventCreateScrollWheelEvent(
-            None, self._kCGEventScrollWheel, 2, dy, dx
-        )
+        event = self._CGEventCreateScrollWheelEvent(None, self._kCGEventScrollWheel, 2, dy, dx)
         self._CGEventPost(self._kCGHIDEventTap, event)
 
     def key_event(self, key: str | int, state: KeyState) -> None:
@@ -984,16 +1206,54 @@ class MacOSInputBackend(InputBackend):
             return key
         # macOS virtual key codes
         key_map = {
-            "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7,
-            "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15,
-            "y": 16, "t": 17, "1": 18, "2": 19, "3": 20, "4": 21, "5": 22,
-            "6": 23, "7": 24, "8": 25, "9": 26, "0": 27,
-            "space": 49, "return": 36, "enter": 36, "tab": 48,
-            "backspace": 51, "delete": 117, "escape": 53,
-            "home": 115, "end": 119, "pageup": 116, "pagedown": 121,
-            "up": 126, "down": 125, "left": 123, "right": 124,
-            "shift": 56, "ctrl": 59, "alt": 58, "super": 55,
-            "capslock": 57, "menu": 110,
+            "a": 0,
+            "s": 1,
+            "d": 2,
+            "f": 3,
+            "h": 4,
+            "g": 5,
+            "z": 6,
+            "x": 7,
+            "c": 8,
+            "v": 9,
+            "b": 11,
+            "q": 12,
+            "w": 13,
+            "e": 14,
+            "r": 15,
+            "y": 16,
+            "t": 17,
+            "1": 18,
+            "2": 19,
+            "3": 20,
+            "4": 21,
+            "5": 22,
+            "6": 23,
+            "7": 24,
+            "8": 25,
+            "9": 26,
+            "0": 27,
+            "space": 49,
+            "return": 36,
+            "enter": 36,
+            "tab": 48,
+            "backspace": 51,
+            "delete": 117,
+            "escape": 53,
+            "home": 115,
+            "end": 119,
+            "pageup": 116,
+            "pagedown": 121,
+            "up": 126,
+            "down": 125,
+            "left": 123,
+            "right": 124,
+            "shift": 56,
+            "ctrl": 59,
+            "alt": 58,
+            "super": 55,
+            "capslock": 57,
+            "menu": 110,
         }
         lower = key.lower()
         if lower in key_map:
@@ -1011,6 +1271,7 @@ class MacOSInputBackend(InputBackend):
 def _find_ydotool() -> str | None:
     """Find ydotool binary for absolute mouse positioning on Wayland."""
     import shutil
+
     for name in ("ydotool", "ydotoold"):
         path = shutil.which(name)
         if path:
@@ -1023,7 +1284,7 @@ def _find_ydotool() -> str | None:
 # ---------------------------------------------------------------------------
 
 _BACKENDS: dict[tuple[Platform, bool], type[InputBackend]] = {
-    (Platform.LINUX, False): X11InputBackend,   # X11
+    (Platform.LINUX, False): X11InputBackend,  # X11
     (Platform.LINUX, True): WaylandInputBackend,  # Wayland
     (Platform.WINDOWS, False): WindowsInputBackend,
     (Platform.MACOS, False): MacOSInputBackend,

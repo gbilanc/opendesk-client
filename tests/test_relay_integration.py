@@ -96,11 +96,13 @@ class _PairedRelay:
 
 
 async def _connect_and_read_ok(
-    host: str, port: int,
+    host: str,
+    port: int,
 ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
     """Connect and read the initial 'ok' byte."""
     r, w = await asyncio.wait_for(
-        asyncio.open_connection(host, port), timeout=5.0,
+        asyncio.open_connection(host, port),
+        timeout=5.0,
     )
     data = await asyncio.wait_for(r.read(2), timeout=5.0)
     assert data == b"ok"

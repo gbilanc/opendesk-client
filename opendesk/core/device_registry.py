@@ -214,8 +214,6 @@ class DeviceRegistry:
         """Save registry to disk."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
         data = {
-            "devices": [
-                asdict(entry) for entry in self._devices.values()
-            ],
+            "devices": [asdict(entry) for entry in self._devices.values()],
         }
         self._path.write_text(json.dumps(data, indent=2))

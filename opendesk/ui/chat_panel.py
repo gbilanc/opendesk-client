@@ -99,7 +99,7 @@ class ChatPanel(QDialog):
                 f'<span style="color: #2563eb; font-weight: 600;">{sender}</span> '
                 f'<span style="color: #94a3b8; font-size: 11px;">{timestamp}</span><br>'
                 f'<span style="color: #0f172a;">{self._escape(text)}</span>'
-                f'</div>'
+                f"</div>"
             )
         else:
             html = (
@@ -107,7 +107,7 @@ class ChatPanel(QDialog):
                 f'<span style="color: #64748b; font-size: 11px;">{timestamp}</span> '
                 f'<span style="color: #059669; font-weight: 600;">{sender}</span><br>'
                 f'<span style="color: #0f172a;">{self._escape(text)}</span>'
-                f'</div>'
+                f"</div>"
             )
 
         self._display.append(html)

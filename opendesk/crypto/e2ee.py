@@ -236,7 +236,9 @@ class E2EEncryption:
 
 
 def encrypt_json(
-    encryption: E2EEncryption, payload: dict, encoder: type[json.JSONEncoder] | None = None,
+    encryption: E2EEncryption,
+    payload: dict,
+    encoder: type[json.JSONEncoder] | None = None,
 ) -> EncryptedMessage:
     """Serialize a dict to JSON and encrypt it."""
     data = json.dumps(payload, cls=encoder).encode("utf-8")

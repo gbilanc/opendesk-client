@@ -39,7 +39,8 @@ class SessionInfoWidget(QWidget):
     device_name_changed = Signal(str)  # new device name
 
     def __init__(
-        self, auth_manager: AuthManager,
+        self,
+        auth_manager: AuthManager,
         device_id: str = "",
         device_name: str = "",
         parent: QWidget | None = None,
@@ -68,9 +69,7 @@ class SessionInfoWidget(QWidget):
         row1.setSpacing(8)
 
         device_label = QLabel("Device:")
-        device_label.setStyleSheet(
-            "font-size: 12px; font-weight: 700; color: #2563eb;"
-        )
+        device_label.setStyleSheet("font-size: 12px; font-weight: 700; color: #2563eb;")
         row1.addWidget(device_label)
 
         self._device_name_label = QLabel(self._device_name)
@@ -121,9 +120,7 @@ class SessionInfoWidget(QWidget):
         row2.setSpacing(8)
 
         id_label = QLabel("Device ID:")
-        id_label.setStyleSheet(
-            "font-size: 12px; font-weight: 700; color: #2563eb;"
-        )
+        id_label.setStyleSheet("font-size: 12px; font-weight: 700; color: #2563eb;")
         row2.addWidget(id_label)
 
         self._id_display = QLabel("—")
@@ -158,9 +155,7 @@ class SessionInfoWidget(QWidget):
         row2.addWidget(sep)
 
         pwd_label = QLabel("Password:")
-        pwd_label.setStyleSheet(
-            "font-size: 12px; font-weight: 700; color: #2563eb;"
-        )
+        pwd_label.setStyleSheet("font-size: 12px; font-weight: 700; color: #2563eb;")
         row2.addWidget(pwd_label)
 
         self._pwd_display = QLabel("—")
@@ -330,5 +325,6 @@ class SessionInfoWidget(QWidget):
     def _generate_password() -> str:
         """Generate a random 8-character alphanumeric password."""
         import secrets
+
         alphabet = string.ascii_uppercase + string.digits
         return "".join(secrets.choice(alphabet) for _ in range(8))

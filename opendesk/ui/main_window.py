@@ -53,8 +53,8 @@ class MainWindow(QMainWindow):
     MIN_HEIGHT = 680
 
     # ── Caps Lock indicator styles ──
-    _CAPS_ON_STYLE = "font-size: 12px; font-weight: 700; color: #dc2626;" " padding: 0 6px;"
-    _CAPS_OFF_STYLE = "font-size: 12px; font-weight: 600; color: #94a3b8;" " padding: 0 6px;"
+    _CAPS_ON_STYLE = "font-size: 12px; font-weight: 700; color: #dc2626; padding: 0 6px;"
+    _CAPS_OFF_STYLE = "font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;"
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)

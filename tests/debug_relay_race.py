@@ -61,11 +61,14 @@ async def run_host():
     logger.info("[HOST] Connected")
 
     # Registra device + sessione
-    await write_msg(writer, Message.relay_register(
-        session_id=SESSION_ID,
-        device_id=HOST_DEVICE_ID,
-        device_name=HOST_DEVICE_NAME,
-    ))
+    await write_msg(
+        writer,
+        Message.relay_register(
+            session_id=SESSION_ID,
+            device_id=HOST_DEVICE_ID,
+            device_name=HOST_DEVICE_NAME,
+        ),
+    )
     logger.info("[HOST] Sent RELAY_REGISTER (session=%s, device=%s)", SESSION_ID, HOST_DEVICE_ID)
 
     # Leggi risposta (potrebbe arrivare DEVICE_LIST dopo REGISTER)
@@ -149,10 +152,13 @@ async def run_client():
     logger.info("[CLIENT] Connected")
 
     # Cerca host per device_id
-    await write_msg(writer, Message(
-        MessageType.RELAY_REGISTER,
-        {"lookup_device": HOST_DEVICE_ID},
-    ))
+    await write_msg(
+        writer,
+        Message(
+            MessageType.RELAY_REGISTER,
+            {"lookup_device": HOST_DEVICE_ID},
+        ),
+    )
     logger.info("[CLIENT] Sent RELAY_REGISTER (lookup_device=%s)", HOST_DEVICE_ID)
 
     # Leggi risposta (potrebbe arrivare DEVICE_LIST prima)

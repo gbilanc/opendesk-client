@@ -133,7 +133,10 @@ class ScreenRecorder:
 
         logger.info(
             "Recording started: %s (%dx%d, %.1f fps)",
-            self._output_path, width, height, fps,
+            self._output_path,
+            width,
+            height,
+            fps,
         )
         return str(self._output_path)
 

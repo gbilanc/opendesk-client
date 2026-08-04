@@ -19,9 +19,9 @@ class ToastNotification(QFrame):
 
     class Type(Enum):
         SUCCESS = ("✅", "#d1fae5", "#065f46")
-        ERROR   = ("❌", "#fee2e2", "#991b1b")
+        ERROR = ("❌", "#fee2e2", "#991b1b")
         WARNING = ("⚠️", "#fef3c7", "#92400e")
-        INFO    = ("ℹ️", "#dbeafe", "#1e40af")
+        INFO = ("ℹ️", "#dbeafe", "#1e40af")
 
         def __init__(self, icon: str, bg: str, fg: str) -> None:
             self.icon = icon

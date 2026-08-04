@@ -30,9 +30,27 @@ class TestKeyToEvdev:
         """I simboli shiftati non devono più essere scartati (erano DROPPED)."""
         b = WaylandInputBackend.__new__(WaylandInputBackend)
         cases = {
-            "!", "@", "#", "$", "%", "^", "&",
-            "*", "(", ")", ":", '"', "?", "{",
-            "}", "|", "~", "_", "+", "<", ">",
+            "!",
+            "@",
+            "#",
+            "$",
+            "%",
+            "^",
+            "&",
+            "*",
+            "(",
+            ")",
+            ":",
+            '"',
+            "?",
+            "{",
+            "}",
+            "|",
+            "~",
+            "_",
+            "+",
+            "<",
+            ">",
         }
         for sym in cases:
             assert b._key_to_evdev(sym) != 0, f"'{sym}' dovrebbe risolvere"
@@ -43,10 +61,18 @@ class TestKeyToEvdev:
         from evdev import ecodes as e
 
         cases = {
-            "!": e.KEY_1, "@": e.KEY_2, ":": e.KEY_SEMICOLON,
-            "?": e.KEY_SLASH, "[": e.KEY_LEFTBRACE, "}": e.KEY_RIGHTBRACE,
-            "~": e.KEY_GRAVE, "_": e.KEY_MINUS, "+": e.KEY_EQUAL,
-            "<": e.KEY_COMMA, ">": e.KEY_DOT, '"': e.KEY_APOSTROPHE,
+            "!": e.KEY_1,
+            "@": e.KEY_2,
+            ":": e.KEY_SEMICOLON,
+            "?": e.KEY_SLASH,
+            "[": e.KEY_LEFTBRACE,
+            "}": e.KEY_RIGHTBRACE,
+            "~": e.KEY_GRAVE,
+            "_": e.KEY_MINUS,
+            "+": e.KEY_EQUAL,
+            "<": e.KEY_COMMA,
+            ">": e.KEY_DOT,
+            '"': e.KEY_APOSTROPHE,
         }
         for sym, expected in cases.items():
             assert b._key_to_evdev(sym) == expected, f"'{sym}' → {expected}"
@@ -83,10 +109,22 @@ class TestVkFromKey:
     def test_symbols_map_to_expected_vk(self) -> None:
         w = WindowsInputBackend.__new__(WindowsInputBackend)
         cases = {
-            "!": 0x31, "@": 0x32, ":": 0xBA, ";": 0xBA,
-            ".": 0xBE, ",": 0xBC, "-": 0xBD, "+": 0xBB,
-            "[": 0xDB, "\\": 0xDC, "]": 0xDD, "`": 0xC0,
-            "/": 0xBF, "?": 0xBF, "~": 0xC0, "'": 0xDE,
+            "!": 0x31,
+            "@": 0x32,
+            ":": 0xBA,
+            ";": 0xBA,
+            ".": 0xBE,
+            ",": 0xBC,
+            "-": 0xBD,
+            "+": 0xBB,
+            "[": 0xDB,
+            "\\": 0xDC,
+            "]": 0xDD,
+            "`": 0xC0,
+            "/": 0xBF,
+            "?": 0xBF,
+            "~": 0xC0,
+            "'": 0xDE,
         }
         for sym, expected in cases.items():
             assert w._vk_from_key(sym) == expected, f"'{sym}' → 0x{expected:02X}"

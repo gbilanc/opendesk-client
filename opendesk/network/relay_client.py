@@ -378,7 +378,7 @@ class _RelaySession:
                     logger.debug(
                         "Send backpressure: %d pending sends, dropping message type=%s",
                         self._pending_sends,
-                        msg.type.name if hasattr(msg.type, 'name') else msg.type,
+                        msg.type.name if hasattr(msg.type, "name") else msg.type,
                     )
                     return False
                 with self._send_lock:
@@ -415,7 +415,7 @@ class _RelaySession:
             # Reset timeout counter on success
             self._drain_timeout_count = 0
         except TimeoutError:
-            self._drain_timeout_count = getattr(self, '_drain_timeout_count', 0) + 1
+            self._drain_timeout_count = getattr(self, "_drain_timeout_count", 0) + 1
             logger.warning(
                 "Send drain timeout (%d/%d) — network congested or peer unresponsive",
                 self._drain_timeout_count,
@@ -533,7 +533,9 @@ class _RelaySession:
                             await self._send_async(
                                 Message.relay_route(
                                     inner_type=MessageType.KEY_EXCHANGE.value,
-                                    inner_payload=self._key_exchange_message(MessageType.KEY_EXCHANGE).payload,
+                                    inner_payload=self._key_exchange_message(
+                                        MessageType.KEY_EXCHANGE
+                                    ).payload,
                                 )
                             )
                         self.inbox.put(
@@ -553,7 +555,9 @@ class _RelaySession:
                             await self._send_async(
                                 Message.relay_route(
                                     inner_type=MessageType.KEY_EXCHANGE.value,
-                                    inner_payload=self._key_exchange_message(MessageType.KEY_EXCHANGE).payload,
+                                    inner_payload=self._key_exchange_message(
+                                        MessageType.KEY_EXCHANGE
+                                    ).payload,
                                 )
                             )
                         self.inbox.put(("auth_result", (True, "Authenticated"), self.session_seq))
@@ -639,6 +643,7 @@ class _RelaySession:
 
         # Periodic task that requests a keyframe if none received
         _frame_count = 0  # track frames received since last watchdog check
+
         async def _keyframe_watchdog():
             nonlocal _frame_count
             while self._running.is_set():
@@ -691,7 +696,9 @@ class _RelaySession:
                         await self._send_async(
                             Message.relay_route(
                                 inner_type=MessageType.KEY_EXCHANGE_ACK.value,
-                                inner_payload=self._key_exchange_message(MessageType.KEY_EXCHANGE_ACK).payload,
+                                inner_payload=self._key_exchange_message(
+                                    MessageType.KEY_EXCHANGE_ACK
+                                ).payload,
                             )
                         )
                     else:
@@ -860,7 +867,7 @@ class _RelaySession:
                     err = msg.payload.get("message", None)
                     if err is None:
                         logger.warning(
-                            "Client received ERROR without message field " "(payload=%s, code=%s)",
+                            "Client received ERROR without message field (payload=%s, code=%s)",
                             {
                                 k: (
                                     str(v)[:120]
@@ -919,7 +926,11 @@ class _RelaySession:
         """
         logger.debug(
             "send_frame: %dx%d keyframe=%s len=%d pts=%d",
-            width, height, keyframe, len(data), pts,
+            width,
+            height,
+            keyframe,
+            len(data),
+            pts,
         )
         msg = Message.video_frame(
             data=data, width=width, height=height, pts=pts, keyframe=keyframe
@@ -982,7 +993,9 @@ class RelayClient(QObject):
         self._host_seq: int = 0
         self._host_role: RelayRole | None = None
         self._e2ee_enabled = QSettings("OpenDesk", "OpenDesk").value(
-            "security/e2ee", True, type=bool,
+            "security/e2ee",
+            True,
+            type=bool,
         )
 
         # ── Client session (on-demand foreground) ──
@@ -1224,7 +1237,7 @@ class RelayClient(QObject):
         old_thread = self._host_thread
         if old_thread and old_thread.is_alive():
             logger.info(
-                "Previous host thread still alive — " "creating new thread for session %s",
+                "Previous host thread still alive — creating new thread for session %s",
                 getattr(session, "session_id", "?"),
             )
         self._host_thread = threading.Thread(target=session.start, daemon=True)
@@ -1255,7 +1268,7 @@ class RelayClient(QObject):
         old_thread = self._thread
         if old_thread and old_thread.is_alive():
             logger.info(
-                "Previous client thread still alive — " "creating new thread for session %s",
+                "Previous client thread still alive — creating new thread for session %s",
                 getattr(session, "session_id", "?"),
             )
         self._thread = threading.Thread(target=session.start, daemon=True)
