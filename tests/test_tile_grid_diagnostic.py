@@ -25,6 +25,7 @@ from opendesk.core.video_codec import (
 )
 from opendesk.services.stream_service import (
     _KEYFRAME_INTERVAL,
+    _TILE_CHANGE_RATIO,
     _TILE_JPEG_QUALITY,
     _TILE_MAX_CHANGED_RATIO,
     _TILE_SIZE,
@@ -219,7 +220,7 @@ def test_tile_grid_drift() -> None:
                 diff = np.abs(cur_tile.astype(np.int16) - prev_tile.astype(np.int16))
                 changed = np.any(diff > _TILE_THRESHOLD, axis=2)
                 change_ratio = float(changed.sum()) / changed.size
-                if change_ratio > 0.005:
+                if change_ratio > _TILE_CHANGE_RATIO:
                     tile_bgr = cv2.cvtColor(cur_tile, cv2.COLOR_RGB2BGR)
                     success, encoded = cv2.imencode(
                         ".jpg",
@@ -432,3 +433,55 @@ def test_tile_bounds_check() -> None:
             print(f"  Tile ({tx},{ty},{tw}x{th}) fuori bounds — scartato (corretto)")
 
     print(f"✅ Bounds check superato ({len(test_positions)} posizioni)")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Test 7: carattere singolo piccolo (bug "lo schermo non si aggiorna")
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def test_small_character_detected_with_current_threshold() -> None:
+    """Un carattere piccolo (~8×10px) deve superare la soglia per-tile.
+
+    Con la vecchia soglia 0.5% (~82px su un tile 128×128) un carattere
+    digitato non generava tile → lo schermo remoto non si aggiornava
+    finché non arrivava un keyframe (che in idle non parte mai).
+    Con ``_TILE_CHANGE_RATIO`` (0.05% ≈ 8px) deve essere rilevato.
+    """
+    tile = np.full((_TILE_SIZE, _TILE_SIZE, 3), 240, dtype=np.uint8)
+    tile_prev = np.full_like(tile, 240)
+    # Glifo approssimato: 8×10 px scuri su sfondo chiaro (= 80 px cambiati)
+    tile[40:50, 60:68] = (30, 30, 30)
+
+    diff = np.abs(tile.astype(np.int16) - tile_prev.astype(np.int16))
+    changed = np.any(diff > _TILE_THRESHOLD, axis=2)
+    ratio = float(changed.sum()) / changed.size
+
+    # 80/16384 ≈ 0.49% — sotto la vecchia soglia 0.5%, sopra quella nuova
+    assert ratio > _TILE_CHANGE_RATIO, (
+        f"ratio {ratio:.5f} deve superare _TILE_CHANGE_RATIO {_TILE_CHANGE_RATIO}"
+    )
+    assert ratio < 0.005, (
+        f"ratio {ratio:.5f} deve restare sotto la vecchia soglia 0.005 "
+        "(dimostra che il bug riguardava proprio questo caso)"
+    )
+    print(
+        f"  Carattere piccolo: change_ratio = {ratio:.5f} "
+        f"(soglia attuale {_TILE_CHANGE_RATIO}) — rilevato ✓"
+    )
+
+
+def test_caret_detected_with_current_threshold() -> None:
+    """Il caret di testo (~2×15px) deve superare la soglia per-tile."""
+    tile = np.full((_TILE_SIZE, _TILE_SIZE, 3), 240, dtype=np.uint8)
+    tile_prev = np.full_like(tile, 240)
+    tile[55:70, 60:62] = 0
+
+    diff = np.abs(tile.astype(np.int16) - tile_prev.astype(np.int16))
+    changed = np.any(diff > _TILE_THRESHOLD, axis=2)
+    ratio = float(changed.sum()) / changed.size
+
+    assert ratio > _TILE_CHANGE_RATIO, (
+        f"caret ratio {ratio:.5f} deve superare _TILE_CHANGE_RATIO {_TILE_CHANGE_RATIO}"
+    )
+    print(f"  Caret di testo: change_ratio = {ratio:.5f} — rilevato ✓")

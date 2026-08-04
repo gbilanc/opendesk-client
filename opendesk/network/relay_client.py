@@ -126,6 +126,7 @@ class _RelaySession:
         self._frame_height: int = 0
         self._last_keyframe_time: float = 0.0
         self._last_video_activity_time: float = 0.0
+        self._last_keyframe_request_ts: float = 0.0  # anti-flood per richieste keyframe
         self._start_time: float = time.time()
         self._pending_sends: int = 0  # atomic counter for pending _send_async tasks
         self._send_lock = threading.Lock()
@@ -856,7 +857,17 @@ class _RelaySession:
                         except Exception as e:
                             logger.warning("Tile decode/composite error: %s", e)
                     elif self._reference_frame is None:
-                        logger.debug("Tile dropped - no reference frame (waiting for keyframe)")
+                        # Nessun reference frame su cui comporre: il keyframe
+                        # iniziale (o l'ultimo riallineamento) è andato perso
+                        # per backpressure.  Non droppare in silenzio: chiedi
+                        # un nuovo keyframe all'host, con anti-flood.
+                        now = time.time()
+                        if now - self._last_keyframe_request_ts > 5.0:
+                            self._last_keyframe_request_ts = now
+                            logger.debug("Tile dropped - no reference frame, requesting keyframe")
+                            await self._send_async(
+                                Message(MessageType.VIDEO_REQUEST_KEYFRAME, {}),
+                            )
                 elif t == MessageType.VIDEO_REQUEST_KEYFRAME:
                     logger.debug("Keyframe requested by peer")
                     # Forward to host via inbox so the StreamService can

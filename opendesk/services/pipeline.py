@@ -34,6 +34,30 @@ logger = logging.getLogger(__name__)
 _FRAME_QUEUE_MAX = 3  # max frames in flight (back-pressure)
 _PKT_QUEUE_MAX = 30  # max encoded packets queued for network
 
+# ── Tile grid / keyframe constants ─────────────────────────────────
+_TILE_SIZE = 128  # tile width/height in pixels
+_TILE_THRESHOLD = 16  # pixel difference threshold for change detection
+# Soglia per-tile: frazione minima di pixel cambiati perché il tile sia
+# inviato. 0.05% di 128×128 = ~8px: un carattere piccolo o il caret di
+# testo (2×15px) superano la soglia; il rumore di 1-2px no.  La vecchia
+# soglia 0.5% (~82px) lasciava passare il cursore del mouse (~256px) ma
+# non i caratteri digitati — lo schermo remoto non si aggiornava.
+_TILE_CHANGE_RATIO = 0.0005
+_TILE_MAX_CHANGED_RATIO = 0.30  # if more tiles changed, send full frame
+_KEYFRAME_INTERVAL = 60  # keyframe every N frames (~2s at 30fps) with motion
+# Rete di sicurezza: anche a schermo fermo (idle) invia un keyframe di
+# riallineamento ogni N frame (~10s), così il client recupera da tile
+# persi/droppati invece di restare su un'immagine vecchia.
+_KEYFRAME_IDLE_INTERVAL = 300
+# JPEG quality per quality preset (lossy ma ~10× più veloce del PNG).
+_TILE_JPEG_QUALITY: dict[QualityLevel, int] = {
+    QualityLevel.LOW: 50,
+    QualityLevel.MEDIUM: 65,
+    QualityLevel.HIGH: 80,
+    QualityLevel.SHARP: 95,
+    QualityLevel.LOSSLESS: 98,
+}
+
 
 @dataclasses.dataclass
 class PipelineConfig:
@@ -212,6 +236,10 @@ class EncoderWorker(threading.Thread):
         self._prev_frame: np.ndarray | None = None
         self._frame_count: int = 0
         self._force_full_keyframe: bool = False
+        # Tile droppati consecutivamente dalla pkt_queue (rete lenta):
+        # se troppi di fila, forza un keyframe che rimpiazza i pacchetti
+        # stale e riallinea il decoder del client.
+        self._dropped_tiles: int = 0
 
         # Adaptive quality when screen is idle
         self._last_change_ratio: float = 1.0  # 0.0 = idle, 1.0 = full change
@@ -300,14 +328,17 @@ class EncoderWorker(threading.Thread):
                 needs_keyframe = (
                     self._prev_frame is None
                     or self._force_full_keyframe
-                    or (self._frame_count >= 60 and self._last_change_ratio > 0.0)
+                    or (self._frame_count >= _KEYFRAME_INTERVAL and self._last_change_ratio > 0.0)
+                    # Riallineamento periodico anche a schermo fermo:
+                    # il client recupera da tile persi senza attendere
+                    # il prossimo movimento (vedi _KEYFRAME_IDLE_INTERVAL)
+                    or self._frame_count >= _KEYFRAME_IDLE_INTERVAL
                 )
 
-                if self._frame_count >= 60:
-                    # Resetta il contatore anche se saltiamo il keyframe
-                    self._frame_count = 0
-
                 if needs_keyframe:
+                    # Resetta il contatore solo quando il keyframe parte
+                    # davvero (altrimenti l'intervallo idle non scatta mai)
+                    self._frame_count = 0
                     # Se in idle da tempo, alza la qualità per questo keyframe
                     if self._idle_frames >= 10:
                         self._apply_quality_boost()
@@ -345,10 +376,21 @@ class EncoderWorker(threading.Thread):
         """
         try:
             self._pkt_queue.put(packet, timeout=0.1)
+            if not keyframe:
+                self._dropped_tiles = 0
             return True
         except queue.Full:
             if not keyframe:
-                logger.debug("EncoderWorker: packet queue full, dropping tile")
+                self._dropped_tiles += 1
+                if self._dropped_tiles >= 5:
+                    logger.warning(
+                        "EncoderWorker: %d tile droppati consecutivamente — "
+                        "forzo un keyframe per riallineare il client",
+                        self._dropped_tiles,
+                    )
+                    self._force_full_keyframe = True
+                else:
+                    logger.debug("EncoderWorker: packet queue full, dropping tile")
                 return False
             while True:
                 try:
@@ -380,16 +422,10 @@ class EncoderWorker(threading.Thread):
             self._prev_frame = current.copy()
             return
 
-        tile_size = 128
-        threshold = 16
+        tile_size = _TILE_SIZE
+        threshold = _TILE_THRESHOLD
         quality = self._config.quality
-        jpeg_q = {
-            QualityLevel.LOW: 50,
-            QualityLevel.MEDIUM: 65,
-            QualityLevel.HIGH: 80,
-            QualityLevel.SHARP: 95,
-            QualityLevel.LOSSLESS: 98,
-        }[quality]
+        jpeg_q = _TILE_JPEG_QUALITY[quality]
 
         # Full-frame diff using OpenCV (works directly on uint8, no conversion)
         diff = cv2.absdiff(current, prev)
@@ -406,7 +442,7 @@ class EncoderWorker(threading.Thread):
                 tw = min(tile_size, w - x)
                 total_tiles += 1
                 tile_mask = any_changed[y : y + th, x : x + tw]
-                if tile_mask.sum() / tile_mask.size > 0.005:
+                if tile_mask.sum() / tile_mask.size > _TILE_CHANGE_RATIO:
                     cur_tile = current[y : y + th, x : x + tw]
                     tile_bgr = cv2.cvtColor(cur_tile, cv2.COLOR_RGB2BGR)
                     success, encoded = cv2.imencode(

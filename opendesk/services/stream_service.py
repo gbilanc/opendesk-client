@@ -28,9 +28,28 @@ from opendesk.core.video_codec import _QUALITY_CRF, QualityLevel, VideoEncoder
 from opendesk.network.protocol import Message
 from opendesk.network.relay_client import RelayClient
 from opendesk.services.pipeline import (
+    _KEYFRAME_IDLE_INTERVAL,
+    _KEYFRAME_INTERVAL,
+    _TILE_CHANGE_RATIO,
+    _TILE_JPEG_QUALITY,
+    _TILE_MAX_CHANGED_RATIO,
+    _TILE_SIZE,
+    _TILE_THRESHOLD,
     PipelineConfig,
     StreamingPipeline,
 )
+
+# Costanti tile re-esportate da pipeline.py per i test (vedi nota sotto):
+# dichiarate in __all__ così ruff non le segnala come unused.
+__all__ = [
+    "_KEYFRAME_IDLE_INTERVAL",
+    "_KEYFRAME_INTERVAL",
+    "_TILE_CHANGE_RATIO",
+    "_TILE_JPEG_QUALITY",
+    "_TILE_MAX_CHANGED_RATIO",
+    "_TILE_SIZE",
+    "_TILE_THRESHOLD",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -44,23 +63,13 @@ _DEFAULT_BITRATES = {
 }
 
 # ═══════════════════════════════════════════════════════════════════
-# Tile grid constants
+# Tile grid / keyframe constants
 # ═══════════════════════════════════════════════════════════════════
-
-_TILE_SIZE = 128  # tile width/height in pixels (64 → 128 = 75% fewer tiles)
-_TILE_THRESHOLD = 16  # pixel difference threshold for change detection
-_TILE_MAX_CHANGED_RATIO = 0.30  # if more tiles changed, send full frame
-_KEYFRAME_INTERVAL = 60  # send full keyframe every N frames (every ~2s at 30fps)
-# JPEG quality per quality preset.
-# JPEG is lossy but ~10× faster to encode than PNG and produces
-# far smaller payloads for photographic / gradient-heavy content.
-_TILE_JPEG_QUALITY: dict[QualityLevel, int] = {
-    QualityLevel.LOW: 50,
-    QualityLevel.MEDIUM: 65,
-    QualityLevel.HIGH: 80,
-    QualityLevel.SHARP: 95,
-    QualityLevel.LOSSLESS: 98,
-}
+#
+# Definitive in opendesk/services/pipeline.py (punto d'uso): re-export
+# qui per i test e per compatibilità con chi importava da questo modulo.
+# (Le costanti tile NON possono vivere qui: pipeline.py non può importare
+# stream_service.py senza creare un ciclo di import.)
 
 
 # ═══════════════════════════════════════════════════════════════════
