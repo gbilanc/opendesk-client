@@ -6,12 +6,18 @@ Questa cartella contiene i file per installare opendesk-host come servizio in ba
 
 ```
 systemd/
-├── opendesk-host.service          # Servizio tipo "Type=simple" (sviluppo)
+├── opendesk-host.user.service     # ✅ Servizio UTENTE (consigliato — GUI nella sessione grafica)
+├── opendesk-host.service          # Servizio di SISTEMA (root) — richiede accesso al display
 ├── opendesk-host-wait.service     # Servizio tipo "Type=oneshot" (attivo dopo esito)
 ├── wrapper.sh                     # Wrapper per systemd (Linux/macOS)
 ├── wrapper_windows.sh             # Wrapper per Windows
 └── wrapper_macos.sh               # Wrapper per macOS
 ```
+
+> ⚠️ `opendesk-host` è un'app **GUI** (deve mostrare ID + password). Un servizio
+> di **sistema** gira come root senza accesso alla sessione grafica e va in
+> crash-loop (`could not connect to display :0` → `SIGABRT`). Usare il servizio
+> **utente** descritto sotto.
 
 ## Prerequisiti
 
@@ -30,28 +36,58 @@ sudo apt-get install -y ffmpeg libx11-6 libxext6 libxrender1 libxtst6
 
 ## Installazione
 
-### Linux / macOS (systemd)
+### Linux — servizio UTENTE (consigliato)
+
+Gira dentro la sessione grafica dell'utente, quindi eredita automaticamente
+`DISPLAY`, `WAYLAND_DISPLAY`, `XAUTHORITY` e `XDG_RUNTIME_DIR` da `systemd --user`
+(verifica con `systemctl --user show-environment`). Nessun privilegio root.
 
 ```bash
 # 1. Genera il file di desktop entry e installa il pacchetto (via uv)
 python3 cross_platform_installer.py --target-dir /home/giampaolo/Codium/opendesk-client
 #    (aggiungi --skip-deps se le dipendenze di sistema sono già presenti)
 
-# 2. Avvia il servizio
-sudo cp systemd/opendesk-host.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable opendesk-host
-sudo systemctl start opendesk-host
-sudo systemctl status opendesk-host
+# 2. Installa il servizio utente
+mkdir -p ~/.config/systemd/user
+cp systemd/opendesk-host.user.service ~/.config/systemd/user/opendesk-host.service
+systemctl --user daemon-reload
+systemctl --user enable --now opendesk-host
+systemctl --user status opendesk-host
 
 # 3. Configura il client OpenDesk (Tools → Settings → Network)
 #    Relay Host = IP del server
 #    Relay Port = 8474
 ```
 
-> **Nota GUI**: il servizio esegue un'app grafica (mostra ID + password).
-> Il file `opendesk-host.service` imposta `DISPLAY=:0`; su Wayland o display
-> diverso adattare la variabile `Environment=DISPLAY=` nel service file.
+Il servizio parte al login dell'utente. Per farlo partire anche senza login
+(senza finestra visibile) abilitare il *linger* e usare `QT_QPA_PLATFORM=offscreen`:
+
+```bash
+sudo loginctl enable-linger $USER
+```
+
+### Linux — servizio di SISTEMA (alternativa, richiede setup display)
+
+Se proprio serve un servizio di sistema, va eseguito come utente grafico e con
+le variabili di autenticazione X11/Wayland corrette:
+
+```bash
+sudo cp systemd/opendesk-host.service /etc/systemd/system/
+sudo systemctl edit opendesk-host   # aggiungi User=, XAUTHORITY=, ecc.
+sudo systemctl daemon-reload
+sudo systemctl enable --now opendesk-host
+```
+
+Esempio override:
+
+```ini
+[Service]
+User=giampaolo
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/run/user/1000/.mutter-Xwaylandauth.XXXXXX
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=WAYLAND_DISPLAY=wayland-0
+```
 
 ### Windows
 
@@ -80,18 +116,23 @@ bash systemd/wrapper_macos.sh
 ## Comandi utili
 
 ```bash
-# Verifica il log di systemd
+# Servizio UTENTE
+systemctl --user status opendesk-host
+journalctl --user -u opendesk-host -f
+systemctl --user restart opendesk-host
+systemctl --user stop opendesk-host
+systemctl --user disable opendesk-host
+
+# Verifica che le variabili grafiche siano disponibili al servizio
+systemctl --user show-environment | grep -E 'DISPLAY|WAYLAND|XAUTHORITY'
+
+# Servizio di SISTEMA (se usato)
 journalctl -u opendesk-host -f
-
-# Verifica il log del wrapper
-tail -f /tmp/opendesk-host.log
-
-# Disattiva il servizio
 sudo systemctl stop opendesk-host
 sudo systemctl disable opendesk-host
 
-# Elimina log
-sudo rm /tmp/opendesk-host.log
+# Log dell'applicazione (file)
+tail -f ~/.local/share/opendesk/logs/opendesk.log
 ```
 
 ## Cosa fa
