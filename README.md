@@ -82,13 +82,37 @@ finestra compatta, e accetta connessioni in ingresso con streaming, input
 remoto, chat e file transfer.
 
 ```bash
-uv run opendesk-host           # Avvia la versione host-only
+uv run opendesk-host                      # Avvia la versione host-only
+uv run opendesk-host --minimized          # Avvia ridotto a icona nella system tray
 uv run opendesk-host --log-level=WARNING
 ```
+
+### Avvio automatico ridotto a icona
+
+`--minimized` (alias `--tray`) avvia l'app nascosta nella **system tray**:
+resta in esecuzione in background, mostra l'icona con il menu contestuale
+(*Show window*, *New Session*, *Copy ID*, *Copy password*, *Quit*) e la
+sessione continua anche se si chiude la finestra con la ✕.
+
+Per avviare l'host automaticamente al login/boot del sistema (Linux):
+
+```bash
+# Metodo 1 — servizio systemd utente (parte al login grafico)
+cp systemd/opendesk-host.user.service ~/.config/systemd/user/opendesk-host.service
+systemctl --user daemon-reload
+systemctl --user enable --now opendesk-host
+
+# Metodo 2 — autostart XDG (creato automaticamente dall'installer)
+# ~/.config/autostart/opendesk-host.desktop
+```
+
+Su Windows aggiungere un collegamento a `opendesk-host --minimized` nella
+cartella *Esecuzione automatica*; su macOS usare un LaunchAgent.
 
 ### Cosa fa
 
 - All'avvio si connette al relay e mostra ID + password
+- Con `--minimized` parte direttamente nella **system tray** senza finestra
 - Accetta solo connessioni **in ingresso** — nessun pannello dispositivi
 - Quando un client remoto si connette: **streaming schermo**, **input remoto**
 - **Chat** e **File transfer** si attivano automaticamente su richiesta del remoto

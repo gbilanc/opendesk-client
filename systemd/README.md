@@ -18,6 +18,12 @@ systemd/
 > di **sistema** gira come root senza accesso alla sessione grafica e va in
 > crash-loop (`could not connect to display :0` → `SIGABRT`). Usare il servizio
 > **utente** descritto sotto.
+>
+> 🖥️ I servizi sono configurati con `--minimized`: l'app parte **nascosta nella
+> system tray** (icona accanto all'orologio) invece che con la finestra aperta.
+> Click sull'icona per riaprire la finestra; il menu dell'icona offre
+> *New Session*, *Copy ID*, *Copy password* e *Quit*. Chiudere la finestra con
+> la ✕ la riduce di nuovo a icona senza terminare l'host.
 
 ## Prerequisiti
 
@@ -43,11 +49,13 @@ Gira dentro la sessione grafica dell'utente, quindi eredita automaticamente
 (verifica con `systemctl --user show-environment`). Nessun privilegio root.
 
 ```bash
-# 1. Genera il file di desktop entry e installa il pacchetto (via uv)
+# 1. Genera desktop entry + autostart XDG e installa il pacchetto (via uv)
 python3 cross_platform_installer.py --target-dir /home/giampaolo/Codium/opendesk-client
 #    (aggiungi --skip-deps se le dipendenze di sistema sono già presenti)
+#    L'installer crea ~/.config/autostart/opendesk-host.desktop con
+#    Exec=opendesk-host --minimized, cosi' l'host parte a icona al login.
 
-# 2. Installa il servizio utente
+# 2. (Alternativa all'autostart) Installa il servizio utente
 mkdir -p ~/.config/systemd/user
 cp systemd/opendesk-host.user.service ~/.config/systemd/user/opendesk-host.service
 systemctl --user daemon-reload
@@ -137,8 +145,8 @@ tail -f ~/.local/share/opendesk/logs/opendesk.log
 
 ## Cosa fa
 
-- Avvia opendesk-host in background continuamente
+- Avvia opendesk-host in background continuamente, **ridotto a icona nella system tray**
 - Connette al relay (porta 8474)
-- Mostra ID + password in una finestra compatta
+- Mostra ID + password nella finestra compatta (riapribile dalla tray)
 - Accetta solo connessioni in ingresso
 - Streaming, input remoto, chat e file transfer automatici

@@ -112,15 +112,16 @@ def setup_host_app() -> None:
     icons_dir.mkdir(parents=True, exist_ok=True)
 
     icon_src = Path(__file__).parent / "opendesk" / "ui" / "resources" / "opendesk.svg"
-    exe_path = Path(__file__).parent / "opendesk" / "host_app.py"
+    if icon_src.exists():
+        (icons_dir / "opendesk.svg").write_text(icon_src.read_text())
 
     desktop_file = apps_dir / "opendesk-host.desktop"
-    desktop_content = f"""[Desktop Entry]
+    desktop_content = """[Desktop Entry]
 Type=Application
 Name=OpenDesk Host
 Comment=Remote Desktop Application (incoming-only)
 Icon=opendesk
-Exec={exe_path}
+Exec=opendesk-host --minimized
 Terminal=false
 Categories=Network;RemoteAccess;
 StartupWMClass=opendesk
@@ -130,6 +131,35 @@ StartupWMClass=opendesk
         f.write(desktop_content)
     desktop_file.chmod(0o755)
     print(f"  Created: {desktop_file}")
+
+
+def setup_autostart() -> None:
+    """Crea l'entry XDG autostart (Linux): avvia l'host a icona al login."""
+    if detect_platform() != "linux":
+        return
+
+    print("Setting up autostart...")
+
+    autostart_dir = Path.home() / ".config" / "autostart"
+    autostart_dir.mkdir(parents=True, exist_ok=True)
+
+    autostart_file = autostart_dir / "opendesk-host.desktop"
+    autostart_content = """[Desktop Entry]
+Type=Application
+Name=OpenDesk Host
+Comment=Avvia OpenDesk Host ridotto a icona nella system tray
+Icon=opendesk
+Exec=opendesk-host --minimized
+Terminal=false
+X-GNOME-Autostart-enabled=true
+X-KDE-autostart-after=panel
+Categories=Network;RemoteAccess;
+"""
+
+    with open(autostart_file, "w") as f:
+        f.write(autostart_content)
+    autostart_file.chmod(0o755)
+    print(f"  Created: {autostart_file}")
 
 
 def main() -> None:
@@ -177,6 +207,9 @@ def main() -> None:
 
     # Set up desktop entry
     setup_host_app()
+
+    # Avvia automaticamente al login, ridotto a icona
+    setup_autostart()
 
     print("\nInstallation complete!")
     print(f"Run: {target_dir}/opendesk-host --log-level=WARNING")

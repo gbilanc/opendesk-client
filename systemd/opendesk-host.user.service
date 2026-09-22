@@ -8,7 +8,7 @@ Type=simple
 # Servizio utente: eredita DISPLAY / WAYLAND_DISPLAY / XAUTHORITY / XDG_RUNTIME_DIR
 # dal systemd --user della sessione grafica, senza bisogno di privilegi root.
 # Verifica con: systemctl --user show-environment
-ExecStart=/home/giampaolo/Codium/opendesk-client/.venv/bin/opendesk-host
+ExecStart=/home/giampaolo/Codium/opendesk-client/.venv/bin/opendesk-host --minimized
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal

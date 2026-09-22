@@ -16,15 +16,17 @@ import uuid
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QCloseEvent
+from PySide6.QtGui import QAction, QCloseEvent, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPushButton,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
@@ -522,14 +524,19 @@ class HostWindow(QMainWindow):
     _C_SURFACE = "#ffffff"
     _FONT_MONO = "'Courier New', 'Consolas', monospace"
 
-    def __init__(self, service: HostService) -> None:
+    def __init__(self, service: HostService, start_minimized: bool = False) -> None:
         super().__init__()
         self._service = service
+        self._start_minimized = start_minimized
+        self._force_quit = False
+        self._tray: QSystemTrayIcon | None = None
+        self._tray_hint_shown = False
 
         self.setWindowTitle(self.WINDOW_TITLE)
         self.setMinimumSize(self.MIN_WIDTH, self.MIN_HEIGHT)
         self.resize(self.MIN_WIDTH, self.MIN_HEIGHT)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowIcon(self._app_icon())
 
         # ── Sub-windows (lazy) ──
         self._chat_panel: ChatPanel | None = None
@@ -538,6 +545,7 @@ class HostWindow(QMainWindow):
         # ── Build UI ──
         self._setup_central_widget()
         self._setup_menu()
+        self._setup_tray()
         self._wire_service()
 
         # Health check all'avvio
@@ -818,13 +826,83 @@ class HostWindow(QMainWindow):
         file_menu = menubar.addMenu("&File")
         act_quit = QAction("&Quit", self)
         act_quit.setShortcut("Ctrl+Q")
-        act_quit.triggered.connect(self.close)
+        act_quit.triggered.connect(self._quit)
         file_menu.addAction(act_quit)
 
         help_menu = menubar.addMenu("&Help")
         act_about = QAction("&About OpenDesk Host", self)
         act_about.triggered.connect(self._on_about)
         help_menu.addAction(act_about)
+
+    # ── System tray ────────────────────────────────────────────────
+
+    @staticmethod
+    def _app_icon() -> QIcon:
+        """Load the OpenDesk application/tray icon."""
+        icon_path = Path(__file__).parent / "ui" / "resources" / "opendesk.svg"
+        return QIcon(str(icon_path))
+
+    def _setup_tray(self) -> None:
+        """Crea l'icona nella system tray con menu contestuale.
+
+        Quando la tray non e' disponibile (es. sessione senza StatusNotifier)
+        la finestra resta il canale principale e la chiusura termina l'app.
+        """
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            logger.warning("System tray not available — running window-only")
+            return
+
+        tray = QSystemTrayIcon(self._app_icon(), self)
+        tray.setToolTip(f"{self.WINDOW_TITLE}\nDevice: {self._service.device_id}")
+
+        menu = QMenu(self)
+
+        act_show = QAction("Show window", self)
+        act_show.triggered.connect(self._show_from_tray)
+        menu.addAction(act_show)
+
+        act_new = QAction("New session", self)
+        act_new.triggered.connect(self._service.regenerate_session)
+        menu.addAction(act_new)
+
+        menu.addSeparator()
+
+        act_copy_id = QAction("Copy ID", self)
+        act_copy_id.triggered.connect(self._copy_session_id)
+        menu.addAction(act_copy_id)
+
+        act_copy_pwd = QAction("Copy password", self)
+        act_copy_pwd.triggered.connect(self._copy_password)
+        menu.addAction(act_copy_pwd)
+
+        menu.addSeparator()
+
+        act_quit = QAction("Quit", self)
+        act_quit.triggered.connect(self._quit)
+        menu.addAction(act_quit)
+
+        tray.setContextMenu(menu)
+        tray.activated.connect(self._on_tray_activated)
+        tray.show()
+        self._tray = tray
+
+    @Slot(QSystemTrayIcon.ActivationReason)
+    def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        """Click sulla tray: mostra/nascondi la finestra."""
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
+            if self.isVisible() and not self.isMinimized():
+                self.hide()
+            else:
+                self._show_from_tray()
+
+    @Slot()
+    def _show_from_tray(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
 
     # ── Platform health ────────────────────────────────────────────
 
@@ -1088,8 +1166,32 @@ class HostWindow(QMainWindow):
 
     # ── Close ───────────────────────────────────────────────────────────
 
+    @Slot()
+    def _quit(self) -> None:
+        """Richiesta esplicita di uscita (menu File, tray o Ctrl+Q)."""
+        self._force_quit = True
+        self.close()
+
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
-        """Conferma se una sessione remota e' attiva."""
+        """Chiudi la finestra: se la tray e' attiva, riduci a icona.
+
+        Una semplice chiusura (X) non termina l'host: la sessione continua
+        in background nella system tray.  Solo *Quit* termina davvero.
+        """
+        if self._tray is not None and not self._force_quit:
+            event.ignore()
+            self.hide()
+            if not self._tray_hint_shown:
+                self._tray_hint_shown = True
+                self._tray.showMessage(
+                    self.WINDOW_TITLE,
+                    "OpenDesk Host continua in background nella system tray.\n"
+                    "Click sull'icona per riaprire, menu → Quit per uscire.",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    4000,
+                )
+            return
+
         if self._service.is_peer_connected:
             reply = QMessageBox.question(
                 self,
@@ -1098,9 +1200,12 @@ class HostWindow(QMainWindow):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply == QMessageBox.StandardButton.No:
+                self._force_quit = False
                 event.ignore()
                 return
         self._service.stop()
+        if self._tray is not None:
+            self._tray.hide()
         if self._chat_panel:
             self._chat_panel.close()
         if self._transfer_dock:
@@ -1113,15 +1218,58 @@ class HostWindow(QMainWindow):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def _parse_host_args(argv: list[str]) -> tuple[list[str], bool, int | None]:
+    """Estrai dagli argomenti opzioni host-spécifiche prima di Qt.
+
+    Returns
+    -------
+    (remaining, start_minimized, log_level)
+    """
+    import sys
+
+    from opendesk.utils.logger import parse_log_level
+
+    remaining: list[str] = []
+    start_minimized = False
+    log_level: int | None = None
+
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("--minimized", "--tray", "--start-minimized", "--minimized-only"):
+            start_minimized = True
+        elif arg.startswith(("--minimized=", "--tray=")):
+            value = arg.split("=", 1)[1].strip().lower()
+            start_minimized = value not in ("0", "false", "no", "off")
+        elif arg == "--log-level" and i + 1 < len(argv):
+            log_level = parse_log_level(argv[i + 1])
+            i += 1
+        elif arg.startswith("--log-level="):
+            log_level = parse_log_level(arg.split("=", 1)[1])
+        else:
+            remaining.append(arg)
+        i += 1
+
+    return [sys.argv[0], *remaining], start_minimized, log_level
+
+
 def main_host() -> None:
-    """Start the OpenDesk Host application."""
+    """Start the OpenDesk Host application.
+
+    Supporta ``--minimized`` / ``--tray`` per avviare l'app nascosta nella
+    system tray (usato dall'autostart di sistema).
+    """
     import sys
 
     from opendesk.utils.logger import setup_logging
 
-    setup_logging(level=logging.DEBUG)
+    sys.argv[:], start_minimized, cli_level = _parse_host_args(sys.argv[1:])
+
+    setup_logging(level=cli_level)
     version = __import__("opendesk").__version__
-    logger.info("Starting OpenDesk Host v%s", version)
+    logger.info(
+        "Starting OpenDesk Host v%s (minimized=%s)", version, start_minimized
+    )
 
     # Log platform configuration
     from opendesk.core.platform_config import get_platform_config
@@ -1132,7 +1280,12 @@ def main_host() -> None:
     app.setApplicationName("OpenDesk Host")
     app.setOrganizationName("OpenDesk")
     app.setApplicationVersion(version)
+    app.setWindowIcon(HostWindow._app_icon())
     app.setStyle("Fusion")
+
+    # La finestra puo' essere nascosta nella tray: non uscire quando non
+    # resta nessuna finestra visibile.
+    app.setQuitOnLastWindowClosed(False)
 
     # Applica il tema chiaro (riusa dalla app principale)
     from opendesk.app import load_stylesheet
@@ -1141,11 +1294,25 @@ def main_host() -> None:
 
     # Crea servizio e finestra
     service = HostService()
-    window = HostWindow(service)
+    window = HostWindow(service, start_minimized=start_minimized)
 
     # Inizializza sessione e avvia
     service.create_session()
-    window.show()
+
+    if start_minimized and QSystemTrayIcon.isSystemTrayAvailable():
+        logger.info("Starting minimized to system tray")
+        window.hide()
+    else:
+        if start_minimized:
+            logger.warning(
+                "--minimized richiesto ma system tray non disponibile — mostro la finestra"
+            )
+        window.show()
+
     service.start()
 
     sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main_host()

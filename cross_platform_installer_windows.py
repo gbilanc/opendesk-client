@@ -56,15 +56,14 @@ def setup_host_app() -> None:
     icons_dir.mkdir(parents=True, exist_ok=True)
 
     icon_src = Path(__file__).parent / "opendesk" / "ui" / "resources" / "opendesk.svg"
-    exe_path = Path(__file__).parent / "opendesk" / "host_app.py"
 
     desktop_file = apps_dir / "opendesk-host.desktop"
-    desktop_content = f"""[Desktop Entry]
+    desktop_content = """[Desktop Entry]
 Type=Application
 Name=OpenDesk Host
 Comment=Remote Desktop Application (incoming-only)
 Icon=opendesk
-Exec={exe_path}
+Exec=opendesk-host --minimized
 Terminal=false
 Categories=Network;RemoteAccess;
 StartupWMClass=opendesk
