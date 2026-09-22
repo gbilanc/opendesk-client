@@ -78,9 +78,25 @@ def install_system_deps_darwin() -> None:
 
 
 def install_opendesk() -> None:
-    """Install the opendesk Python package via pip."""
-    print("Installing opendesk package via pip...")
-    run_cmd([sys.executable, "-m", "pip", "install", "opendesk"])
+    """Install the opendesk package using uv (falls back to pip).
+
+    On PEP 668 systems (Debian/Ubuntu 23.04+, Mint 21.3+) the system pip
+    refuses to install packages (externally-managed-environment), so we
+    prefer ``uv`` when available.
+    """
+    print("Installing opendesk package via uv/pip...")
+    uv = _shutil_which("uv")
+    if uv:
+        run_cmd([uv, "pip", "install", "opendesk"])
+    else:
+        run_cmd([sys.executable, "-m", "pip", "install", "opendesk"])
+
+
+def _shutil_which(name: str) -> str | None:
+    """Resolve an executable in PATH without importing shutil at module level."""
+    import shutil
+
+    return shutil.which(name)
 
 
 def setup_host_app() -> None:

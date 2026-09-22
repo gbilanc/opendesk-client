@@ -5,7 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /home/giampaolo/Codium/opendesk-client/opendesk-host --log-level=WARNING
+# GUI app: serve DISPLAY per l'icona ID/password (sistema con display server attivo)
+Environment=DISPLAY=:0
+ExecStart=/home/giampaolo/Codium/opendesk-client/.venv/bin/opendesk-host --log-level=WARNING
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
