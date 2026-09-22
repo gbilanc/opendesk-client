@@ -1,0 +1,16 @@
+[Unit]
+Description=OpenDesk Host (incoming-only)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /home/giampaolo/Codium/opendesk-client/opendesk-host --log-level=WARNING
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Environment=OPENDESK_LOG_LEVEL=WARNING
+
+[Install]
+WantedBy=multi-user.target

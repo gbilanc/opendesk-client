@@ -1,0 +1,11 @@
+[Unit]
+Description=OpenDesk Host (incoming-only)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/giampaolo/Codium/opendesk-client/opendesk-host --log-level=WARNING
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
