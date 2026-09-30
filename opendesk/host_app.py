@@ -48,6 +48,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _FT_POLL_INTERVAL = 200  # ms — poll file-transfer updates queue
+_FT_POLL_IDLE_INTERVAL = 1000  # ms — quando la coda è vuota (risparmio CPU/RAM)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -129,7 +130,8 @@ class HostService(QObject):
         self._file_transfer = FileTransferManager()
         self._ft_poll_timer = QTimer(self)
         self._ft_poll_timer.timeout.connect(self._poll_file_transfer)
-        self._ft_poll_timer.start(_FT_POLL_INTERVAL)
+        self._ft_poll_active_polls = 0
+        self._ft_poll_timer.start(_FT_POLL_IDLE_INTERVAL)
 
         # ── Device registry (pre-authorization) ──
         self._device_registry = DeviceRegistry()
@@ -299,8 +301,10 @@ class HostService(QObject):
     def _poll_file_transfer(self) -> None:
         """Polla la coda degli aggiornamenti file transfer (main thread)."""
         try:
+            got_event = False
             while True:
                 event = self._file_transfer.updates.get_nowait()
+                got_event = True
                 kind = event[0]
 
                 if kind == "transfer":
@@ -311,6 +315,13 @@ class HostService(QObject):
                     pass
         except queue.Empty:
             pass
+        finally:
+            # Timer adattivo: 1000 ms a riposo, 200 ms durante i trasferimenti
+            new_interval = (
+                _FT_POLL_INTERVAL if got_event else _FT_POLL_IDLE_INTERVAL
+            )
+            if new_interval != self._ft_poll_timer.interval():
+                self._ft_poll_timer.start(new_interval)
 
     def respond_to_incoming_file(self, job_id: str, accepted: bool) -> None:
         """Accept or reject a file request after the host user decides."""
@@ -1208,6 +1219,8 @@ class HostWindow(QMainWindow):
             self._tray.hide()
         if self._chat_panel:
             self._chat_panel.close()
+            self._chat_panel.deleteLater()
+            self._chat_panel = None
         if self._transfer_dock:
             self._transfer_dock.close()
         event.accept()

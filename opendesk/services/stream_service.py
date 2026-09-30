@@ -117,11 +117,13 @@ class StreamService(QObject):
         self._bw_estimated_kbps: float = 0.0
 
         # Audio manager (microphone capture + playback)
-        self._audio_manager = AudioManager(AudioConfig(enabled=False))
+        # Lazy: il manager (e i suoi codec Opus) vieneallocato solo al primo
+        # uso — evita di tenere in RAM numpy/opus quando l'audio è disattivo.
+        self._audio_manager: AudioManager | None = None
         self._audio_enabled: bool = False
 
         # Camera manager (webcam capture)
-        self._camera_manager = CameraManager(CameraConfig(enabled=False))
+        self._camera_manager: CameraManager | None = None
         self._camera_enabled: bool = False
 
         # React when the remote peer requests a keyframe
@@ -139,12 +141,16 @@ class StreamService(QObject):
 
     @property
     def audio_manager(self) -> AudioManager:
-        """The AudioManager instance (capture + playback)."""
+        """The AudioManager instance (capture + playback), created on demand."""
+        if self._audio_manager is None:
+            self._audio_manager = AudioManager(AudioConfig(enabled=False))
         return self._audio_manager
 
     @property
     def camera_manager(self) -> CameraManager:
-        """The CameraManager instance (webcam capture)."""
+        """The CameraManager instance (webcam capture), created on demand."""
+        if self._camera_manager is None:
+            self._camera_manager = CameraManager(CameraConfig(enabled=False))
         return self._camera_manager
 
     @property
@@ -311,6 +317,16 @@ class StreamService(QObject):
         if self._input_backend:
             self._input_backend.release()
             self._input_backend = None
+        # Rilascia i manager audio/camera creati (lazy) durante la sessione:
+        # verranno ricreati on-demand al prossimo streaming.
+        for manager_attr in ("_audio_manager", "_camera_manager"):
+            manager = getattr(self, manager_attr, None)
+            if manager is not None:
+                try:
+                    manager.release()
+                except Exception as e:
+                    logger.debug("release %s error (ignored): %s", manager_attr, e)
+                setattr(self, manager_attr, None)
         self._bw_measure_bytes = 0
         logger.info("Streaming stopped")
 
@@ -318,24 +334,27 @@ class StreamService(QObject):
 
     def _start_audio_capture(self) -> None:
         """Avvia la cattura del microfono in un thread separato."""
-        if self._audio_manager.is_capturing:
+        manager = self.audio_manager  # lazy instantiation
+        if manager.is_capturing:
             logger.debug("Audio capture already running")
             return
-        self._audio_manager.direction = AudioDirection.MIC_ONLY
+        manager.direction = AudioDirection.MIC_ONLY
         # start_capture può lanciare eccezioni (es. codec Opus non disponibile)
-        self._audio_manager.start_capture(self._relay.send_message)
+        manager.start_capture(self._relay.send_message)
 
     def _stop_audio_capture(self) -> None:
         """Ferma la cattura del microfono."""
         try:
-            self._audio_manager.stop_capture()
+            if self._audio_manager is not None:
+                self._audio_manager.stop_capture()
         except Exception as e:
             logger.debug("Audio stop error (ignored): %s", e)
 
     def play_audio_frame(self, data: bytes) -> None:
         """Decodifica e riproduce un pacchetto audio ricevuto (lato client)."""
         try:
-            self._audio_manager.play_audio_frame(data)
+            if self._audio_manager is not None:
+                self._audio_manager.play_audio_frame(data)
         except Exception as e:
             logger.debug("Audio playback error (ignored): %s", e)
 
@@ -343,15 +362,17 @@ class StreamService(QObject):
 
     def _start_camera_capture(self) -> None:
         """Avvia la cattura della webcam in un thread separato."""
-        if self._camera_manager.is_capturing:
+        manager = self.camera_manager  # lazy instantiation
+        if manager.is_capturing:
             logger.debug("Camera capture already running")
             return
-        self._camera_manager.start_capture(self._relay.send_message)
+        manager.start_capture(self._relay.send_message)
 
     def _stop_camera_capture(self) -> None:
         """Ferma la cattura della webcam."""
         try:
-            self._camera_manager.stop_capture()
+            if self._camera_manager is not None:
+                self._camera_manager.stop_capture()
         except Exception as e:
             logger.debug("Camera stop error (ignored): %s", e)
 

@@ -39,6 +39,7 @@ dependencies = [
     "PyNaCl>=1.5.0",
     "websockets>=10.4",
     "mss>=9.0.0",
+    "dxcam>=0.0.5 ; sys_platform == 'win32'",
     "opencv-python>=4.9.0",
     "av>=12.0.0",
     "aiortc>=1.9.0",

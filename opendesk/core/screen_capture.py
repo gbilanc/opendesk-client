@@ -16,6 +16,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from threading import Lock
 
+import cv2
 import mss
 import numpy as np
 from PIL import Image
@@ -65,18 +66,36 @@ class CapturedFrame:
 # ---------------------------------------------------------------------------
 
 
+def _changed_mask(
+    current: np.ndarray, previous: np.ndarray | None, threshold: int
+) -> np.ndarray | None:
+    """Boolean mask (H, W) of pixels that differ above *threshold*.
+
+    Uses ``cv2.absdiff`` on uint8 instead of int16 arithmetic: one
+    single-frame-sized temporary instead of 4× the frame size,
+    which matters at 30 fps on full-HD/4K frames (RAM + GC churn).
+    Returns ``None`` when there is no previous frame with a matching
+    shape (the caller treats everything as "changed").
+    """
+    if previous is None or current.shape != previous.shape:
+        return None
+    diff = cv2.absdiff(current, previous)
+    # cv2.max a due pass al posto di numpy ``.max(axis=2)``: la riduzione
+    # "axis" di su array 3-canali è estremamente lenta in numpy ≥2.5
+    # (~80 ms per frame full-HD), mentre cv2.max resta in pochi ms.
+    d2 = cv2.max(diff[:, :, 0], diff[:, :, 1])
+    return cv2.max(d2, diff[:, :, 2]) > threshold
+
+
 def frame_diff_ratio(
     current: np.ndarray, previous: np.ndarray | None, threshold: int = 16
 ) -> float:
-    """Fraction of pixels that differ above *threshold* (0.0…1.0).
-
-    Single ``astype`` call on the full frame for speed.
-    """
+    """Fraction of pixels that differ above *threshold* (0.0…1.0)."""
     if previous is None or current.shape != previous.shape:
         return 1.0
-    diff = np.abs(current.astype(np.int16) - previous.astype(np.int16))
-    changed = np.any(diff > threshold, axis=2)
-    return float(changed.sum()) / changed.size
+    mask = _changed_mask(current, previous, threshold)
+    assert mask is not None
+    return float(mask.sum()) / mask.size
 
 
 def compute_dirty_region(
@@ -91,9 +110,9 @@ def compute_dirty_region(
     """
     if previous is None or current.shape != previous.shape:
         return (0, 0, current.shape[1], current.shape[0])
-    diff = np.abs(current.astype(np.int16) - previous.astype(np.int16))
-    changed = np.any(diff > threshold, axis=2)
-    coords = np.argwhere(changed)
+    mask = _changed_mask(current, previous, threshold)
+    assert mask is not None
+    coords = np.argwhere(mask)
     if coords.size == 0:
         return None
     y0, x0 = coords.min(axis=0).tolist()
@@ -500,6 +519,9 @@ class ScreenCapture:
         self._pw: PipeWireCapture | None = None
         self._portal = None  # WaylandScreenCast — created lazily
         self._prev_frames: dict[int, np.ndarray] = {}
+        # ── DXGI (Windows) ──
+        self._dxgi: object | None = None  # dxcam camera, created lazily
+        self._dxgi_monitor = -1
         self._fps_target: float = 30.0
         self._fps_adaptive: bool = True
         self._min_fps: float = 1.0
@@ -568,6 +590,17 @@ class ScreenCapture:
     def capture_one(self, monitor_index: int = 0) -> CapturedFrame:
         if self._method == CaptureMethod.PORTAL:
             return self._capture_portal(monitor_index)
+        if self._method == CaptureMethod.DXGI:
+            try:
+                frame = self._capture_dxgi(monitor_index)
+                if frame is not None:
+                    return frame
+                # None = nessun nuovo frame dal Desktop Duplication:
+                # lo schermo non è cambiato, il chiamante ritenta.
+                return None
+            except Exception as e:
+                logger.warning("DXGI capture failed (%s), falling back to MSS", e)
+                self._method = CaptureMethod.MSS
         if self._method == CaptureMethod.PIPEWIRE:
             pw = self._get_pw()
             try:
@@ -598,6 +631,8 @@ class ScreenCapture:
             yield from self._loop_portal(monitor_index)
         elif self._method == CaptureMethod.PIPEWIRE:
             yield from self._loop_pipewire(monitor_index)
+        elif self._method == CaptureMethod.DXGI:
+            yield from self._loop_dxgi(monitor_index)
         else:
             yield from self._loop_mss(monitor_index)
 
@@ -614,12 +649,99 @@ class ScreenCapture:
             if self._portal is not None:
                 self._release_portal()
             self._prev_frames.clear()
+            self._release_dxgi()
 
     def __enter__(self) -> ScreenCapture:
         return self
 
     def __exit__(self, *args: object) -> None:
         self.release()
+
+    # ── internal: DXGI (Windows Desktop Duplication via dxcam) ─────
+
+    def _get_dxgi(self, monitor_index: int):
+        """Lazily create the dxcam camera for *monitor_index*.
+
+        Returns None if dxcam is not installed or no output exists.
+        """
+        if self._dxgi is not None and self._dxgi_monitor == monitor_index:
+            return self._dxgi
+        if self._dxgi is not None:
+            self._release_dxgi()
+        try:
+            import dxcam
+
+            cam = dxcam.create(output_idx=monitor_index, output_color="RGB")
+        except Exception as e:
+            logger.warning("dxcam init failed: %s", e)
+            return None
+        if cam is None:
+            logger.warning("dxcam.create() returned None (no output %d)", monitor_index)
+            return None
+        self._dxgi = cam
+        self._dxgi_monitor = monitor_index
+        return cam
+
+    def _capture_dxgi(self, monitor_index: int = 0) -> CapturedFrame | None:
+        cam = self._get_dxgi(monitor_index)
+        if cam is None:
+            raise RuntimeError("dxcam not available")
+        # grab() returns None quando lo schermo non è cambiato.
+        rgb = cam.grab()
+        if rgb is None:
+            return None
+        # Geometria monitor da mss (solo enumerazione, nessuna cattura).
+        sct = self._get_sct()
+        mon = sct.monitors[monitor_index + 1]
+        rgb = np.ascontiguousarray(rgb, dtype=np.uint8)
+        return CapturedFrame(
+            data=rgb,
+            monitor_index=monitor_index,
+            timestamp=time.time(),
+            region=(mon["left"], mon["top"], mon["width"], mon["height"]),
+        )
+
+    def _loop_dxgi(self, monitor_index: int = 0) -> Iterator[CapturedFrame]:
+        """DXGI capture loop con fps adattivo (stessa policy di _loop_mss)."""
+        sct = self._get_sct()
+        mon = sct.monitors[monitor_index + 1]
+        diff = 1.0
+        while True:
+            t0 = time.perf_counter()
+            cam = self._get_dxgi(monitor_index)
+            if cam is None:
+                yield from self._loop_mss(monitor_index)
+                return
+            rgb = cam.grab()
+            if rgb is None:
+                # Nessun nuovo frame: breve sleep per non bruciare CPU/GPU.
+                time.sleep(0.005)
+            else:
+                rgb = np.ascontiguousarray(rgb, dtype=np.uint8)
+                prev = self._prev_frames.get(monitor_index)
+                diff = frame_diff_ratio(rgb, prev, threshold=12)
+                self._prev_frames[monitor_index] = rgb
+                yield CapturedFrame(
+                    data=rgb,
+                    monitor_index=monitor_index,
+                    timestamp=t0,
+                    region=(mon["left"], mon["top"], mon["width"], mon["height"]),
+                )
+            elapsed = time.perf_counter() - t0
+            sleep_needed = max(0.0, (1.0 / self._compute_fps(diff)) - elapsed)
+            if sleep_needed > 0:
+                time.sleep(sleep_needed)
+
+    def _release_dxgi(self) -> None:
+        if self._dxgi is not None:
+            release = getattr(self._dxgi, "release", None)
+            if callable(release):
+                try:
+                    release()
+                except Exception as e:
+                    logger.debug("dxcam release failed: %s", e)
+            self._dxgi = None
+            self._dxgi_monitor = -1
 
     # ── internal: MSS ───────────────────────────────────────────────
 
