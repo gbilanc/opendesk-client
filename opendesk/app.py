@@ -13,7 +13,17 @@ import os
 import sys
 from pathlib import Path
 
-# Enable crash diagnostics — on segfault, prints a traceback to stderr
+# Enable crash diagnostics — on segfault, prints a traceback to stderr.
+# In frozen windowed builds (PyInstaller console=False) sys.stderr is None,
+# so redirect it to a log file first to avoid `RuntimeError: sys.stderr is None`.
+if sys.stderr is None:
+    from opendesk.utils.logger import _log_directory
+
+    try:
+        _log_directory().mkdir(parents=True, exist_ok=True)
+        sys.stderr = open(_log_directory() / "crash.log", "a", encoding="utf-8")
+    except OSError:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
 faulthandler.enable()
 
 from PySide6.QtGui import QColor, QIcon, QPalette  # noqa: E402
