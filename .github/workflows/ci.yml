@@ -67,12 +67,16 @@ jobs:
             libx11-dev \
             libxext-dev \
             libxrender-dev \
-            libxtst-dev
+            libxtst-dev \
+            libegl1 \
+            libgl1
 
       - name: Install dependencies
         run: uv sync --extra dev
 
       - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: uv run pytest tests/ -v --tb=short
 
 

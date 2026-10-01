@@ -12,6 +12,8 @@ Copre i bug storici del flusso tastiera:
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from opendesk.core.input_injection import (
@@ -25,6 +27,10 @@ from opendesk.network.protocol import Message, MessageType
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="_key_to_evdev usa evdev, dipendenza Linux-only (Wayland)",
+)
 class TestKeyToEvdev:
     def test_shifted_symbols_resolve_to_base_key(self) -> None:
         """I simboli shiftati non devono più essere scartati (erano DROPPED)."""
