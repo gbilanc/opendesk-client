@@ -783,6 +783,55 @@ class WaylandInputBackend(InputBackend):
 # ---------------------------------------------------------------------------
 
 
+# Strutture SendInput (INPUT, MOUSEINPUT, KEYBDINPUT, HARDWAREINPUT).
+# L'unione deve contenere TUTTI e tre i membri: ``sizeof(INPUT)`` deve essere
+# 40 byte su x64 (il membro più grande è MOUSEINPUT=32).  Se l'unione contiene
+# solo ``ki`` (KEYBDINPUT=24), ``sizeof(INPUT)``=32 e SendInput fallisce
+# (ritorna 0) per gli eventi tastiera.
+class _MOUSEINPUT(ctypes.Structure):
+    _fields_ = [
+        ("dx", ctypes.c_long),
+        ("dy", ctypes.c_long),
+        ("mouseData", ctypes.c_ulong),
+        ("dwFlags", ctypes.c_ulong),
+        ("time", ctypes.c_ulong),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
+class _KEYBDINPUT(ctypes.Structure):
+    _fields_ = [
+        ("wVk", ctypes.c_ushort),
+        ("wScan", ctypes.c_ushort),
+        ("dwFlags", ctypes.c_ulong),
+        ("time", ctypes.c_ulong),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
+class _HARDWAREINPUT(ctypes.Structure):
+    _fields_ = [
+        ("uMsg", ctypes.c_ulong),
+        ("wParamL", ctypes.c_ushort),
+        ("wParamH", ctypes.c_ushort),
+    ]
+
+
+class _INPUT_UNION(ctypes.Union):
+    _fields_ = [
+        ("mi", _MOUSEINPUT),
+        ("ki", _KEYBDINPUT),
+        ("hi", _HARDWAREINPUT),
+    ]
+
+
+class _INPUT(ctypes.Structure):
+    _fields_ = [
+        ("type", ctypes.c_ulong),
+        ("u", _INPUT_UNION),
+    ]
+
+
 class WindowsInputBackend(InputBackend):
     """Input backend for Windows using ``SendInput`` (modern API).
 
@@ -964,59 +1013,17 @@ class WindowsInputBackend(InputBackend):
         dy : int
             Coordinata Y (o delta relativo).
         """
-
-        # Definisce la struttura MOUSEINPUT
-        class MOUSEINPUT(ctypes.Structure):
-            _fields_ = [
-                ("dx", ctypes.c_long),
-                ("dy", ctypes.c_long),
-                ("mouseData", ctypes.c_ulong),
-                ("dwFlags", ctypes.c_ulong),
-                ("time", ctypes.c_ulong),
-                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
-            ]
-
-        class InputUnion(ctypes.Union):
-            _fields_ = [("mi", MOUSEINPUT)]
-
-        class INPUT(ctypes.Structure):
-            _fields_ = [
-                ("type", ctypes.c_ulong),
-                ("u", InputUnion),
-            ]
-
-        inp = INPUT()
+        inp = _INPUT()
         inp.type = self._INPUT_TYPE_MOUSE
-        inp.u.mi = MOUSEINPUT(dx, dy, data, flags, 0, None)
-
-        self._SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+        inp.u.mi = _MOUSEINPUT(dx, dy, data, flags, 0, 0)
+        self._SendInput(1, ctypes.byref(inp), ctypes.sizeof(_INPUT))
 
     def _send_keyboard_input(self, vk: int, flags: int) -> None:
         """Invia un evento tastiera con ``SendInput``."""
-
-        class KEYBDINPUT(ctypes.Structure):
-            _fields_ = [
-                ("wVk", ctypes.c_ushort),
-                ("wScan", ctypes.c_ushort),
-                ("dwFlags", ctypes.c_ulong),
-                ("time", ctypes.c_ulong),
-                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
-            ]
-
-        class InputUnion(ctypes.Union):
-            _fields_ = [("ki", KEYBDINPUT)]
-
-        class INPUT(ctypes.Structure):
-            _fields_ = [
-                ("type", ctypes.c_ulong),
-                ("u", InputUnion),
-            ]
-
-        inp = INPUT()
+        inp = _INPUT()
         inp.type = self._INPUT_TYPE_KEYBOARD
-        inp.u.ki = KEYBDINPUT(vk, 0, flags, 0, None)
-
-        self._SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+        inp.u.ki = _KEYBDINPUT(vk, 0, flags, 0, 0)
+        self._SendInput(1, ctypes.byref(inp), ctypes.sizeof(_INPUT))
 
     # ── public API ───────────────────────────────────────────────────
 
