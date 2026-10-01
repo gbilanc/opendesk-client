@@ -105,8 +105,13 @@ class ClipboardSync(QObject):
         # If _send_fn is None, toggle() can't enable — caller must use start()
         return self._enabled
 
-    async def receive_from_remote(self, msg: Message) -> None:
-        """Handle clipboard data received from the remote peer."""
+    def receive_from_remote(self, msg: Message) -> None:
+        """Handle clipboard data received from the remote peer.
+
+        Sync (non-era ``async`` per sbaglio: nessun ``await`` nel corpo).
+        Viene invocato da uno slot Qt sincrono (``_on_relay_message``): era
+        un coroutine mai atteso → la clipboard remota non veniva applicata.
+        """
         if not self._enabled:
             return
 

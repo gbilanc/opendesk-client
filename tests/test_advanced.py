@@ -4,7 +4,6 @@ Tests for advanced modules: file transfer, clipboard sync, audio, unattended.
 
 from __future__ import annotations
 
-import asyncio
 import tempfile
 from pathlib import Path
 
@@ -207,10 +206,7 @@ class TestClipboardSync:
 
         msg = Message(MessageType.CLIPBOARD_TEXT, {"text": "Hello from remote!"})
 
-        async def _test():
-            await cs.receive_from_remote(msg)
-
-        asyncio.run(_test())
+        cs.receive_from_remote(msg)
         assert len(received) >= 0  # can't assert >0 because no event loop
 
 
