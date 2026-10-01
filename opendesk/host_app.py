@@ -17,6 +17,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QIcon
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -49,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 _FT_POLL_INTERVAL = 200  # ms — poll file-transfer updates queue
 _FT_POLL_IDLE_INTERVAL = 1000  # ms — quando la coda è vuota (risparmio CPU/RAM)
+_SINGLE_INSTANCE_NAME = "OpenDeskHostInstance"  # lock QLocalServer
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1266,6 +1268,48 @@ def _parse_host_args(argv: list[str]) -> tuple[list[str], bool, int | None]:
     return [sys.argv[0], *remaining], start_minimized, log_level
 
 
+def _acquire_single_instance() -> QLocalServer | None:
+    """Garanzia di istanza singola (Windows/Linux/macOS).
+
+    Se esiste già un'istanza viva (server locale ``OpenDeskHostInstance``),
+    la avvisa di mostrarsi e restituisce ``None``; altrimenti crea il
+    server lock e restituisce l'oggetto da tenere vivo.
+
+    Necessario: due istanze condividono lo stesso device_id (QSettings) e
+    si kickano a vicenda dal relay in un ping-pong di riconnessioni
+    infinito (kick reciproco ogni 20–90s, sessione mai stabile).
+    """
+    probe = QLocalSocket()
+    probe.connectToServer(_SINGLE_INSTANCE_NAME)
+    if probe.waitForConnected(300):
+        probe.write(b"show\n")
+        probe.flush()
+        probe.waitForBytesWritten(300)
+        probe.disconnectFromServer()
+        return None
+    # Rende l'eventuale lock orfano di un crash precedente (Windows)
+    QLocalServer.removeServer(_SINGLE_INSTANCE_NAME)
+    server = QLocalServer()
+    server.listen(_SINGLE_INSTANCE_NAME)
+    return server
+
+
+def _on_second_instance(window: "HostWindow") -> None:
+    """Secondo avvio rilevato: mostra e attiva la finestra esistente."""
+    server = window.sender() if isinstance(window.sender(), QLocalServer) else None
+    while server is not None and server.hasPendingConnections():
+        conn = server.nextPendingConnection()
+        if conn is not None:
+            conn.readyRead.connect(conn.deleteLater)
+            conn.deleteLater()
+    if window.isMinimized():
+        window.showNormal()
+    else:
+        window.show()
+    window.raise_()
+    window.activateWindow()
+
+
 def main_host() -> None:
     """Start the OpenDesk Host application.
 
@@ -1293,6 +1337,19 @@ def main_host() -> None:
     app.setApplicationName("OpenDesk Host")
     app.setOrganizationName("OpenDesk")
     app.setApplicationVersion(version)
+
+    # ── Istanza singola ──────────────────────────────────────────
+    # Bisogna crearla dopo QApplication (QLocalServer dipende da Qt).
+    lock_server = _acquire_single_instance()
+    if lock_server is None:
+        logger.info("OpenDesk Host già in esecuzione — attivazione istanza esistente")
+        QMessageBox.information(
+            None,
+            "OpenDesk Host",
+            "OpenDesk Host è già in esecuzione (icona nella system tray).",
+        )
+        return
+
     app.setWindowIcon(HostWindow._app_icon())
     app.setStyle("Fusion")
 
@@ -1308,6 +1365,9 @@ def main_host() -> None:
     # Crea servizio e finestra
     service = HostService()
     window = HostWindow(service, start_minimized=start_minimized)
+
+    # Istante singolo: un secondo avvio riporta in primo piano questa finestra
+    lock_server.newConnection.connect(lambda: _on_second_instance(window))
 
     # Inizializza sessione e avvia
     service.create_session()

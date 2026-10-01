@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$Root = Split-Path -Parent $PSScriptRoot  # packaging/ -> repo root
 Set-Location $Root
 
 Write-Host "==> [1/5] Installing project dependencies (uv sync)"

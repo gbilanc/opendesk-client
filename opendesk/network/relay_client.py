@@ -65,6 +65,7 @@ _STOP_JOIN_TIMEOUT = 8.0  # max seconds to wait for session thread to stop
 _SEND_DRAIN_TIMEOUT = 5.0  # max seconds to wait for TCP send buffer to drain
 _SEND_MAX_CONSECUTIVE_TIMEOUTS = 3  # consecutive drain timeouts before disconnecting
 _SEND_MAX_PENDING = 20  # max pending sends before backpressure kicks in
+_PING_INTERVAL = 25.0  # s — keep-alive; il relay disconnette peer idle > 120s
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +132,26 @@ class _RelaySession:
         self._pending_sends: int = 0  # atomic counter for pending _send_async tasks
         self._send_lock = threading.Lock()
         self._drain_timeout_count: int = 0  # consecutive drain timeouts
+        self._last_pong_time: float = 0.0  # risposta al PING del keep-alive
+
+    async def _ping_loop(self) -> None:
+        """Keep-alive: invia PING periodici per non essere scartati dal relay.
+
+        Il relay considera stale un peer senza attività da > 120s
+        (``_PEER_TIMEOUT``, vedi docs/manuale-relay-server.md §5.6) e lo
+        disconnette.  Senza PING l'host viene kickato ogni ~2 minuti
+        anche quando fermo.
+        """
+        try:
+            while self._running.is_set():
+                await asyncio.sleep(_PING_INTERVAL)
+                if not self._running.is_set():
+                    break
+                await self._send_async(
+                    Message.ping(seq=int(time.time())), bypass_backpressure=True
+                )
+        except asyncio.CancelledError:
+            pass
 
     # ── lifecycle ───────────────────────────────────────────────────
 
@@ -478,6 +499,7 @@ class _RelaySession:
             )
         )
 
+        ping_task = asyncio.create_task(self._ping_loop())
         gen = self._read_loop()
         try:
             async for msg in gen:
@@ -606,10 +628,18 @@ class _RelaySession:
 
                 elif t in self._PEER_PASSTHROUGH:
                     pass  # forwarded to UI via generic "message" inbox event
+                elif t == MessageType.PONG:
+                    self._last_pong_time = time.time()
+                    logger.debug("Host keep-alive PONG received")
+
+                elif t == MessageType.PING:
+                    await self._send_async(Message.pong())
+
                 else:
                     logger.debug("Host received unhandled message type %s", t)
         finally:
             await gen.aclose()
+            ping_task.cancel()
         self.inbox.put(("disconnected", None, self.session_seq))
         logger.debug("Host session ended: disconnected event queued")
 
@@ -664,6 +694,7 @@ class _RelaySession:
                     )
 
         watchdog_task = asyncio.create_task(_keyframe_watchdog())
+        ping_task = asyncio.create_task(self._ping_loop())
 
         gen = self._read_loop()
         try:
@@ -900,10 +931,18 @@ class _RelaySession:
 
                 elif t in self._PEER_PASSTHROUGH:
                     pass  # forwarded to UI via generic "message" inbox event
+                elif t == MessageType.PONG:
+                    self._last_pong_time = time.time()
+                    logger.debug("Client keep-alive PONG received")
+
+                elif t == MessageType.PING:
+                    await self._send_async(Message.pong())
+
                 else:
                     logger.debug("Client received unhandled message type %s", t)
         finally:
             watchdog_task.cancel()
+            ping_task.cancel()
             await gen.aclose()
         self.inbox.put(("disconnected", None, self.session_seq))
         logger.debug("Client session ended: disconnected event queued")
