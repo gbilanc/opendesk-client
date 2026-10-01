@@ -734,7 +734,7 @@ class ScreenCapture:
             return None
 
         rgb = np.ascontiguousarray(rgb, dtype=np.uint8)
-        draw_cursor_on_frame(rgb, region)
+        rgb = draw_cursor_on_frame(rgb, region)
         state = _cursor_state()
         self._last_cursor_gpos = state[0] if state is not None else None
         self._last_dxgi_frame_mono = now
@@ -803,7 +803,9 @@ class ScreenCapture:
             raw = sct.grab(mon)
             buf = np.frombuffer(raw.rgb, dtype=np.uint8).reshape(raw.height, raw.width, 3)
             frame = np.ascontiguousarray(buf[:, :, :3])
-            draw_cursor_on_frame(frame, (mon["left"], mon["top"], mon["width"], mon["height"]))
+            frame = draw_cursor_on_frame(
+                frame, (mon["left"], mon["top"], mon["width"], mon["height"])
+            )
             return CapturedFrame(
                 data=frame,
                 monitor_index=monitor_index,
@@ -1235,6 +1237,8 @@ def draw_cursor_on_frame(rgb: np.ndarray, region: tuple[int, int, int, int]) -> 
         Il frame (stesso oggetto) con il cursore disegnato, se visibile
         e dentro il monitor; altrimenti invariato.
     """
+    if not rgb.flags.writeable:
+        rgb = rgb.copy()
     state = _cursor_state()
     if state is None:
         return rgb
@@ -1253,7 +1257,7 @@ def draw_cursor_on_frame(rgb: np.ndarray, region: tuple[int, int, int, int]) -> 
             yy, xx = np.ogrid[y0:y1, x0:x1]
             dist2 = (yy - fy) ** 2 + (xx - fx) ** 2
             inside = dist2 <= r * r
-            edge = dist2 <= r * r and dist2 >= (r - 2) * (r - 2)
+            edge = (dist2 <= r * r) & (dist2 >= (r - 2) * (r - 2))
             patch = rgb[y0:y1, x0:x1]
             patch[inside] = (255, 255, 255)
             patch[edge] = (20, 20, 20)
