@@ -11,10 +11,9 @@ from __future__ import annotations
 import logging
 import queue
 import secrets
-
-import traceback
 import string
 import time
+import traceback
 import uuid
 from pathlib import Path
 
@@ -1208,7 +1207,7 @@ class HostWindow(QMainWindow):
         self._force_quit = True
         self.close()
 
-    def changeEvent(self, event) -> None:  # noqa: N803, ANN001
+    def changeEvent(self, event) -> None:  # noqa: N802, ANN001
         """Log degli eventi di stato finestra + quirk Windows top-most.
 
         Su Windows una finestra ``WindowStaysOnTopHint`` minimizzata
