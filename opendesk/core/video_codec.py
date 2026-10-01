@@ -481,9 +481,11 @@ class VideoEncoder:
                 height,
                 self._config.fps,
                 self._stream.pix_fmt,
-                f", crf={self._actual_crf}"
-                if use_crf
-                else f", bitrate={self._actual_bitrate:,} bps",
+                (
+                    f", crf={self._actual_crf}"
+                    if use_crf
+                    else f", bitrate={self._actual_bitrate:,} bps"
+                ),
             )
 
     def _reinitialise(self) -> None:

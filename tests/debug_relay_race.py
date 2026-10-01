@@ -97,9 +97,9 @@ async def run_host():
 
     # Leggi AUTH_RESPONSE
     auth_resp = await read_msg(reader, "HOST")
-    assert auth_resp.type == MessageType.AUTH_RESPONSE, (
-        f"Expected AUTH_RESPONSE, got {auth_resp.type}"
-    )
+    assert (
+        auth_resp.type == MessageType.AUTH_RESPONSE
+    ), f"Expected AUTH_RESPONSE, got {auth_resp.type}"
     client_hash = auth_resp.payload.get("nonce_hash", "")
     logger.info(
         "[HOST] Got AUTH_RESPONSE, hash=%s...",

@@ -325,9 +325,7 @@ class HostService(QObject):
             pass
         finally:
             # Timer adattivo: 1000 ms a riposo, 200 ms durante i trasferimenti
-            new_interval = (
-                _FT_POLL_INTERVAL if got_event else _FT_POLL_IDLE_INTERVAL
-            )
+            new_interval = _FT_POLL_INTERVAL if got_event else _FT_POLL_IDLE_INTERVAL
             if new_interval != self._ft_poll_timer.interval():
                 self._ft_poll_timer.start(new_interval)
 
@@ -603,8 +601,7 @@ class HostWindow(QMainWindow):
         header = QFrame()
         header.setObjectName("HostHeader")
         header.setFixedHeight(96)
-        header.setStyleSheet(
-            f"""
+        header.setStyleSheet(f"""
             QFrame#HostHeader {{
                 background: qlineargradient(
                     x1:0, y1:0, x2:1, y2:0,
@@ -612,8 +609,7 @@ class HostWindow(QMainWindow):
                     stop:1 {self._C_PRIMARY}
                 );
             }}
-        """
-        )
+        """)
         header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(20, 10, 20, 10)
         header_layout.setSpacing(2)
@@ -657,15 +653,13 @@ class HostWindow(QMainWindow):
         # ── 2a. Credentials card ───────────────────────────────────────
         card = QFrame()
         card.setObjectName("CredentialsCard")
-        card.setStyleSheet(
-            f"""
+        card.setStyleSheet(f"""
             QFrame#CredentialsCard {{
                 background: {self._C_SURFACE};
                 border: 1px solid {self._C_BORDER};
                 border-radius: 10px;
             }}
-        """
-        )
+        """)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(20, 18, 20, 18)
         card_layout.setSpacing(4)
@@ -688,8 +682,7 @@ class HostWindow(QMainWindow):
             "Usa questo UUID per pre-autorizzare il dispositivo"
         )
         self._id_display.setFixedHeight(44)
-        self._id_display.setStyleSheet(
-            f"""
+        self._id_display.setStyleSheet(f"""
             QLabel#HostIdDisplay {{
                 font-size: 26px; font-weight: 800;
                 font-family: {self._FONT_MONO};
@@ -700,8 +693,7 @@ class HostWindow(QMainWindow):
                 border: 1px solid #e2e8f0;
                 border-radius: 8px;
             }}
-        """
-        )
+        """)
         id_row.addWidget(self._id_display)
         id_row.addStretch()
 
@@ -734,8 +726,7 @@ class HostWindow(QMainWindow):
         self._pwd_display = QLabel("—")
         self._pwd_display.setObjectName("HostPwdDisplay")
         self._pwd_display.setFixedHeight(44)
-        self._pwd_display.setStyleSheet(
-            f"""
+        self._pwd_display.setStyleSheet(f"""
             QLabel#HostPwdDisplay {{
                 font-size: 20px; font-weight: 700;
                 font-family: {self._FONT_MONO};
@@ -746,8 +737,7 @@ class HostWindow(QMainWindow):
                 border: 1px solid #e2e8f0;
                 border-radius: 8px;
             }}
-        """
-        )
+        """)
         pwd_row.addWidget(self._pwd_display)
         pwd_row.addStretch()
 
@@ -1266,9 +1256,7 @@ class HostWindow(QMainWindow):
         # contesto remoto non ha risposta (appare un hang della UI) —
         # minimizza invece di chiedere.
         if self._service.is_peer_connected and not self._force_quit:
-            logger.info(
-                "HostWindow close with active remote session and no tray → minimize"
-            )
+            logger.info("HostWindow close with active remote session and no tray → minimize")
             event.ignore()
             self.showMinimized()
             return
@@ -1391,9 +1379,7 @@ def main_host() -> None:
 
     setup_logging(level=cli_level)
     version = __import__("opendesk").__version__
-    logger.info(
-        "Starting OpenDesk Host v%s (minimized=%s)", version, start_minimized
-    )
+    logger.info("Starting OpenDesk Host v%s (minimized=%s)", version, start_minimized)
 
     # Log platform configuration
     from opendesk.core.platform_config import get_platform_config

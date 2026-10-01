@@ -74,8 +74,7 @@ class SessionInfoWidget(QWidget):
 
         self._device_name_label = QLabel(self._device_name)
         self._device_name_label.setObjectName("DeviceNameLabel")
-        self._device_name_label.setStyleSheet(
-            """
+        self._device_name_label.setStyleSheet("""
             QLabel#DeviceNameLabel {
                 font-size: 13px;
                 font-weight: 700;
@@ -87,8 +86,7 @@ class SessionInfoWidget(QWidget):
                 border-color: palette(mid);
                 background: rgba(37, 99, 235, 0.08);
             }
-            """
-        )
+            """)
         self._device_name_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self._device_name_label.mousePressEvent = self._start_name_edit
         row1.addWidget(self._device_name_label)
@@ -125,8 +123,7 @@ class SessionInfoWidget(QWidget):
 
         self._id_display = QLabel("—")
         self._id_display.setObjectName("SessionIdDisplay")
-        self._id_display.setStyleSheet(
-            """
+        self._id_display.setStyleSheet("""
             QLabel#SessionIdDisplay {
                 font-size: 20px;
                 font-weight: 800;
@@ -137,8 +134,7 @@ class SessionInfoWidget(QWidget):
                 border-radius: 6px;
                 min-width: 160px;
             }
-            """
-        )
+            """)
         row2.addWidget(self._id_display)
 
         self._copy_id_btn = QPushButton("Copy")
@@ -160,8 +156,7 @@ class SessionInfoWidget(QWidget):
 
         self._pwd_display = QLabel("—")
         self._pwd_display.setObjectName("SessionPwdDisplay")
-        self._pwd_display.setStyleSheet(
-            """
+        self._pwd_display.setStyleSheet("""
             QLabel#SessionPwdDisplay {
                 font-size: 14px;
                 font-weight: 700;
@@ -172,8 +167,7 @@ class SessionInfoWidget(QWidget):
                 border-radius: 6px;
                 min-width: 100px;
             }
-            """
-        )
+            """)
         row2.addWidget(self._pwd_display)
 
         self._copy_pwd_btn = QPushButton("Copy")
@@ -189,8 +183,7 @@ class SessionInfoWidget(QWidget):
         self._refresh_btn = QPushButton("🔄 New Session")
         self._refresh_btn.setFixedHeight(26)
         self._refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._refresh_btn.setStyleSheet(
-            """
+        self._refresh_btn.setStyleSheet("""
             QPushButton {
                 padding: 2px 12px;
                 background: transparent;
@@ -205,8 +198,7 @@ class SessionInfoWidget(QWidget):
             QPushButton:pressed {
                 background: rgba(37, 99, 235, 0.20);
             }
-            """
-        )
+            """)
         self._refresh_btn.clicked.connect(self.refresh_session)
         row2.addWidget(self._refresh_btn)
 

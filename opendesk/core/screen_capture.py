@@ -1107,6 +1107,7 @@ def _cursor_rgba(hcursor: int) -> tuple[int, int, np.ndarray] | None:
             bmi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
             if not gdi32.GetObjectW(wintypes.HANDLE(hbmp), 0, None):
                 pass
+
             # GetObject via BITMAP struct per dimensioni
             class BITMAP(ctypes.Structure):
                 _fields_ = [
@@ -1226,8 +1227,7 @@ def draw_cursor_on_frame(rgb: np.ndarray, region: tuple[int, int, int, int]) -> 
     alpha = patch[:, :, 3:4].astype(np.float32) / 255.0
     dest = rgb[y0:y1, x0:x1]
     blended = (
-        patch[:, :, :3].astype(np.float32) * alpha
-        + dest.astype(np.float32) * (1.0 - alpha)
+        patch[:, :, :3].astype(np.float32) * alpha + dest.astype(np.float32) * (1.0 - alpha)
     ).astype(np.uint8)
     dest[:] = blended
     return rgb

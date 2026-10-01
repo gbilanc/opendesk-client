@@ -328,9 +328,7 @@ class StreamService(QObject):
                 except Exception:
                     logger.exception("Pipeline stop error (ignored)")
 
-            threading.Thread(
-                target=_shutdown, name="PipelineShutdown", daemon=True
-            ).start()
+            threading.Thread(target=_shutdown, name="PipelineShutdown", daemon=True).start()
         if self._input_backend:
             self._input_backend.release()
             self._input_backend = None

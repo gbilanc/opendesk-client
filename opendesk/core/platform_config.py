@@ -516,10 +516,12 @@ class PlatformConfig:
                     HealthIssue(
                         HealthSeverity.WARNING,
                         "capture",
-                        "PipeWire non disponibile — usato fallback XWayland (MSS)."
-                        if self.has_x11
-                        else "Né PipeWire né XWayland disponibili — la cattura "
-                        "schermo non funzionerà.",
+                        (
+                            "PipeWire non disponibile — usato fallback XWayland (MSS)."
+                            if self.has_x11
+                            else "Né PipeWire né XWayland disponibili — la cattura "
+                            "schermo non funzionerà."
+                        ),
                         "Installa gstreamer1.0-pipewire e python3-gi per cattura nativa Wayland.",
                     )
                 )

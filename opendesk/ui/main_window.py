@@ -259,8 +259,7 @@ class MainWindow(QMainWindow):
         toolbar = QToolBar("Main", self)
         toolbar.setMovable(False)
         toolbar.setIconSize(QSize(20, 20))
-        toolbar.setStyleSheet(
-            """
+        toolbar.setStyleSheet("""
             QToolBar {
                 background: #ffffff;
                 border-bottom: 1px solid #e2e8f0;
@@ -280,8 +279,7 @@ class MainWindow(QMainWindow):
             QToolButton:pressed {
                 background: #e2e8f0;
             }
-        """
-        )
+        """)
 
         toolbar.addSeparator()
         toolbar.addAction(self.act_fit)
