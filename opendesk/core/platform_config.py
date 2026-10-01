@@ -66,6 +66,7 @@ class CaptureMethod(Enum):
 
     AUTO = auto()
     MSS = auto()  # Cross-platform (DXGI / CoreGraphics / X11)
+    DXGI = auto()  # Windows native Desktop Duplication API (dxcam)
     PIPEWIRE = auto()  # Linux Wayland via GStreamer pipewiresrc
     PORTAL = auto()  # Linux Wayland via D-Bus portal + GStreamer
     DUMMY = auto()  # Test pattern for development
@@ -106,6 +107,16 @@ def _find_system_python_gi() -> str | None:
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             continue
     return None
+
+
+def _check_dxcam() -> bool:
+    """True se il pacchetto dxcam (DXGI Desktop Duplication) è importabile."""
+    try:
+        import importlib.util
+
+        return importlib.util.find_spec("dxcam") is not None
+    except Exception:
+        return False
 
 
 def _check_pipewire_element() -> bool:
@@ -307,9 +318,14 @@ class PlatformConfig:
             "Windows SDK (for C++ build tools, optional)",
         ]
 
-        # Capture: MSS via DXGI
-        self.capture_method = CaptureMethod.MSS
+        # Capture: DXGI Desktop Duplication (dxcam) quando disponibile,
+        # MSS via GDI come fallback / alternativa.
         self.capture_methods_available = [CaptureMethod.MSS]
+        if _check_dxcam():
+            self.capture_method = CaptureMethod.DXGI
+            self.capture_methods_available.insert(0, CaptureMethod.DXGI)
+        else:
+            self.capture_method = CaptureMethod.MSS
 
         self.input_backend_name = "WindowsInputBackend (SendInput)"
 
@@ -472,7 +488,8 @@ class PlatformConfig:
                         HealthSeverity.CRITICAL,
                         "capture",
                         "Nessun backend di cattura disponibile su Wayland.",
-                        "Installa xdg-desktop-portal, gstreamer1.0-pipewire, python3-gi, e XWayland.",
+                        "Installa xdg-desktop-portal, gstreamer1.0-pipewire,"
+                        " python3-gi e XWayland.",
                     )
                 )
             elif self.capture_method == CaptureMethod.DUMMY:
@@ -653,7 +670,8 @@ class PlatformConfig:
                         HealthSeverity.WARNING,
                         "deps",
                         "PipeWire non trovato — necessario per cattura schermo su Wayland.",
-                        "Installa: sudo apt install pipewire gstreamer1.0-pipewire  (o equivalente)",
+                        "Installa: sudo apt install pipewire gstreamer1.0-"
+                        "pipewire (o equivalente)",
                     )
                 )
 

@@ -22,7 +22,7 @@ from collections.abc import Callable
 import cv2
 import numpy as np
 
-from opendesk.core.screen_capture import ScreenCapture
+from opendesk.core.screen_capture import ScreenCapture, _changed_mask
 from opendesk.core.video_codec import _QUALITY_CRF, EncoderConfig, QualityLevel, VideoEncoder
 
 logger = logging.getLogger(__name__)
@@ -344,7 +344,11 @@ class EncoderWorker(threading.Thread):
                         self._apply_quality_boost()
 
                     self._do_full_keyframe(data, w, h, pts)
-                    self._prev_frame = data.copy()
+                    # Il frame arriva esclusivamente da qui (frame_queue):
+                    # nessun'altra componente lo riutilizza, quindi possiamo
+                    # riferenciarlo direttamente senza fare una copia full-frame
+                    # (~6 MB a 1080p per ogni keyframe, 30/s in movimento).
+                    self._prev_frame = data
                     self._force_full_keyframe = False
                 else:
                     self._do_tiles(data, w, h, pts)
@@ -419,7 +423,7 @@ class EncoderWorker(threading.Thread):
         prev = self._prev_frame
         if prev is None or prev.shape != current.shape:
             self._do_full_keyframe(current, w, h, pts)
-            self._prev_frame = current.copy()
+            self._prev_frame = current
             return
 
         tile_size = _TILE_SIZE
@@ -427,9 +431,9 @@ class EncoderWorker(threading.Thread):
         quality = self._config.quality
         jpeg_q = _TILE_JPEG_QUALITY[quality]
 
-        # Full-frame diff using OpenCV (works directly on uint8, no conversion)
-        diff = cv2.absdiff(current, prev)
-        any_changed = np.any(diff > threshold, axis=2)
+        # Full-frame diff mask via il helper condiviso (cv2.absdiff + cv2.max,
+        # un unico temporaneo single-channel invece di (H,W,3) bool di numpy).
+        any_changed = _changed_mask(current, prev, threshold)
 
         total_tiles = 0
         changed = 0
@@ -454,7 +458,9 @@ class EncoderWorker(threading.Thread):
                         tiles.append((encoded.tobytes(), x, y, tw, th))
                         changed += 1
 
-        self._prev_frame = current.copy()
+        # Come per il path keyframe: il frame è di proprietà del consumer
+        # della coda, nessuna copia full-frame necessaria.
+        self._prev_frame = current
 
         # Aggiorna change ratio per adaptive quality
         if total_tiles > 0:
