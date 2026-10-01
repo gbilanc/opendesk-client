@@ -26,6 +26,17 @@ from opendesk.core.platform_config import CaptureMethod, get_platform_config
 
 logger = logging.getLogger(__name__)
 
+# Sentinel per distinguere "posizione cursore mai osservata" da "cursore nascosto"
+# (entrambi i casi non hanno coordinate).  Usato dal backend DXGI per decidere
+# se emettere un frame anche a desktop fermo.
+_UNSET_CURSOR = object()
+
+# A desktop fermo Desktop Duplication non consegna frame: emettiamo comunque
+# un frame GDI ogni _DXGI_IDLE_REFRESH_INTERVAL secondi (≈ l'_min_fps della
+# policy adattiva) così l'idle-keyframe del client può riallineare il decoder
+# e le richieste di keyframe vengono evase anche senza movimento.
+_DXGI_IDLE_REFRESH_INTERVAL = 1.0
+
 
 @dataclass(frozen=True)
 class MonitorInfo:
@@ -523,6 +534,12 @@ class ScreenCapture:
         # ── DXGI (Windows) ──
         self._dxgi: object | None = None  # dxcam camera, created lazily
         self._dxgi_monitor = -1
+        # Ultima posizione globale del cursore già emessa in un frame.
+        # _UNSET_CURSOR = mai osservata; None = cursore nascosto.
+        self._last_cursor_gpos: object = _UNSET_CURSOR
+        # Monotonic dell'ultimo frame emesso dal backend DXGI (per il
+        # refresh periodico a desktop fermo).
+        self._last_dxgi_frame_mono: float = 0.0
         self._fps_target: float = 30.0
         self._fps_adaptive: bool = True
         self._min_fps: float = 1.0
@@ -687,20 +704,45 @@ class ScreenCapture:
         cam = self._get_dxgi(monitor_index)
         if cam is None:
             raise RuntimeError("dxcam not available")
-        # grab() returns None quando lo schermo non è cambiato.
-        rgb = cam.grab()
-        if rgb is None:
-            return None
         # Geometria monitor da mss (solo enumerazione, nessuna cattura).
         sct = self._get_sct()
         mon = sct.monitors[monitor_index + 1]
+        region = (mon["left"], mon["top"], mon["width"], mon["height"])
+
+        # grab() returns None quando lo schermo non è cambiato.
+        rgb = cam.grab()
+        now = time.monotonic()
+        if rgb is None:
+            # Desktop fermo: Desktop Duplication non consegna frame e NON
+            # include il cursore nel buffer.  Se l'unico cambiamento è il
+            # puntatore, nessun frame arriverebbe all'encoder e il client
+            # resterebbe su un'immagine congelata (percepita come stream
+            # bloccato).  Rileviamo lo spostamento del cursore e, in quel
+            # caso, catturiamo un frame via GDI (MSS) con il cursore
+            # compositato: il diff frame invia da solo i tile delle aree
+            # posizione-vecchia / posizione-nuova.  Inoltre emettiamo un
+            # frame periodico (~1/s) anche senza movimento, così il flusso
+            # resta vivo e il client può richiedere/ricevere keyframe.
+            state = _cursor_state()
+            gpos = state[0] if state is not None else None
+            cursor_moved = gpos != self._last_cursor_gpos
+            idle_refresh_due = now - self._last_dxgi_frame_mono >= _DXGI_IDLE_REFRESH_INTERVAL
+            if cursor_moved or idle_refresh_due:
+                self._last_cursor_gpos = gpos
+                self._last_dxgi_frame_mono = now
+                return self._capture_mss(monitor_index)
+            return None
+
         rgb = np.ascontiguousarray(rgb, dtype=np.uint8)
-        draw_cursor_on_frame(rgb, (mon["left"], mon["top"], mon["width"], mon["height"]))
+        draw_cursor_on_frame(rgb, region)
+        state = _cursor_state()
+        self._last_cursor_gpos = state[0] if state is not None else None
+        self._last_dxgi_frame_mono = now
         return CapturedFrame(
             data=rgb,
             monitor_index=monitor_index,
             timestamp=time.time(),
-            region=(mon["left"], mon["top"], mon["width"], mon["height"]),
+            region=region,
         )
 
     def _loop_dxgi(self, monitor_index: int = 0) -> Iterator[CapturedFrame]:

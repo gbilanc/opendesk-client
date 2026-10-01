@@ -35,6 +35,29 @@ aree posizione-vecchia/posizione-nuova e invia i tile corrispondenti: i
 movimenti del puntatore generano traffico reale e feedback immediato,
 senza modifiche al protocollo né al decoder client.
 
+#### 1b. Sul path DXGI il cursore non arrivava comunque all'encoder (gap del fix #1)
+
+Il compositing del cursore in `_capture_dxgi` era **raggiunto solo quando
+`cam.grab()` restituiva un frame**, ma Desktop Duplication consegna un frame
+solo quando la superficie del desktop cambia; il cursore non fa parte della
+superficie.  A desktop fermo (tipico subito dopo minimize/close/maximize di
+una finestra) `grab()` restituisce `None` → nessun frame → il cursore non
+veniva mai compositato → lo stream restava congelato anche con il fix #1.
+
+**Fix:** in `_capture_dxgi` il path `grab() is None` ora:
+
+- traccia l'ultima posizione globale del cursore emessa (`_last_cursor_gpos`);
+- se il cursore si è mosso, cattura un frame via GDI (`_capture_mss`) con il
+  cursore compositato: il diff frame invia da solo i tile vecchia/nuova
+  posizione;
+- emette comunque un frame periodico (~1/s, `_DXGI_IDLE_REFRESH_INTERVAL`)
+  anche a desktop e cursore fermi, così il flusso resta vivo e le richieste
+  di keyframe del client (watchdog / recovery) vengono evase anche in idle.
+
+Questo mantiene il vantaggio di DXGI (niente BitBlt a 30 fps quando non
+serve) limitando il refresh idle a ~1 fps, coerente con la policy adattiva
+(`_min_fps = 1.0`).
+
 ### 2. Spirale della morte del watchdog keyframe (causa aggravante)
 
 Nei log: `Peer requested keyframe (host)` ogni ~6s per 90+ secondi
