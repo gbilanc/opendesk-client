@@ -672,26 +672,39 @@ class _RelaySession:
             )
         )
 
-        # Periodic task that requests a keyframe if none received
+        # Periodic task that requests a keyframe if none received.
+        # Backoff esponenziale (3→6→12→…max 60s): senza limiti la richiesta
+        # genera un keyframe 1080p a ogni tick — se il link è congestionato
+        # il keyframe viene droppato dal backpressure, il client non lo
+        # riceve e ne richiede un altro, mantenendo la congestione: immagine
+        # congelata per sempre con sessione comunque connessa.
         _frame_count = 0  # track frames received since last watchdog check
+        _watchdog_delay = 3.0
 
         async def _keyframe_watchdog():
-            nonlocal _frame_count
+            nonlocal _frame_count, _watchdog_delay
             while self._running.is_set():
-                await asyncio.sleep(3.0)
+                await asyncio.sleep(_watchdog_delay)
+                if not self._running.is_set():
+                    break
                 last_activity = self._last_video_activity_time or self._start_time
                 elapsed_since_activity = time.time() - last_activity
                 if elapsed_since_activity > 5.0:
                     logger.warning(
-                        "No video activity for %.0fs (frames received: %d) — requesting keyframe",
+                        "No video activity for %.0fs (frames received: %d) — "
+                        "requesting keyframe (next attempt in %.0fs)",
                         elapsed_since_activity,
                         _frame_count,
+                        _watchdog_delay * 2,
                     )
                     _frame_count = 0
                     self._last_video_activity_time = time.time()
                     await self._send_async(
                         Message(MessageType.VIDEO_REQUEST_KEYFRAME, {}),
                     )
+                    _watchdog_delay = min(_watchdog_delay * 2, 60.0)
+                else:
+                    _watchdog_delay = 3.0
 
         watchdog_task = asyncio.create_task(_keyframe_watchdog())
         ping_task = asyncio.create_task(self._ping_loop())

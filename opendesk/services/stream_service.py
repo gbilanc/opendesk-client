@@ -10,6 +10,7 @@ Gestisce:
 from __future__ import annotations
 
 import logging
+import threading
 import time
 
 from PySide6.QtCore import QObject, QSettings, QTimer, Signal, Slot
@@ -307,13 +308,29 @@ class StreamService(QObject):
             self.stop_streaming()
 
     def stop_streaming(self) -> None:
-        """Ferma la pipeline, audio capture e rilascia le risorse."""
+        """Ferma la pipeline, audio capture e rilascia le risorse.
+
+        Il ``pipeline.stop()`` fa join sui thread worker (fino a ~9s nel
+        caso peggiore): eseguito sul main thread Qt congela l'intera UI
+        a ogni disconnect del peer.  Il join viene quindi eseguito su un
+        thread di background dedicato.
+        """
         self._bw_timer.stop()
         self._stop_audio_capture()
         self._stop_camera_capture()
-        if self._pipeline:
-            self._pipeline.stop()
-            self._pipeline = None
+        pipeline = self._pipeline
+        self._pipeline = None
+        if pipeline is not None:
+
+            def _shutdown() -> None:
+                try:
+                    pipeline.stop()
+                except Exception:
+                    logger.exception("Pipeline stop error (ignored)")
+
+            threading.Thread(
+                target=_shutdown, name="PipelineShutdown", daemon=True
+            ).start()
         if self._input_backend:
             self._input_backend.release()
             self._input_backend = None

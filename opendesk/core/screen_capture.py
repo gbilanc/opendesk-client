@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import sys
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -694,6 +695,7 @@ class ScreenCapture:
         sct = self._get_sct()
         mon = sct.monitors[monitor_index + 1]
         rgb = np.ascontiguousarray(rgb, dtype=np.uint8)
+        draw_cursor_on_frame(rgb, (mon["left"], mon["top"], mon["width"], mon["height"]))
         return CapturedFrame(
             data=rgb,
             monitor_index=monitor_index,
@@ -758,8 +760,10 @@ class ScreenCapture:
             mon = sct.monitors[monitor_index + 1]
             raw = sct.grab(mon)
             buf = np.frombuffer(raw.rgb, dtype=np.uint8).reshape(raw.height, raw.width, 3)
+            frame = np.ascontiguousarray(buf[:, :, :3])
+            draw_cursor_on_frame(frame, (mon["left"], mon["top"], mon["width"], mon["height"]))
             return CapturedFrame(
-                data=buf[:, :, :3],
+                data=frame,
                 monitor_index=monitor_index,
                 timestamp=time.time(),
                 region=(mon["left"], mon["top"], mon["width"], mon["height"]),
@@ -1001,6 +1005,226 @@ def release_screenshot_capture() -> None:
     if _global_capture is not None:
         _global_capture.release()
         _global_capture = None
+
+
+# -------------------------------------------------------------------------
+# Cursor compositing (Windows)
+# -------------------------------------------------------------------------
+#
+# DXGI Desktop Duplication (dxcam) e MSS (GDI BitBlt) NON compositano il
+# cursore nel frame catturato: l'utente remoto non vede mai il puntatore
+# muoversi sul proprio schermo.  A schermo statico (es. dopo la chiusura
+# della finestra host) l'unico cambiamento visivo è il cursore: senza
+# compositing l'immagine resta congelata sull'ultimo frame e il client
+# percepisce la sessione come "bloccata" (input sembrato morto).
+#
+# Soluzione: disegnare il cursore sui pixel del frame prima dell'encode.
+# Il diff frame dell'encoder individua automaticamente le aree (posizione
+# vecchia + nuova) e invia i tile corrispondenti — nessuna modifica al
+# protocollo né al decoder client.
+
+_CURSOR_CACHE: dict[int, tuple[int, int, "np.ndarray"]] = {}  # hCursor → (w, h, rgba)
+
+
+# GetCursorInfo / CURSOR_INFO
+_CURSOR_SHOWING = 0x1  # CURSOR_SHOWING: il cursore è visibile
+
+
+def _cursor_state() -> tuple[tuple[int, int], int] | None:
+    """Posizione globale (x, y) e handle HCURSOR del cursore, se visibile.
+
+    Windows-only; su altre piattaforme restituisce ``None``.
+    """
+    if not sys.platform.startswith("win"):
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class CURSORINFO(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", wintypes.DWORD),
+            ("flags", wintypes.DWORD),
+            ("hCursor", wintypes.HANDLE),
+            ("ptScreenPos", wintypes.POINT),
+        ]
+
+    ci = CURSORINFO()
+    ci.cbSize = ctypes.sizeof(CURSORINFO)
+    if not ctypes.windll.user32.GetCursorInfo(ctypes.byref(ci)):
+        return None
+    if not (ci.flags & _CURSOR_SHOWING) or not ci.hCursor:
+        return None
+    return (ci.ptScreenPos.x, ci.ptScreenPos.y), ci.hCursor
+
+
+def _cursor_rgba(hcursor: int) -> tuple[int, int, np.ndarray] | None:
+    """Bitmap RGBA (h, w, 4) del cursore, con cache per handle.
+
+    Usa GetIconInfo + GetDIBits (BGRA top-down); reso RGB con alpha.
+    """
+    cached = _CURSOR_CACHE.get(hcursor)
+    if cached is not None:
+        return cached
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        gdi32 = ctypes.windll.gdi32
+
+        class ICONINFO(ctypes.Structure):
+            _fields_ = [
+                ("fIcon", wintypes.BOOL),
+                ("xHotspot", wintypes.DWORD),
+                ("yHotspot", wintypes.DWORD),
+                ("hbmMask", wintypes.HBITMAP),
+                ("hbmColor", wintypes.HBITMAP),
+            ]
+
+        class BITMAPINFOHEADER(ctypes.Structure):
+            _fields_ = [
+                ("biSize", wintypes.DWORD),
+                ("biWidth", ctypes.c_long),
+                ("biHeight", ctypes.c_long),
+                ("biPlanes", wintypes.WORD),
+                ("biBitCount", wintypes.WORD),
+                ("biCompression", wintypes.DWORD),
+                ("biSizeImage", wintypes.DWORD),
+                ("biXPelsPerMeter", ctypes.c_long),
+                ("biYPelsPerMeter", ctypes.c_long),
+                ("biClrUsed", wintypes.DWORD),
+                ("biClrImportant", wintypes.DWORD),
+            ]
+
+        ii = ICONINFO()
+        if not user32.GetIconInfo(wintypes.HICON(hcursor), ctypes.byref(ii)):
+            return None
+        try:
+            # hbmColor può essere NULL per cursori monocromatici: usa mask
+            use_mask = not ii.hbmColor
+            hbmp = ii.hbmMask if use_mask else ii.hbmColor
+            bmi = BITMAPINFOHEADER()
+            bmi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+            if not gdi32.GetObjectW(wintypes.HANDLE(hbmp), 0, None):
+                pass
+            # GetObject via BITMAP struct per dimensioni
+            class BITMAP(ctypes.Structure):
+                _fields_ = [
+                    ("bmType", ctypes.c_long),
+                    ("bmWidth", ctypes.c_long),
+                    ("bmHeight", ctypes.c_long),
+                    ("bmWidthBytes", ctypes.c_long),
+                    ("bmPlanes", wintypes.WORD),
+                    ("bmBitsPixel", wintypes.WORD),
+                    ("bmBits", ctypes.c_void_p),
+                ]
+
+            bm = BITMAP()
+            if not gdi32.GetObjectW(wintypes.HANDLE(hbmp), ctypes.sizeof(BITMAP), ctypes.byref(bm)):
+                return None
+            w, h = bm.bmWidth, bm.bmHeight
+            if w <= 0 or h <= 0 or w > 256 or h > 256:
+                return None
+
+            bmi.biWidth = w
+            bmi.biHeight = -h  # top-down
+            bmi.biPlanes = 1
+            bmi.biBitCount = 32
+            bmi.biCompression = 0  # BI_RGB
+            buf = (ctypes.c_ubyte * (w * h * 4))()
+            hdc = user32.GetDC(None)
+            try:
+                got = gdi32.GetDIBits(
+                    wintypes.HDC(hdc),
+                    wintypes.HBITMAP(hbmp),
+                    0,
+                    h,
+                    buf,
+                    ctypes.byref(bmi),
+                    0,  # DIB_RGB_COLORS
+                )
+            finally:
+                user32.ReleaseDC(None, hdc)
+            if got != h:
+                return None
+            arr = np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 4).copy()
+            if use_mask:
+                # Monocromatico: AND mask (R plane) + XOR (G plane)
+                and_mask = arr[:, :, 0]
+                xor_mask = arr[:, :, 1]
+                opaque = xor_mask > 0
+                semi = (and_mask == 0) & ~opaque
+                alpha = np.where(opaque, 255, np.where(semi, 255, 0)).astype(np.uint8)
+                color = np.where(opaque[..., None], 255, 0).astype(np.uint8)
+                arr = np.dstack([color] * 3 + [alpha])
+            else:
+                arr = arr[:, :, [2, 1, 0, 3]]  # BGRA → RGBA
+            result = (h, w, arr)
+            # Cache limitata: mantieni solo l'ultimo cursore
+            _CURSOR_CACHE.clear()
+            _CURSOR_CACHE[hcursor] = result
+            return result
+        finally:
+            if ii.hbmMask:
+                ctypes.windll.gdi32.DeleteObject(wintypes.HBITMAP(ii.hbmMask))
+            if ii.hbmColor:
+                ctypes.windll.gdi32.DeleteObject(wintypes.HBITMAP(ii.hbmColor))
+    except Exception as e:
+        logger.debug("cursor bitmap failed: %s", e)
+        return None
+
+
+def draw_cursor_on_frame(rgb: np.ndarray, region: tuple[int, int, int, int]) -> np.ndarray:
+    """Composita il cursore di sistema sui pixel del frame RGB.
+
+    Parameters
+    ----------
+    rgb : np.ndarray
+        Frame RGB uint8 (H, W, 3) — viene modificato in place.
+    region : tuple[int, int, int, int]
+        ``(left, top, width, height)`` del monitor catturato.
+
+    Returns
+    -------
+    np.ndarray
+        Il frame (stesso oggetto) con il cursore disegnato, se visibile
+        e dentro il monitor; altrimenti invariato.
+    """
+    state = _cursor_state()
+    if state is None:
+        return rgb
+    (gx, gy), hcursor = state
+    left, top, width, height = region
+    fx, fy = gx - left, gy - top
+    if fx < 0 or fy < 0 or fx >= width or fy >= height:
+        return rgb  # cursore su un altro monitor
+    shape = _cursor_rgba(hcursor)
+    if shape is None:
+        # Fallback: puntatore schematizzato (cerchio pieno + contorno)
+        r = 6
+        y0, y1 = max(0, fy - r), min(rgb.shape[0], fy + r + 1)
+        x0, x1 = max(0, fx - r), min(rgb.shape[1], fx + r + 1)
+        if y1 > y0 and x1 > x0:
+            yy, xx = np.ogrid[y0:y1, x0:x1]
+            dist2 = (yy - fy) ** 2 + (xx - fx) ** 2
+            inside = dist2 <= r * r
+            edge = dist2 <= r * r and dist2 >= (r - 2) * (r - 2)
+            patch = rgb[y0:y1, x0:x1]
+            patch[inside] = (255, 255, 255)
+            patch[edge] = (20, 20, 20)
+        return rgb
+    ch, cw, rgba = shape
+    y0, x0 = max(0, fy), max(0, fx)
+    y1 = min(rgb.shape[0], fy + ch)
+    x1 = min(rgb.shape[1], fx + cw)
+    if y1 <= y0 or x1 <= x0:
+        return rgb
+    sy0, sx0 = y0 - fy, x0 - fx
+    patch = rgba[sy0 : sy0 + (y1 - y0), sx0 : sx0 + (x1 - x0)]
+    alpha = patch[:, :, 3:4].astype(np.float32) / 255.0
+    dest = rgb[y0:y1, x0:x1]
+    dest[:] = (patch[:, :, :3].astype(np.float32) * alpha + dest.astype(np.float32) * (1.0 - alpha)).astype(np.uint8)
+    return rgb
 
 
 # -------------------------------------------------------------------------

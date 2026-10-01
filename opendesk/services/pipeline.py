@@ -45,6 +45,9 @@ _TILE_THRESHOLD = 16  # pixel difference threshold for change detection
 _TILE_CHANGE_RATIO = 0.0005
 _TILE_MAX_CHANGED_RATIO = 0.30  # if more tiles changed, send full frame
 _KEYFRAME_INTERVAL = 60  # keyframe every N frames (~2s at 30fps) with motion
+
+# Throttle ricreazione encoder per adaptive quality (boost/restore CRF)
+_REBUILD_MIN_INTERVAL = 2.0  # s
 # Rete di sicurezza: anche a schermo fermo (idle) invia un keyframe di
 # riallineamento ogni N frame (~10s), così il client recupera da tile
 # persi/droppati invece di restare su un'immagine vecchia.
@@ -247,6 +250,13 @@ class EncoderWorker(threading.Thread):
         self._normal_crf: int | None = None
         self._is_boosted: bool = False
 
+        # Throttle ricreazione encoder: il ping-pong boost/restore CRF può
+        # arrivare a ricostruire il contesto PyAV 3-4 volte al secondo,
+        # bloccando il flusso dei frame in output (spike di latenza) e
+        # bruciando CPU.  Minimo 2s tra un rebuild e l'altro.
+        self._last_rebuild_mono: float = 0.0
+        self._rebuild_pending: bool = False
+
     def run(self) -> None:
         logger.info("EncoderWorker started")
         last_frame_time = time.monotonic()
@@ -278,6 +288,11 @@ class EncoderWorker(threading.Thread):
 
             if data is None:
                 break
+
+            # Ricrea l'encoder (CRF cambiato da boost/restore) solo quando
+            # il throttle lo consente
+            if self._rebuild_pending:
+                self._try_rebuild_encoder()
 
             h, w = data.shape[:2]
             pts = int(timestamp * 1000)
@@ -315,6 +330,8 @@ class EncoderWorker(threading.Thread):
                             self._encoder.codec_name,
                             crf or "(bitrate)",
                         )
+                    # La creazione conta come rebuild per il throttle
+                    self._last_rebuild_mono = time.monotonic()
 
                 # ── Adaptive quality: idle counter ──
                 if self._last_change_ratio < 0.05:
@@ -508,9 +525,8 @@ class EncoderWorker(threading.Thread):
             boosted,
         )
         self._config.crf = boosted
-        self._encoder.release()
-        self._encoder = None  # sarà ricreato al prossimo frame
         self._is_boosted = True
+        self._try_rebuild_encoder()
 
     def _restore_normal_quality(self) -> None:
         """Ripristina il CRF originale quando il movimento riprende."""
@@ -524,10 +540,25 @@ class EncoderWorker(threading.Thread):
         )
         self._config.crf = self._normal_crf
         self._normal_crf = None
+        self._is_boosted = False
+        self._try_rebuild_encoder()
+
+    def _try_rebuild_encoder(self, force: bool = False) -> None:
+        """Rilascia l'encoder per ricrearlo (lazy) con il CRF corrente.
+
+        Con ``force=False`` rinvia se l'ultimo rebuild è recente
+        (``_REBUILD_MIN_INTERVAL``): la richiesta resta pendente e viene
+        applicata al prossimo frame in cui il throttle lo consente.
+        """
+        now = time.monotonic()
+        if not force and now - self._last_rebuild_mono < _REBUILD_MIN_INTERVAL:
+            self._rebuild_pending = True
+            return
+        self._rebuild_pending = False
+        self._last_rebuild_mono = now
         if self._encoder is not None:
             self._encoder.release()
             self._encoder = None  # sarà ricreato al prossimo frame
-        self._is_boosted = False
 
 
 # ═══════════════════════════════════════════════════════════════════

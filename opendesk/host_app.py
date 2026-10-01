@@ -15,7 +15,7 @@ import string
 import uuid
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QEvent, QObject, QSettings, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QIcon
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
@@ -1185,6 +1185,24 @@ class HostWindow(QMainWindow):
         self._force_quit = True
         self.close()
 
+    def changeEvent(self, event) -> None:  # noqa: N803, ANN001
+        """Log degli eventi di stato finestra + quirk Windows top-most.
+
+        Su Windows una finestra ``WindowStaysOnTopHint`` minimizzata
+        spesso non è iripristinabile dal taskbar (nessun WM_ACTIVATE):
+        il flag viene rimosso alla minimizzazione e riapplicato al
+        ripristino, così la finestra non risulta mai "bloccata".
+        """
+        super().changeEvent(event)
+        if event.type() != QEvent.Type.WindowStateChange:
+            return
+        minimized = bool(self.windowState() & Qt.WindowState.WindowMinimized)
+        logger.info("HostWindow state change: minimized=%s", minimized)
+        if minimized and (self.windowFlags() & Qt.WindowType.WindowStaysOnTopHint):
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
+        elif not minimized and not (self.windowFlags() & Qt.WindowType.WindowStaysOnTopHint):
+            self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         """Chiudi la finestra: se la tray e' attiva, riduci a icona.
 
@@ -1192,6 +1210,7 @@ class HostWindow(QMainWindow):
         in background nella system tray.  Solo *Quit* termina davvero.
         """
         if self._tray is not None and not self._force_quit:
+            logger.info("HostWindow close → hide to tray (peer_connected=%s)", self._service.is_peer_connected)
             event.ignore()
             self.hide()
             if not self._tray_hint_shown:
@@ -1205,17 +1224,16 @@ class HostWindow(QMainWindow):
                 )
             return
 
-        if self._service.is_peer_connected:
-            reply = QMessageBox.question(
-                self,
-                "Confirm Quit",
-                "A remote session is active.\nDisconnect and quit?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            )
-            if reply == QMessageBox.StandardButton.No:
-                self._force_quit = False
-                event.ignore()
-                return
+        # Sessione remota attiva senza tray: un QMessageBox modale in un
+        # contesto remoto non ha risposta (appare un hang della UI) —
+        # minimizza invece di chiedere.
+        if self._service.is_peer_connected and not self._force_quit:
+            logger.info("HostWindow close with active remote session and no tray → minimize")
+            event.ignore()
+            self.showMinimized()
+            return
+
+        logger.info("HostWindow close → quit (force=%s, peer=%s)", self._force_quit, self._service.is_peer_connected)
         self._service.stop()
         if self._tray is not None:
             self._tray.hide()
@@ -1352,6 +1370,11 @@ def main_host() -> None:
 
     app.setWindowIcon(HostWindow._app_icon())
     app.setStyle("Fusion")
+
+    # Diagnostica: logga (con stack) gli stalli del main thread
+    from opendesk.utils.hang_watchdog import HangWatchdog
+
+    _hang_watchdog = HangWatchdog()  # noqa: F841 — tenuto vivo dal riferimento globale
 
     # La finestra puo' essere nascosta nella tray: non uscire quando non
     # resta nessuna finestra visibile.
