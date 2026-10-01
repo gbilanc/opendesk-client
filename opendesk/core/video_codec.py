@@ -290,7 +290,15 @@ class VideoEncoder:
 
         raw_packets = list(self._stream.encode(av_frame))
         if not raw_packets:
-            return []
+            # Encoder a flusso (tipico degli HW: VideoToolbox su macOS, e in
+            # generale x264 senza zerolatency aperto correttamente) trattiene
+            # il primo frame nel buffer di delay: encode(frame) ritorna [].
+            # Dreniamo con encode(None) per recuperare il pacchetto, così
+            # ``encode`` resta 1-input→1-output e il receiver non resta senza
+            # keyframe.  Costo: latenza costante di ~1 frame (accettabile).
+            raw_packets = list(self._stream.encode(None))
+            if not raw_packets:
+                return []
 
         # PyAV may emit multiple packets for one input frame
         # (e.g. SPS/PPS + IDR on the first keyframe).
@@ -429,15 +437,22 @@ class VideoEncoder:
                 opts["preset"] = opts.get("preset", "veryfast")
 
             # Low-latency tuning
-            if "h264" in codec and codec not in ("h264_nvenc",):
+            # NB: ``tune``/``profile`` sono opzioni esclusive di libx264/libx265
+            # (i codec software ``h264``/``hevc``).  passarle a un HW encoder
+            # (videotoolbox/amf/qsv) è ignorato o rejected e lascia il default
+            # con frame-delay -> ``encode`` non produce pacchetti.
+            if codec in ("h264", "libx264"):
                 opts["tune"] = "zerolatency"
                 # yuv444p requires High 4:4:4 Predictive Profile — baseline non supporta 4:4:4
                 if self._stream.pix_fmt == "yuv444p":
                     opts["profile"] = "high444"
                 else:
                     opts["profile"] = "baseline"
-            elif is_hevc and codec in ("hevc",):
+            elif codec in ("hevc", "libx265"):
                 opts["tune"] = "zerolatency"
+            if "videotoolbox" in codec:
+                # VideoToolbox: abilita la modalità real-time (basso delay).
+                opts["realtime"] = "1"
             if codec in ("h264_nvenc", "hevc_nvenc"):
                 opts["rc"] = "vbr"
                 opts["cq"] = str(self._actual_crf or 23)
