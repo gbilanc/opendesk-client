@@ -47,8 +47,11 @@ def _log_thread_stacks(stall: float) -> None:
             )
             marker = " ← MAIN" if tid == main_tid else ""
             lines.append(f"--- {name} ({tid}){marker} ---")
-            for line in traceback.format_stack(frame)[:-1]:
-                lines.append(line.rstrip())
+            # NB: senza slice — l'ULTIMO frame è quello esattamente dove il
+            # thread è bloccato: è l'informazione più preziosa.
+            lines.extend(
+                line.rstrip() for line in traceback.format_stack(frame)
+            )
         logger.warning("\n".join(lines))
     except Exception:  # noqa: BLE001 — il watchdog non deve mai far crashare
         logger.exception("hang_watchdog: dump stack fallito")
@@ -65,6 +68,7 @@ class HangWatchdog:
         self._stall_threshold = stall_threshold
         self._last_beat = time.monotonic()
         self._reported = False
+        self._last_report = 0.0
         self._lock = threading.Lock()
 
         self._timer = QTimer()
@@ -92,8 +96,14 @@ class HangWatchdog:
             time.sleep(_WATCH_INTERVAL)
             with self._lock:
                 stall = time.monotonic() - self._last_beat
-                report = stall >= self._stall_threshold and not self._reported
+                # Re-report ogni ~5s se lo stallo persiste (prima: una sola
+                # volta per episodio — uno stallo prolungato spariva dal log).
+                report = stall >= self._stall_threshold and (
+                    not self._reported
+                    or stall - self._last_report >= 5.0
+                )
                 if report:
                     self._reported = True
+                    self._last_report = stall
             if report:
                 _log_thread_stacks(stall)

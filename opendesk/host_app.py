@@ -11,7 +11,10 @@ from __future__ import annotations
 import logging
 import queue
 import secrets
+
+import traceback
 import string
+import time
 import uuid
 from pathlib import Path
 
@@ -231,6 +234,10 @@ class HostService(QObject):
 
     def regenerate_session(self) -> None:
         """Genera nuova sessione (ID + password) e ri-avvia l'hosting."""
+        logger.info(
+            "regenerate_session chiamato (caller=\n%s)",
+            "".join(traceback.format_stack()[-4:-1]),
+        )
         self._relay.stop_hosting()
         self.create_session()
         self.start()
@@ -414,6 +421,21 @@ class HostService(QObject):
     @Slot(object)
     def _on_relay_message(self, msg: Message) -> None:
         """Gestisce tutti i messaggi in arrivo dal relay."""
+        t0 = time.perf_counter()
+        try:
+            self._dispatch_relay_message(msg)
+        finally:
+            dt_ms = (time.perf_counter() - t0) * 1000
+            if dt_ms > 100:
+                logger.warning(
+                    "SLOW _on_relay_message: %.0fms (type=%s) — input iniettato "
+                    "sul main thread: stalli qui bloccano mouse/tastiera remota",
+                    dt_ms,
+                    getattr(msg.type, "name", msg.type),
+                )
+
+    def _dispatch_relay_message(self, msg: Message) -> None:
+        """Dispatch interno di _on_relay_message (vedi lì per il timing)."""
         t = msg.type
 
         # ── Input injection ──

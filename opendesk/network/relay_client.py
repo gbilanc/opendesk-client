@@ -1310,15 +1310,23 @@ class RelayClient(QObject):
         """Stop the host session if any."""
         if self._host_session is None or self._host_thread is None:
             return
-        self._host_session.stop()
+        session = self._host_session
         self._host_session = None
+        session.stop()
         self._host_thread.join(timeout=_STOP_JOIN_TIMEOUT)
         if self._host_thread.is_alive():
             logger.warning(
-                "Host relay thread did not stop within %.1fs — "
-                "the old one will terminate when its TCP socket timeout fires.",
+                "Host relay thread did not stop within %.1fs — forzo la "
+                "chiusura del socket per sbloccarlo.",
                 _STOP_JOIN_TIMEOUT,
             )
+            self._force_close_socket(session)
+            self._host_thread.join(timeout=2.0)
+            if self._host_thread.is_alive():
+                logger.warning(
+                    "Host relay thread ancora vivo dopo la chiusura forzata "
+                    "del socket (daemon: morirà col processo)."
+                )
         self._host_thread = None
 
     # ── client internals ────────────────────────────────────────
@@ -1341,16 +1349,43 @@ class RelayClient(QObject):
         """Stop the client session if any."""
         if self._session is None or self._thread is None:
             return
-        self._session.stop()
+        session = self._session
         self._session = None
+        session.stop()
         self._thread.join(timeout=_STOP_JOIN_TIMEOUT)
         if self._thread.is_alive():
             logger.warning(
-                "Client relay thread did not stop within %.1fs — "
-                "the old one will terminate when its TCP socket timeout fires.",
+                "Client relay thread did not stop within %.1fs — forzo la "
+                "chiusura del socket per sbloccarlo.",
                 _STOP_JOIN_TIMEOUT,
             )
+            self._force_close_socket(session)
+            self._thread.join(timeout=2.0)
+            if self._thread.is_alive():
+                logger.warning(
+                    "Client relay thread ancora vivo dopo la chiusura forzata "
+                    "del socket (daemon: morirà col processo)."
+                )
         self._thread = None
+
+    @staticmethod
+    def _force_close_socket(session: "_RelaySession") -> None:
+        """Chiude il socket TCP del session thread bloccato.
+
+        Chiusura cross-thread deliberata: sblocca il ``select()`` del loop
+        asyncio con un errore e permette al thread di terminare.  Senza
+        questa, i vecchi thread relay restano zombie (in campo ne sono
+        stati visti accumularsi 3+) e trattengono le connessioni al relay.
+        """
+        try:
+            writer = getattr(session, "_writer", None)
+            transport = writer.transport if writer is not None else None
+            sock = transport.get_extra_info("socket") if transport else None
+            if sock is not None:
+                sock.close()
+                logger.info("Socket sessione relay chiuso forzatamente")
+        except Exception as e:
+            logger.debug("force_close_socket fallito: %s", e)
 
     # ── inbox polling ───────────────────────────────────────────
 
@@ -1410,10 +1445,13 @@ class RelayClient(QObject):
 
         Frame events are coalesced (same logic as client inbox).
         """
+        t0 = time.perf_counter()
+        events = 0
         last_frame = None
         while not self._host_inbox.empty():
             try:
                 event, data, seq = self._host_inbox.get_nowait()
+                events += 1
             except queue.Empty:
                 break
 
@@ -1428,6 +1466,15 @@ class RelayClient(QObject):
 
         if last_frame is not None:
             self._route_host_event("frame", last_frame)
+
+        dt_ms = (time.perf_counter() - t0) * 1000
+        if dt_ms > 100:
+            logger.warning(
+                "SLOW _poll_host_inbox: %.0fms (%d events) — blocca il "
+                "main thread e l'iniezione input remota",
+                dt_ms,
+                events,
+            )
 
     def _route_client_event(self, event: str, data: Any) -> None:
         """Route a client inbox event to the appropriate signal."""

@@ -437,6 +437,18 @@ class StreamService(QObject):
 
     def inject_mouse(self, msg: Message) -> None:
         """Inietta un evento mouse (chiamato dal relay)."""
+        t0 = time.perf_counter()
+        try:
+            self._inject_mouse_inner(msg)
+        finally:
+            dt_ms = (time.perf_counter() - t0) * 1000
+            if dt_ms > 100:
+                logger.warning(
+                    "SLOW inject_mouse: %.0fms — SendInput/SetCursorPos bloccati",
+                    dt_ms,
+                )
+
+    def _inject_mouse_inner(self, msg: Message) -> None:
         if self._input_backend is None:
             logger.warning("inject_mouse: input_backend is None, ignoring")
             return
