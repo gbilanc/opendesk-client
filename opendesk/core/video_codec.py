@@ -31,6 +31,11 @@ def _candidates(prefer_hw: bool = True) -> list[str]:
     HW encoders are listed first; SW encoders are always available
     as fallback.  The caller tries each candidate with
     ``av.Container.add_stream()`` and catches errors.
+
+    ``h264/hevc_videotoolbox`` is intentionally excluded: PyAV emits a
+    bitstream the app's H.264 decoder cannot parse (round-trip fails on
+    macOS CI), so we fall back to the software ``h264``/``hevc`` encoders
+    that are proven to work on Linux and Windows.
     """
     hw = [
         "hevc_nvenc",
@@ -41,8 +46,6 @@ def _candidates(prefer_hw: bool = True) -> list[str]:
         "h264_vaapi",
         "hevc_qsv",
         "h264_qsv",
-        "hevc_videotoolbox",
-        "h264_videotoolbox",
     ]
     sw = ["hevc", "h264"]
     if prefer_hw:
@@ -290,15 +293,7 @@ class VideoEncoder:
 
         raw_packets = list(self._stream.encode(av_frame))
         if not raw_packets:
-            # Encoder a flusso (tipico degli HW: VideoToolbox su macOS, e in
-            # generale x264 senza zerolatency aperto correttamente) trattiene
-            # il primo frame nel buffer di delay: encode(frame) ritorna [].
-            # Dreniamo con encode(None) per recuperare il pacchetto, così
-            # ``encode`` resta 1-input→1-output e il receiver non resta senza
-            # keyframe.  Costo: latenza costante di ~1 frame (accettabile).
-            raw_packets = list(self._stream.encode(None))
-            if not raw_packets:
-                return []
+            return []
 
         # PyAV may emit multiple packets for one input frame
         # (e.g. SPS/PPS + IDR on the first keyframe).
