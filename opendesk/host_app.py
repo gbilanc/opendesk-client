@@ -566,6 +566,7 @@ class HostWindow(QMainWindow):
         self._force_quit = False
         self._tray: QSystemTrayIcon | None = None
         self._tray_hint_shown = False
+        self._adjusting_topmost = False  # guardia anti-ricorsione changeEvent
 
         self.setWindowTitle(self.WINDOW_TITLE)
         self.setMinimumSize(self.MIN_WIDTH, self.MIN_HEIGHT)
@@ -1218,12 +1219,25 @@ class HostWindow(QMainWindow):
         super().changeEvent(event)
         if event.type() != QEvent.Type.WindowStateChange:
             return
+        if self._adjusting_topmost:
+            return
         minimized = bool(self.windowState() & Qt.WindowState.WindowMinimized)
         logger.info("HostWindow state change: minimized=%s", minimized)
-        if minimized and (self.windowFlags() & Qt.WindowType.WindowStaysOnTopHint):
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
-        elif not minimized and not (self.windowFlags() & Qt.WindowType.WindowStaysOnTopHint):
-            self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        has_top = bool(self.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+        if minimized == has_top:
+            # setWindowFlags nasconde una finestra già visibile e richiede
+            # un re-show; farlo solo quando il flag deve davvero cambiare
+            # evita di far scomparire la finestra al ripristino.
+            self._adjusting_topmost = True
+            try:
+                if minimized:
+                    self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
+                    self.showMinimized()
+                else:
+                    self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+                    self.showNormal()
+            finally:
+                self._adjusting_topmost = False
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         """Chiudi la finestra: se la tray e' attiva, riduci a icona.
@@ -1232,7 +1246,10 @@ class HostWindow(QMainWindow):
         in background nella system tray.  Solo *Quit* termina davvero.
         """
         if self._tray is not None and not self._force_quit:
-            logger.info("HostWindow close → hide to tray (peer_connected=%s)", self._service.is_peer_connected)
+            logger.info(
+                "HostWindow close → hide to tray (peer_connected=%s)",
+                self._service.is_peer_connected,
+            )
             event.ignore()
             self.hide()
             if not self._tray_hint_shown:
@@ -1250,12 +1267,18 @@ class HostWindow(QMainWindow):
         # contesto remoto non ha risposta (appare un hang della UI) —
         # minimizza invece di chiedere.
         if self._service.is_peer_connected and not self._force_quit:
-            logger.info("HostWindow close with active remote session and no tray → minimize")
+            logger.info(
+                "HostWindow close with active remote session and no tray → minimize"
+            )
             event.ignore()
             self.showMinimized()
             return
 
-        logger.info("HostWindow close → quit (force=%s, peer=%s)", self._force_quit, self._service.is_peer_connected)
+        logger.info(
+            "HostWindow close → quit (force=%s, peer=%s)",
+            self._force_quit,
+            self._service.is_peer_connected,
+        )
         self._service.stop()
         if self._tray is not None:
             self._tray.hide()
@@ -1334,10 +1357,15 @@ def _acquire_single_instance() -> QLocalServer | None:
     return server
 
 
-def _on_second_instance(window: "HostWindow") -> None:
-    """Secondo avvio rilevato: mostra e attiva la finestra esistente."""
-    server = window.sender() if isinstance(window.sender(), QLocalServer) else None
-    while server is not None and server.hasPendingConnections():
+def _on_second_instance(window: HostWindow, server: QLocalServer) -> None:
+    """Secondo avvio rilevato: scarica le connessioni pendenti e porta in
+    primo piano la finestra esistente.
+
+    Il ``server`` arriva dalla closure del segnale: non usiamo
+    ``window.sender()`` perché il segnale è collegato a una lambda generica
+    (non a uno slot di ``window``), quindi ``sender()`` non lo restituisce.
+    """
+    while server.hasPendingConnections():
         conn = server.nextPendingConnection()
         if conn is not None:
             conn.readyRead.connect(conn.deleteLater)
@@ -1412,7 +1440,7 @@ def main_host() -> None:
     window = HostWindow(service, start_minimized=start_minimized)
 
     # Istante singolo: un secondo avvio riporta in primo piano questa finestra
-    lock_server.newConnection.connect(lambda: _on_second_instance(window))
+    lock_server.newConnection.connect(lambda: _on_second_instance(window, lock_server))
 
     # Inizializza sessione e avvia
     service.create_session()

@@ -141,17 +141,29 @@ class _RelaySession:
         (``_PEER_TIMEOUT``, vedi docs/manuale-relay-server.md §5.6) e lo
         disconnette.  Senza PING l'host viene kickato ogni ~2 minuti
         anche quando fermo.
+
+        Il task sopravvive ai singoli fallimenti di invio (``except
+        Exception``: ``CancelledError`` è una ``BaseException`` e non viene
+        intercettata, quindi il ``cancel()`` dello shutdown propagherebbe
+        comunque).  Se un PONG non arriva da troppo tempo il link è
+        half-open: lo segnaliamo nel log.
         """
-        try:
-            while self._running.is_set():
+        while self._running.is_set():
+            try:
                 await asyncio.sleep(_PING_INTERVAL)
                 if not self._running.is_set():
                     break
                 await self._send_async(
                     Message.ping(seq=int(time.time())), bypass_backpressure=True
                 )
-        except asyncio.CancelledError:
-            pass
+                last_pong = self._last_pong_time
+                if last_pong and (time.time() - last_pong) > 3 * _PING_INTERVAL:
+                    logger.warning(
+                        "Keep-alive: nessun PONG da %.0fs — link forse half-open",
+                        time.time() - last_pong,
+                    )
+            except Exception as e:  # noqa: BLE001 — non far morire il keep-alive
+                logger.debug("ping_loop: invio PING fallito (%s), proseguo", e)
 
     # ── lifecycle ───────────────────────────────────────────────────
 
@@ -204,8 +216,9 @@ class _RelaySession:
     # KEY_EXCHANGE / KEY_EXCHANGE_ACK are NOT relay control types:
     # they are peer-to-peer messages that must be wrapped in RELAY_ROUTE
     # so the relay forwards them as opaque data to the paired peer.
-    # Key exchange now happens AFTER authentication, so no password-based
-    # proof is needed — authentication has already established trust.
+    # Key exchange now happens AFTER authentication and is protected by a
+    # password-based proof (HMAC of the public key), so a relay cannot
+    # substitute a key without the session password.
     _RELAY_CONTROL_TYPES = frozenset(
         {
             MessageType.HELLO,
@@ -316,27 +329,43 @@ class _RelaySession:
     def _key_exchange_message(self, message_type: MessageType) -> Message:
         """Build an ephemeral public-key message for E2E encryption setup.
 
-        Key exchange is sent *after* authentication, so no password-based
-        proof is needed — authentication has already established trust.
+        Include a *proof* = HMAC-SHA256(password, public_key) so the peer
+        can detect a malicious relay substituting a different key in
+        transit.  The relay routes KEY_EXCHANGE as opaque peer data and
+        never sees the session password (auth is challenge-response), so it
+        cannot forge the proof for a swapped public key.  Without this check
+        the relay could MITM the E2E channel (see MITM test).
         """
         public_key = self._e2ee.get_public_key_string()
         return Message(
             message_type,
-            {"public_key": public_key},
+            {
+                "public_key": public_key,
+                "proof": compute_response(public_key, self.password),
+            },
         )
 
     def _accept_remote_key(self, payload: dict[str, Any]) -> bool:
         """Accept the peer's public key and activate E2E encryption.
 
-        Key exchange now happens after authentication, so no password-based
-        proof verification is needed — authentication has already established
-        trust between the peers.
+        Verifies the password-based *proof* before trusting the key: a peer
+        that knows the session password can compute it, a relay that only
+        forwards traffic cannot forge it for a substituted key.  This binds
+        the ephemeral public key to the authenticated channel and prevents a
+        malicious relay from MITM-ing the E2E exchange.
         """
         public_key = payload.get("public_key", "")
+        proof = payload.get("proof", "")
         if not isinstance(public_key, str) or not public_key:
             logger.warning(
                 "Rejected E2E key exchange: missing or invalid public_key (type=%s)",
                 type(public_key).__name__,
+            )
+            return False
+        if not isinstance(proof, str) or not verify_response(public_key, self.password, proof):
+            logger.warning(
+                "Rejected E2E key exchange: invalid or missing password proof "
+                "(possible relay MITM)",
             )
             return False
         try:
@@ -345,7 +374,7 @@ class _RelaySession:
             logger.warning("Rejected E2E key exchange: %s", e)
             return False
         self._e2ee_ready = True
-        logger.info("E2E peer channel established")
+        logger.info("E2E peer channel established (key verified)")
         return True
 
     def _encrypt_peer_message(self, msg: Message) -> Message:
@@ -1369,7 +1398,7 @@ class RelayClient(QObject):
         self._thread = None
 
     @staticmethod
-    def _force_close_socket(session: "_RelaySession") -> None:
+    def _force_close_socket(session: _RelaySession) -> None:
         """Chiude il socket TCP del session thread bloccato.
 
         Chiusura cross-thread deliberata: sblocca il ``select()`` del loop
@@ -1527,9 +1556,7 @@ class RelayClient(QObject):
             self.message_received.emit(data)
         elif event == "error":
             self.error.emit(data)
-        elif event == "device_list":
-            self.device_list_received.emit(data)
-        elif event == "device_update":
+        elif event in ("device_list", "device_update"):
             self.device_list_received.emit(data)
         else:
             logger.debug("Unhandled host event: %s", event)

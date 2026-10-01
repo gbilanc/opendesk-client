@@ -588,7 +588,7 @@ class ScreenCapture:
 
     # ── single capture ──────────────────────────────────────────────
 
-    def capture_one(self, monitor_index: int = 0) -> CapturedFrame:
+    def capture_one(self, monitor_index: int = 0) -> CapturedFrame | None:
         if self._method == CaptureMethod.PORTAL:
             return self._capture_portal(monitor_index)
         if self._method == CaptureMethod.DXGI:
@@ -1023,7 +1023,7 @@ def release_screenshot_capture() -> None:
 # vecchia + nuova) e invia i tile corrispondenti — nessuna modifica al
 # protocollo né al decoder client.
 
-_CURSOR_CACHE: dict[int, tuple[int, int, "np.ndarray"]] = {}  # hCursor → (w, h, rgba)
+_CURSOR_CACHE: dict[int, tuple[int, int, np.ndarray]] = {}  # hCursor → (w, h, rgba)
 
 
 # GetCursorInfo / CURSOR_INFO
@@ -1120,7 +1120,9 @@ def _cursor_rgba(hcursor: int) -> tuple[int, int, np.ndarray] | None:
                 ]
 
             bm = BITMAP()
-            if not gdi32.GetObjectW(wintypes.HANDLE(hbmp), ctypes.sizeof(BITMAP), ctypes.byref(bm)):
+            if not gdi32.GetObjectW(
+                wintypes.HANDLE(hbmp), ctypes.sizeof(BITMAP), ctypes.byref(bm)
+            ):
                 return None
             w, h = bm.bmWidth, bm.bmHeight
             if w <= 0 or h <= 0 or w > 256 or h > 256:
@@ -1223,7 +1225,11 @@ def draw_cursor_on_frame(rgb: np.ndarray, region: tuple[int, int, int, int]) -> 
     patch = rgba[sy0 : sy0 + (y1 - y0), sx0 : sx0 + (x1 - x0)]
     alpha = patch[:, :, 3:4].astype(np.float32) / 255.0
     dest = rgb[y0:y1, x0:x1]
-    dest[:] = (patch[:, :, :3].astype(np.float32) * alpha + dest.astype(np.float32) * (1.0 - alpha)).astype(np.uint8)
+    blended = (
+        patch[:, :, :3].astype(np.float32) * alpha
+        + dest.astype(np.float32) * (1.0 - alpha)
+    ).astype(np.uint8)
+    dest[:] = blended
     return rgb
 
 
