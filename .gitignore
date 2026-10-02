@@ -22,3 +22,6 @@ Thumbs.db
 # Build
 *.spec
 .pi-subagents/
+fh_dump.txt
+stall_dump.txt
+pyspy_stall.txt
