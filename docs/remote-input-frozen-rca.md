@@ -212,3 +212,31 @@ inviati, zero crash, zero stalli.  Suite: 150 passed.
 Cython/ctypes su Windows può causare SEGFAULT proprio durante il dump —
 NON usarlo in riproduttori con pipeline attiva (artefatto escluso con
 A/B test).
+
+## 4. Quirk top-most: `setWindowFlags` ricrea la finestra nativa (2026-10-02)
+
+### Sintomo
+
+Durante una sessione remota attiva, la minimizzazione della finestra
+host (dal client remoto o localmente) congela il dispatcher eventi Qt:
+episodi di 3–38s (log watchdog) anche a pipeline già fermata; l'utente
+non riesce più a minimizzare la finestra.
+
+### Analisi
+
+`HostWindow.changeEvent` togglieva ``WindowStaysOnTopHint`` con
+``setWindowFlags`` + ``showMinimized``/``showNormal``: su Windows
+``setWindowFlags`` DISTRUGGE E RICREA la finestra nativa.  py-spy
+--native durante gli stalli mostra il main thread dentro
+``NtUserMsgWaitForMultipleObjectsEx`` (``QEventDispatcherWin32::
+processEvents``) in attesa che non si sveglia più per i propri timer —
+danno al dispatcher, non alla pipeline (che continua: 735 frame in
+35s).  Il churn di FINESTRE REALI del desktop durante lo streaming
+riproduce il freeze (il churn include la finestra host, sempre
+on-top); senza streaming il churn è innocuo.
+
+### Fix
+
+Il toggle usa ora ``SetWindowPos(HWND_NOTOPMOST/HWND_TOPMOST)`` (win32,
+``_toggle_topmost_win32``): cambia solo lo z-order, nessuna ricreazione
+di finestra, nessun impatto sul dispatcher.

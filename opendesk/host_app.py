@@ -533,6 +533,33 @@ class HostService(QObject):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def _toggle_topmost_win32(hwnd: int, topmost: bool) -> None:
+    """Attiva/disattiva lo z-order top-most SENZA ricreare la finestra.
+
+    Sostituisce il toggle via ``setWindowFlags`` (che distrugge e ricrea
+    la finestra nativa, corrompendo il dispatcher eventi Qt durante le
+    sessioni remote — vedi ``HostWindow.changeEvent``).
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    hwnd_topmost = -1  # HWND_TOPMOST
+    hwnd_notopmost = -2  # HWND_NOTOPMOST
+    swp_nomove = 0x0002
+    swp_nosize = 0x0001
+    swp_noactivate = 0x0010
+    insert_after = hwnd_topmost if topmost else hwnd_notopmost
+    ctypes.windll.user32.SetWindowPos(
+        wintypes.HWND(hwnd),
+        wintypes.HWND(insert_after),
+        0,
+        0,
+        0,
+        0,
+        swp_nomove | swp_nosize | swp_noactivate,
+    )
+
+
 class HostWindow(QMainWindow):
     """Finestra principale compatta per OpenDesk Host (solo incoming).
 
@@ -1204,6 +1231,14 @@ class HostWindow(QMainWindow):
         spesso non è iripristinabile dal taskbar (nessun WM_ACTIVATE):
         il flag viene rimosso alla minimizzazione e riapplicato al
         ripristino, così la finestra non risulta mai "bloccata".
+
+        NB: il toggle usa ``SetWindowPos`` (win32) e NON
+        ``setWindowFlags``: quest'ultimo DISTRUGGE E RICREA la finestra
+        nativa — durante una sessione remota ha corrotto il dispatcher
+        eventi Qt (``QEventDispatcherWin32`` in attesa infinita: timer
+        morti, UI congelata anche a streaming terminato — RCA
+        2026-10-02).  ``SetWindowPos`` cambia solo lo z-order: nessuna
+        ricreazione, nessun effetto sul dispatcher.
         """
         super().changeEvent(event)
         if event.type() != QEvent.Type.WindowStateChange:
@@ -1214,17 +1249,11 @@ class HostWindow(QMainWindow):
         logger.info("HostWindow state change: minimized=%s", minimized)
         has_top = bool(self.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
         if minimized == has_top:
-            # setWindowFlags nasconde una finestra già visibile e richiede
-            # un re-show; farlo solo quando il flag deve davvero cambiare
-            # evita di far scomparire la finestra al ripristino.
             self._adjusting_topmost = True
             try:
-                if minimized:
-                    self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
-                    self.showMinimized()
-                else:
-                    self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
-                    self.showNormal()
+                _toggle_topmost_win32(int(self.winId()), not minimized)
+            except Exception as e:
+                logger.debug("toggle top-most win32 fallito (ignorato): %s", e)
             finally:
                 self._adjusting_topmost = False
 
