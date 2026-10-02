@@ -25,3 +25,7 @@ Thumbs.db
 fh_dump.txt
 stall_dump.txt
 pyspy_stall.txt
+pyspy_*.txt
+host_window.png
+pwd_zoom.png
+bitblt_nocap.png
