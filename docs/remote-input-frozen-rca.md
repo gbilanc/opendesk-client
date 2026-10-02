@@ -154,3 +154,23 @@ Meccanismi secondari presidiati con questo fix:
 - Da riproduzione reale (host Windows + client): al prossimo episodio
   verificare nel log `SLOW input inject` / `SLOW clipboard read` e i
   dump stack dell'`HangWatchdog` per confermare il path esatto.
+
+### Riproduzione guidata (2026-10-01)
+
+`tests/repro_window_close_freeze.py` — scenario end-to-end senza rete:
+pipeline con cattura DXGI/MSS reale, flood input remoto (~60 eventi/s
+su `InputInjectionWorker`), minimizzazione e chiusura REALE di una
+finestra via Win32 (`WM_SYSCOMMAND/SC_MINIMIZE`, `WM_CLOSE`), 4 fasi
+(attivo / minimizza / chiudi / statico) con misura del beat del main
+thread Qt e conteggio frame inviati.
+
+Risultato su Windows (2 run, 3–6 s per fase):
+
+- main thread **sempre reattivo**: max gap 0 ms in tutte le fasi,
+  incluso durante la chiusura/iconizzazione sotto flood input
+- stream **vivo anche a desktop statico** (idle DXGI ~1 fps + idle
+  keyframe): 27–53 frame nelle fasi statiche
+- nessun errore pipeline, nessun dump del watchdog
+
+Il vecchio comportamento (UI congelata + stream morto dopo close) non
+è più riproducibile con i fix in pasta.
