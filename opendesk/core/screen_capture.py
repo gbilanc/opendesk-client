@@ -540,6 +540,8 @@ class ScreenCapture:
         # Monotonic dell'ultimo frame emesso dal backend DXGI (per il
         # refresh periodico a desktop fermo).
         self._last_dxgi_frame_mono: float = 0.0
+        # Rate-limit log errori del fallback GDI nel path idle DXGI.
+        self._last_idle_err_log: float = 0.0
         self._fps_target: float = 30.0
         self._fps_adaptive: bool = True
         self._min_fps: float = 1.0
@@ -700,6 +702,18 @@ class ScreenCapture:
         self._dxgi_monitor = monitor_index
         return cam
 
+    def _log_idle_fallback_error(self, err: Exception) -> None:
+        """Logga errori transitori del fallback GDI nel path idle DXGI.
+
+        Rate-limited (max 1 log/s) per non inondare il log quando il
+        desktop è fermo e il fallback viene tentato a ogni refresh.
+        """
+        now = time.monotonic()
+        if now - getattr(self, "_last_idle_err_log", 0.0) < 1.0:
+            return
+        self._last_idle_err_log = now
+        logger.warning("DXGI idle GDI fallback failed: %s", err)
+
     def _capture_dxgi(self, monitor_index: int = 0) -> CapturedFrame | None:
         cam = self._get_dxgi(monitor_index)
         if cam is None:
@@ -730,7 +744,16 @@ class ScreenCapture:
             if cursor_moved or idle_refresh_due:
                 self._last_cursor_gpos = gpos
                 self._last_dxgi_frame_mono = now
-                return self._capture_mss(monitor_index)
+                try:
+                    return self._capture_mss(monitor_index)
+                except Exception as e:
+                    # Il fallback GDI nel path idle non deve mai contare
+                    # verso gli errori fatali del CaptureWorker (10 → stop
+                    # pipeline): un hiccup GDI transitorio (es. animazione
+                    # di chiusura/iconizzazione di una finestra) produce
+                    # semplicemente un frame mancante, come grab()=None.
+                    self._log_idle_fallback_error(e)
+                    return None
             return None
 
         rgb = np.ascontiguousarray(rgb, dtype=np.uint8)
@@ -803,9 +826,12 @@ class ScreenCapture:
             raw = sct.grab(mon)
             buf = np.frombuffer(raw.rgb, dtype=np.uint8).reshape(raw.height, raw.width, 3)
             frame = np.ascontiguousarray(buf[:, :, :3])
-            frame = draw_cursor_on_frame(
-                frame, (mon["left"], mon["top"], mon["width"], mon["height"])
-            )
+            try:
+                frame = draw_cursor_on_frame(
+                    frame, (mon["left"], mon["top"], mon["width"], mon["height"])
+                )
+            except Exception as e:  # noqa: BLE001 — il cursore è cosmetico
+                logger.debug("cursor compositing failed (frame inviato senza): %s", e)
             return CapturedFrame(
                 data=frame,
                 monitor_index=monitor_index,

@@ -10,8 +10,10 @@ Gestisce:
 from __future__ import annotations
 
 import logging
+import queue
 import threading
 import time
+from collections.abc import Callable
 
 from PySide6.QtCore import QObject, QSettings, QTimer, Signal, Slot
 
@@ -74,6 +76,85 @@ _DEFAULT_BITRATES = {
 
 
 # ═══════════════════════════════════════════════════════════════════
+# Input injection worker
+# ═══════════════════════════════════════════════════════════════════
+
+
+# Coda maxsize: gli eventi input arrivano a ≤60/s (mouse move inclusi);
+# 512 ≈ 8s di buffer.  Oltre: si scarta (il mouse move successivo
+# recupera la posizione, l'input non è mai retroattivo).
+_INPUT_QUEUE_MAX = 512
+
+
+class InputInjectionWorker(threading.Thread):
+    """Thread dedicato all'iniezione input remoto.
+
+    L'iniezione input (``SendInput``/``SetCursorPos`` su Windows) gira
+    **fuori dal main thread Qt**: un'app target che entra in loop modale
+    o smette di rispondere mentre l'utente remoto chiude/minimizza una
+    finestra non deve congelare la UI dell'host.  Gli eventi vengono
+    processati in ordine (FIFO) su un proprio thread.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(name="InputInjectionWorker", daemon=True)
+        self._queue: queue.Queue[tuple[Callable[[], None], str] | None] = queue.Queue(
+            maxsize=_INPUT_QUEUE_MAX
+        )
+        self._stop_event = threading.Event()
+
+    def submit(self, fn: Callable[[], None], desc: str = "") -> bool:
+        """Accoda un'operazione di iniezione (non bloccante).
+
+        Returns
+        -------
+        bool
+            ``False`` se l'evento è stato scartato (coda piena o stop).
+        """
+        if self._stop_event.is_set():
+            return False
+        try:
+            self._queue.put((fn, desc), block=False)
+        except queue.Full:
+            logger.warning("InputInjectionWorker: coda piena — evento scartato (%s)", desc)
+            return False
+        return True
+
+    def run(self) -> None:
+        logger.info("InputInjectionWorker started")
+        while True:
+            item = self._queue.get()
+            if item is None:
+                return
+            fn, desc = item
+            t0 = time.perf_counter()
+            try:
+                fn()
+            except Exception:  # noqa: BLE001 — il worker non deve mai morire
+                logger.exception("InputInjectionWorker: errore iniezione %s", desc)
+            finally:
+                dt_ms = (time.perf_counter() - t0) * 1000
+                if dt_ms > 100:
+                    logger.warning(
+                        "SLOW input inject: %.0fms (%s) — API di sistema lente, "
+                        "la UI Qt non è influenzata",
+                        dt_ms,
+                        desc,
+                    )
+
+    def stop(self, timeout: float = 0.5) -> None:
+        """Ferma il worker (join con timeout; eventi pendenti scartati)."""
+        self._stop_event.set()
+        try:
+            self._queue.put_nowait(None)  # wakeup se in attesa su get()
+        except queue.Full:
+            pass
+        self.join(timeout=timeout)
+        if self.is_alive():
+            logger.warning("InputInjectionWorker: join timeout — thread ancora attivo")
+
+
+# ═══════════════════════════════════════════════════════════════════
 # StreamService
 # ═══════════════════════════════════════════════════════════════════
 
@@ -104,6 +185,9 @@ class StreamService(QObject):
 
         # Capture (solo per input backend, non per streaming)
         self._input_backend: InputBackend | None = None
+
+        # Thread di iniezione input (off main-thread Qt)
+        self._input_worker: InputInjectionWorker | None = None
 
         # Pipeline multi-thread
         self._pipeline: StreamingPipeline | None = None
@@ -190,6 +274,13 @@ class StreamService(QObject):
                 logger.warning("Input backend unavailable — remote input disabled: %s", e)
                 self._input_backend = None
                 self.input_unavailable.emit(str(e))
+
+            # Thread di iniezione input: l'iniezione (SendInput/X11/CoreGraphics)
+            # NON gira sul main thread Qt — vedi InputInjectionWorker.
+            if self._input_backend is not None:
+                if self._input_worker is None:
+                    self._input_worker = InputInjectionWorker()
+                    self._input_worker.start()
 
             # Imposta la risoluzione dello schermo sul backend di input
             # (necessaria per il corretto scaling delle coordinate ABS su Wayland)
@@ -318,6 +409,10 @@ class StreamService(QObject):
         self._bw_timer.stop()
         self._stop_audio_capture()
         self._stop_camera_capture()
+        # Ferma il worker di input PRIMA di rilasciare il backend.
+        if self._input_worker is not None:
+            self._input_worker.stop()
+            self._input_worker = None
         pipeline = self._pipeline
         self._pipeline = None
         if pipeline is not None:
@@ -434,17 +529,19 @@ class StreamService(QObject):
     # ── input injection ─────────────────────────────────────────────
 
     def inject_mouse(self, msg: Message) -> None:
-        """Inietta un evento mouse (chiamato dal relay)."""
-        t0 = time.perf_counter()
-        try:
+        """Inietta un evento mouse (chiamato dal relay, main thread Qt).
+
+        L'iniezione vera e propria avviene su ``InputInjectionWorker``:
+        nessuna API di input può bloccare la UI Qt (RCA 2026-10-01: UI
+        congelata alla chiusura/minimizzazione di una finestra remota).
+        """
+        worker = self._input_worker
+        if worker is None:
+            # Nessun worker (streaming non attivo): esegui inline come fallback
+            # così gli eventi non vengono persi silenziosamente.
             self._inject_mouse_inner(msg)
-        finally:
-            dt_ms = (time.perf_counter() - t0) * 1000
-            if dt_ms > 100:
-                logger.warning(
-                    "SLOW inject_mouse: %.0fms — SendInput/SetCursorPos bloccati",
-                    dt_ms,
-                )
+            return
+        worker.submit(lambda: self._inject_mouse_inner(msg), desc="mouse")
 
     def _inject_mouse_inner(self, msg: Message) -> None:
         if self._input_backend is None:
@@ -476,7 +573,14 @@ class StreamService(QObject):
             self._input_backend.move_mouse(x, y, absolute)
 
     def inject_keyboard(self, msg: Message) -> None:
-        """Inietta un evento tastiera (chiamato dal relay)."""
+        """Inietta un evento tastiera (chiamato dal relay, main thread Qt)."""
+        worker = self._input_worker
+        if worker is None:
+            self._inject_keyboard_inner(msg)
+            return
+        worker.submit(lambda: self._inject_keyboard_inner(msg), desc="keyboard")
+
+    def _inject_keyboard_inner(self, msg: Message) -> None:
         if self._input_backend is None:
             return
         payload = msg.payload
@@ -492,6 +596,12 @@ class StreamService(QObject):
         Se gli stati differiscono, press+release di Caps Lock sul backend
         per portarlo nello stato richiesto.
         """
+        worker = self._input_worker
+        if worker is None:
+            return
+        worker.submit(lambda: self._sync_caps_lock_inner(remote_active), desc="capslock")
+
+    def _sync_caps_lock_inner(self, remote_active: bool) -> None:
         if self._input_backend is None:
             return
         try:
@@ -505,5 +615,5 @@ class StreamService(QObject):
                 local_active,
                 remote_active,
             )
-            self.inject_keyboard(Message.keyboard_event("capslock", True))
-            self.inject_keyboard(Message.keyboard_event("capslock", False))
+            self._inject_keyboard_inner(Message.keyboard_event("capslock", True))
+            self._inject_keyboard_inner(Message.keyboard_event("capslock", False))

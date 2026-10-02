@@ -23,6 +23,14 @@ logger = logging.getLogger(__name__)
 
 _POLL_INTERVAL_MS = 500  # check clipboard every 500 ms
 _MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB max image transfer
+_BACKOFF_RESET_S = 10.0  # backoff reset dopo 10s senza letture lente
+
+# Lettura clipboard lenta (OLE GetData sincrono verso un'app owner lenta/
+# hung — tipico quando una finestra viene chiusa/iconizzata): oltre questa
+# soglia si logga e si applica backoff sul polling (non bloccare la UI).
+_SLOW_POLL_MS = 100
+_BACKOFF_MULTIPLIER = 4.0
+_BACKOFF_MAX_MS = 5_000
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +61,9 @@ class ClipboardSync(QObject):
         self._last_text: str = ""
         self._last_image_hash: int = 0
         self._send_fn = None
+        # Backoff anti-freeze (vedi _poll_clipboard)
+        self._backoff_ms: int = _POLL_INTERVAL_MS
+        self._last_slow_poll: float = 0.0
 
         # Track async tasks to avoid untracked fire-and-forget leaks
         self._pending_tasks: set = set()
@@ -152,15 +163,50 @@ class ClipboardSync(QObject):
 
     # ── internal ────────────────────────────────────────────────────
 
+    def _apply_backoff(self) -> None:
+        """Rallenta il polling dopo una lettura clipboard lenta.
+
+        Il backoff decade: dopo ``_BACKOFF_RESET_S`` senza letture lente
+        si torna all'intervallo normale (al prossimo _poll_clipboard).
+        """
+        now = time.monotonic()
+        if now - self._last_slow_poll < _BACKOFF_RESET_S:
+            self._backoff_ms = min(
+                _BACKOFF_MAX_MS,
+                max(_POLL_INTERVAL_MS, int(self._backoff_ms * _BACKOFF_MULTIPLIER)),
+            )
+        else:
+            self._backoff_ms = _POLL_INTERVAL_MS * _BACKOFF_MULTIPLIER
+        self._last_slow_poll = now
+        self._timer.start(self._backoff_ms)
+        logger.info("Clipboard poll backoff: %dms", self._backoff_ms)
+
     def _poll_clipboard(self) -> None:
-        """Check for local clipboard changes and broadcast them."""
+        """Check for local clipboard changes and broadcast them.
+
+        La lettura OLE della clipboard è sincrona e può bloccare il main
+        thread se l'app proprietaria è lenta/hung (classico freeze Windows
+        alla chiusura di una finestra).  Misuriamo il tempo: se supera
+        ``_SLOW_POLL_MS`` applichiamo backoff esponenziale sull'intervallo
+        di polling (fino a ``_BACKOFF_MAX_MS``) così il costo massimo è
+        limitato e la UI resta reattiva.
+        """
         if not self._enabled or self._send_fn is None:
             return
 
         # Clean up completed tasks
         self._pending_tasks = {t for t in self._pending_tasks if not t.done()}
 
+        t0 = time.perf_counter()
         mime: QMimeData | None = self._clipboard.mimeData()
+        poll_ms = (time.perf_counter() - t0) * 1000
+        if poll_ms > _SLOW_POLL_MS:
+            logger.warning(
+                "SLOW clipboard read: %.0fms — owner lento/hung, backoff polling",
+                poll_ms,
+            )
+            self._apply_backoff()
+
         if mime is None:
             return
 
@@ -177,6 +223,8 @@ class ClipboardSync(QObject):
 
         # Check image (less frequently - skip every other poll)
         elif mime.hasImage() and int(time.time() * 2) % 2 == 0:
+            # NB: hasImage() può forzare il rendering OLE lento → anche qui
+            # la misura sopra con backoff protegge la UI.
             image = self._clipboard.image()
             if image.isNull():
                 return

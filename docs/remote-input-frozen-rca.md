@@ -95,7 +95,62 @@ pendente e viene applicata al prossimo frame utile.
 - Suite test: 129 passed; i 15 failure sono pre-esistenti (identici senza
   le modifiche; evdev/relay-socket su Windows).
 
+## 2. UI Qt dell'host congelata alla chiusura/iconizzazione di una finestra qualsiasi (2026-10-01)
+
+### Sintomo (report utente)
+
+Su Windows, quando il client remoto chiude o iconizza una finestra
+qualsiasi sul PC controllato, **la UI Qt dell'host si congela** (più
+del freeze-percezione del punto 1: qui è il processo host a bloccarsi).
+
+### Analisi
+
+L'iniezione input remoto girava **sul main thread Qt**
+(`_on_relay_message` → `StreamService.inject_mouse` →
+`SendInput`/`SetCursorPos`): l'header di `_on_relay_message` loggava
+già un warning `SLOW _on_relay_message` per gli stalli > 100 ms.  Quando
+il click remoto chiude/iconizza una finestra, il target può entrare in
+un loop modale o smettere di rispondere; in quella situazione le API di
+input/injection sul main thread degradano la UI dell'host esattamente
+quando serve riprendere il controllo.
+
+Meccanismi secondari presidiati con questo fix:
+
+- **Clipboard OLE** (`ClipboardSync._poll_clipboard`, lato client): la
+  lettura `mimeData()` è sincrona e può bloccare il main thread se
+  l'app proprietaria della clipboard è lenta/hung — tipico quando una
+  finestra viene chiusa.  Ora con misura del tempo + backoff
+  esponenziale del polling (500 ms → max 5 s) e warning
+  `SLOW clipboard read` nel log.
+- **Path idle DXGI**: il fallback GDI (`_capture_mss`) richiamato dal
+  path `grab() is None` non deve più contare verso gli errori fatali
+  del `CaptureWorker` (10 consecutivi → stop pipeline): un hiccup GDI
+  transitorio (es. animazione di chiusura finestra) produce solo un
+  frame mancante, come `grab()=None`.  Errori loggati a rate 1/s.
+
+### Fix
+
+1. `stream_service.InputInjectionWorker` — thread dedicato FIFO con
+   coda bounded (512 eventi, drop-on-full con warning); le API
+   `inject_mouse`/`inject_keyboard`/`sync_remote_caps_lock` si limitano
+   a fare enqueue (mai bloccanti per la UI).  Fallback inline se lo
+   streaming non è attivo.  Il timing SLOW resta loggato dal worker
+   (`SLOW input inject`) senza impattare la UI.
+2. `clipboard_sync` — backoff anti-freeze sul polling (solo lato
+   client, dove ClipboardSync è attivo).
+3. `screen_capture` — path idle DXGI tollerante a errori transitori.
+
+### Verifiche
+
+- `tests/test_input_worker.py`: 10 test (ordine FIFO, sopravvivenza a
+  eccezioni, drop su coda piena, stop prompto, submit non bloccante con
+  API hung, delega reale al worker, fallback inline, backoff clipboard).
+- Suite completa: 150 passed, 4 skipped.
+
 ## Stato
 
 - Keep-alive PING verso il relay (precedente): verifica 20 min di sessione
   continua senza kick del relay.
+- Da riproduzione reale (host Windows + client): al prossimo episodio
+  verificare nel log `SLOW input inject` / `SLOW clipboard read` e i
+  dump stack dell'`HangWatchdog` per confermare il path esatto.
