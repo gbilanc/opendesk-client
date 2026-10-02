@@ -318,14 +318,18 @@ class PlatformConfig:
             "Windows SDK (for C++ build tools, optional)",
         ]
 
-        # Capture: DXGI Desktop Duplication (dxcam) quando disponibile,
-        # MSS via GDI come fallback / alternativa.
+        # Capture: MSS via GDI come DEFAULT (sicurezza GIL).
+        # DXGI/dxcam NON rilascia la GIL durante la Map() della staging
+        # surface (stagesurf.map — Cython): con la GPU sotto carico (DWM,
+        # animazioni di chiusura/minimizzazione di finestre) la Map()
+        # blocca per secondi TENENDO LA GIL → UI Qt, encoder e network
+        # congelati (RCA 2026-10-02, fps 0.0 lato client).  MSS usa ctypes
+        # che rilascia la GIL → nessuna starvazione.  DXGI resta
+        # selezionabile esplicitamente via impostazione video/capture_method.
         self.capture_methods_available = [CaptureMethod.MSS]
+        self.capture_method = CaptureMethod.MSS
         if _check_dxcam():
-            self.capture_method = CaptureMethod.DXGI
             self.capture_methods_available.insert(0, CaptureMethod.DXGI)
-        else:
-            self.capture_method = CaptureMethod.MSS
 
         self.input_backend_name = "WindowsInputBackend (SendInput)"
 
@@ -763,13 +767,52 @@ _global_config: PlatformConfig | None = None
 
 
 def get_platform_config() -> PlatformConfig:
-    """Return the cached platform config, detecting if necessary."""
+    """Return the cached platform config, detecting if necessary.
+
+    L'impostazione ``video/capture_method`` (QSettings) può forzare il
+    metodo: "AUTO" (default) usa il metodo rilevato dalla piattaforma;
+    "DXGI"/"MSS" lo forzano se disponibile (DXGI su Windows è opt-in:
+    vedi nota GIL in ``_detect_windows``).
+    """
     global _global_config
     if _global_config is None:
         _global_config = PlatformConfig.detect()
+        _apply_capture_method_override(_global_config)
         _global_config.log_summary()
         _global_config.log_health()
     return _global_config
+
+
+def _apply_capture_method_override(cfg: PlatformConfig) -> None:
+    """Applica l'override utente del metodo di cattura, se presente."""
+    try:
+        from PySide6.QtCore import QSettings
+
+        raw = QSettings("OpenDesk", "OpenDesk").value("video/capture_method", "AUTO")
+    except Exception:
+        return
+    if not raw or str(raw).upper() == "AUTO":
+        return
+    try:
+        requested = CaptureMethod[str(raw).upper()]
+    except KeyError:
+        logger.warning("video/capture_method non valido: %s — uso AUTO", raw)
+        return
+    if requested in cfg.capture_methods_available:
+        if requested != cfg.capture_method:
+            logger.info(
+                "Capture method override da impostazioni: %s → %s",
+                cfg.capture_method.name,
+                requested.name,
+            )
+            cfg.capture_method = requested
+    else:
+        logger.warning(
+            "video/capture_method=%s non disponibile su questa piattaforma " "(%s) — uso %s",
+            raw,
+            ", ".join(m.name for m in cfg.capture_methods_available) or "nessuno",
+            cfg.capture_method.name,
+        )
 
 
 def reset_platform_config() -> None:

@@ -155,22 +155,60 @@ Meccanismi secondari presidiati con questo fix:
   verificare nel log `SLOW input inject` / `SLOW clipboard read` e i
   dump stack dell'`HangWatchdog` per confermare il path esatto.
 
-### Riproduzione guidata (2026-10-01)
+## 3. CAUSA RADICE DEFINITIVA — dxcam (DXGI) non rilascia la GIL (2026-10-02)
 
-`tests/repro_window_close_freeze.py` — scenario end-to-end senza rete:
-pipeline con cattura DXGI/MSS reale, flood input remoto (~60 eventi/s
-su `InputInjectionWorker`), minimizzazione e chiusura REALE di una
-finestra via Win32 (`WM_SYSCOMMAND/SC_MINIMIZE`, `WM_CLOSE`), 4 fasi
-(attivo / minimizza / chiudi / statico) con misura del beat del main
-thread Qt e conteggio frame inviati.
+### Sintomo reale (verifica su campo)
 
-Risultato su Windows (2 run, 3–6 s per fase):
+Sessione host Windows + client remoto via relay: il client vede
+**fps 0.0** mentre la pipeline host cattura/encoda; il log mostra stalli
+UI ripetuti (episodi 3→18s: `⚠ UI thread NON risponde da Xs`) con
+MainThread dentro `app.exec()` nativo e TUTTI i thread Python in attesa.
 
-- main thread **sempre reattivo**: max gap 0 ms in tutte le fasi,
-  incluso durante la chiusura/iconizzazione sotto flood input
-- stream **vivo anche a desktop statico** (idle DXGI ~1 fps + idle
-  keyframe): 27–53 frame nelle fasi statiche
-- nessun errore pipeline, nessun dump del watchdog
+### Diagnosi (faulthandler, senza GIL)
 
-Il vecchio comportamento (UI congelata + stream morto dopo close) non
-è più riproducibile con i fix in pasta.
+`tests/repro_session_ui_stall.py` — riproduttore end-to-end con relay
+REALE locale (opendesk-relay), HostService+HostWindow Qt reali,
+RelayClient reale, fasi: baseline / minimize / restore / flood input /
+close-to-tray / reshow, con beat QTimer (20ms) sul main thread e
+`faulthandler.dump_traceback_later` (1s repeat, thread C → non richiede
+la GIL):
+
+Durante lo stallo il **CaptureWorker è sistematicamente dentro**:
+
+    dxcam/core/stagesurf.py:80 in map          ← ID3D11DeviceContext::Map
+    dxcam/dxcam.py:407  in _process_staging_frame_into
+    dxcam/dxcam.py:310  in _grab
+
+**dxcam è Cython e NON rilascia la GIL durante `Map()`** (copiatura
+texture GPU→CPU).  Quando la GPU/DWM è sotto carico — es. animazioni di
+chiusura/minimizzazione di finestre — la `Map()` blocca per SECONDI
+tenendo la GIL → si congelano TUTTI gli altri thread Python: UI Qt,
+EncoderWorker, NetworkWorker → nessun frame inviato → **fps 0.0 lato
+client**.  Il metodo di cattura DXGI è quindi intrinsecamente
+incompatibile con un'app GUI Python nello stesso processo.
+
+Verifiche negative (escluse come cause): dxcam.grab() a 30fps da solo
+(max gap 78ms), PyAV/x264 encode a 30fps crf=14 (max 63ms), mss a 19fps
+(max 63ms) — nessuno affama la GIL da solo.
+
+### Fix
+
+`platform_config._detect_windows`: **MSS è il metodo di cattura default
+su Windows** (ctypes → GIL rilasciata durante BitBlt/GetDIBits).  DXGI
+resta disponibile come **opt-in** via impostazione
+`video/capture_method=DXGI` (nuovo override utente in
+`get_platform_config()`, default AUTO).
+
+### Verifica finale (relay reale locale)
+
+6 fasi × 5s con sessione completa (host + client reali):
+max gap main thread 32–281ms in TUTTE le fasi (baseline, minimize,
+restore, flood input 60/s, close-to-tray, reshow), 540 pacchetti video
+inviati, zero crash, zero stalli.  Suite: 150 passed.
+
+### Nota diagnostica
+
+`faulthandler.dump_traceback_later(repeat=True)` con thread nativi
+Cython/ctypes su Windows può causare SEGFAULT proprio durante il dump —
+NON usarlo in riproduttori con pipeline attiva (artefatto escluso con
+A/B test).

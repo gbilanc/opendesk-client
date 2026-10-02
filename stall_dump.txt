@@ -1,0 +1,193 @@
+
+===== STALL 2.56s =====
+[22:43:42.484]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 131, in main
+    threading.Thread(target=_sample_loop, name="StackSampler", daemon=True).start()
+  File "C:\Users\gbila\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\threading.py", line 999, in start
+    self._started.wait()
+  File "C:\Users\gbila\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\threading.py", line 655, in wait
+    signaled = self._cond.wait(timeout)
+  File "C:\Users\gbila\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\threading.py", line 355, in wait
+    waiter.acquire()
+
+[22:43:42.592]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\opendesk\crypto\auth.py", line 249, in create_session
+    password_hash=hash_password(password),
+  File "C:\Users\gbila\GitHub\opendesk-client\opendesk\crypto\auth.py", line 59, in hash_password
+    return _hasher.hash(password)
+  File "C:\Users\gbila\GitHub\opendesk-client\.venv\Lib\site-packages\argon2\_password_hasher.py", line 199, in hash
+    return hash_secret(
+  File "C:\Users\gbila\GitHub\opendesk-client\.venv\Lib\site-packages\argon2\low_level.py", line 102, in hash_secret
+    rv = lib.argon2_hash(
+
+[22:43:42.703]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\opendesk\crypto\auth.py", line 249, in create_session
+    password_hash=hash_password(password),
+  File "C:\Users\gbila\GitHub\opendesk-client\opendesk\crypto\auth.py", line 59, in hash_password
+    return _hasher.hash(password)
+  File "C:\Users\gbila\GitHub\opendesk-client\.venv\Lib\site-packages\argon2\_password_hasher.py", line 199, in hash
+    return hash_secret(
+  File "C:\Users\gbila\GitHub\opendesk-client\.venv\Lib\site-packages\argon2\low_level.py", line 102, in hash_secret
+    rv = lib.argon2_hash(
+
+[22:43:43.811]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 136, in main
+    window = HostWindow(service)
+  File "C:\Users\gbila\GitHub\opendesk-client\opendesk\host_app.py", line 581, in __init__
+    self._setup_tray()
+  File "C:\Users\gbila\GitHub\opendesk-client\opendesk\host_app.py", line 911, in _setup_tray
+    tray.show()
+
+[22:43:43.015]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 137, in main
+    window.show()
+
+[22:43:43.125]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:43.217]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:43.311]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:43.421]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:43.515]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:43.625]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:43.717]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:44.828]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:44.936]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:44.030]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:44.140]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:44.234]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:44.328]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:44.436]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:44.530]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:44.640]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:44.734]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:45.842]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:45.936]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
+[22:43:45.046]
+--- MainThread <MAIN> ---
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 304, in <module>
+    sys.exit(main())
+  File "C:\Users\gbila\GitHub\opendesk-client\tests\repro_session_ui_stall.py", line 148, in main
+    time.sleep(2.0)  # margine per la registrazione host sul relay
+
