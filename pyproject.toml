@@ -32,7 +32,9 @@ classifiers = [
 # Platform-specific deps use environment markers so pip auto-selects
 # the correct ones for the target OS.
 dependencies = [
-    "PySide6>=6.10.1",
+    # Solo Essentials: include QtCore/Gui/Widgets/Network/Svg (tutto ciò che
+    # l'app usa) e taglia ~170 MB di addons (Charts, 3D, Quick, Pdf, ecc.)
+    "pyside6-essentials>=6.10.1",
     "Pillow>=10.2.0",
     "numpy>=2.4.4",
     "cryptography>=41.0.7",
@@ -97,6 +99,11 @@ select = ["E", "F", "I", "N", "W", "UP"]
 python_version = "3.12"
 strict = false
 ignore_missing_imports = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
 
 
 

@@ -155,9 +155,15 @@ class CaptureWorker(threading.Thread):
                     h, w = data.shape[:2]
                     nw, nh = int(w * scale), int(h * scale)
                     if nw > 0 and nh > 0:
-                        # INTER_AREA produces sharper results than INTER_LINEAR
-                        # when downscaling — much better for text readability.
-                        interpolation = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
+                        # Adattivo: INTER_AREA è nitido per il testo ma costa
+                        # ~11 ms/frame a 1080p (33% del budget a 30 fps).
+                        # Per downscale lievi (>= 0.7) INTER_LINEAR è quasi
+                        # indistinguibile e ~5x più veloce (≈2.3 ms).
+                        interpolation = (
+                            cv2.INTER_AREA
+                            if scale < 0.7
+                            else cv2.INTER_LINEAR
+                        )
                         data = cv2.resize(data, (nw, nh), interpolation=interpolation)
 
                 # ── Invia all'encoder (non bloccante) ──
