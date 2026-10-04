@@ -5,7 +5,10 @@
 ;   - Pre-configured relay (gibisoft.net:8474)
 
 #define MyAppName "OpenDesk Host"
-#define MyAppVersion "1.0.0"
+; Version can be overridden from the build script: ISCC /DMyAppVersion=x.y.z
+#ifndef MyAppVersion
+#define MyAppVersion "1.5.0"
+#endif
 #define MyAppPublisher "OpenDesk"
 #define MyAppExeName "opendesk-host.exe"
 
