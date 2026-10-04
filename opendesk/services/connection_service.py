@@ -185,9 +185,15 @@ class ConnectionService(QObject):
 
     # ── session lifecycle ───────────────────────────────────────────
 
-    def create_session(self, password: str) -> str:
-        """Crea una nuova sessione locale e restituisce l'ID."""
-        session = self._auth.create_session(password, one_time=False)
+    def create_session(self, password: str, password_hash: str | None = None) -> str:
+        """Crea una nuova sessione locale e restituisce l'ID.
+
+        ``password_hash`` permette di passare un hash Argon2 già calcolato
+        (fuori dal main thread) evitando il blocco della UI.
+        """
+        session = self._auth.create_session(
+            password, one_time=False, password_hash=password_hash
+        )
         self._session_id = session.session_id
         self._password = password
         logger.info("New session created: %s", self._session_id)

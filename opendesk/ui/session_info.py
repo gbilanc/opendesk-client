@@ -23,8 +23,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from opendesk.crypto.auth import AuthManager
-
 logger = logging.getLogger(__name__)
 
 
@@ -40,13 +38,11 @@ class SessionInfoWidget(QWidget):
 
     def __init__(
         self,
-        auth_manager: AuthManager,
         device_id: str = "",
         device_name: str = "",
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self._auth = auth_manager
         self._session_id = ""
         self._password = ""
         self._device_id = device_id
@@ -271,18 +267,22 @@ class SessionInfoWidget(QWidget):
 
     @Slot()
     def refresh_session(self) -> None:
-        """Create a new session and update the display."""
+        """Genera una nuova password e chiede a MainWindow di creare la sessione.
+
+        NON crea qui il ``PendingSession``: MainWindow lo crea una sola
+        volta via ``ConnectionService``.  Prima questa funzione calcolava
+        l'hash Argon2 e MainWindow lo ricalcolava subito dopo — due hash
+        sul main thread e una sessione orfana in ``_pending_sessions``.
+        """
         password = self._generate_password()
-        session = self._auth.create_session(password, one_time=False)
-        self._session_id = session.session_id
         self._password = password
 
         # Show device ID as the main identifier
         self._id_display.setText(self._format_device_id())
-        self._pwd_display.setText(self._password)
+        self._pwd_display.setText(password)
 
-        logger.info("New session: %s (device: %s)", self._session_id, self._format_device_id())
-        self.session_refreshed.emit(self._session_id, self._password)
+        logger.info("New session password generated (device: %s)", self._format_device_id())
+        self.session_refreshed.emit("", password)
 
     @Slot()
     def _copy_device_id(self) -> None:

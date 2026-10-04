@@ -329,8 +329,9 @@ class RemoteViewer(QGraphicsView):
                 else:
                     buf = self._frame_buffers.popleft()
 
-                # Single copy: numpy → pre-allocated bytearray
-                buf[:expected_size] = rgb_data.tobytes()
+                # Copia diretta numpy → bytearray pre-allocato: evita il
+                # temporaneo intermedio di .tobytes() (~6 MB a 1080p/frame).
+                np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 3)[:] = rgb_data
                 self._frame_buffers.append(buf)
                 img = QImage(buf, w, h, w * 3, QImage.Format.Format_RGB888)
                 # Keep a reference so the buffer is not GC'd while QImage uses it

@@ -4,6 +4,8 @@
   <img src="opendesk/ui/resources/opendesk.svg" width="100" alt="OpenDesk">
 </p>
 
+**English** · [Italiano](README.it.md)
+
 Multi-platform remote desktop application (TeamViewer / AnyDesk-like).
 
 [![PyPI version](https://img.shields.io/pypi/v/opendesk?color=blue)](https://pypi.org/project/opendesk/)
@@ -186,15 +188,15 @@ sudo usermod -aG input $USER
 
 ```
 opendesk/
-├── opendesk/          # Main application (~50 files, ~13k LOC)
+├── opendesk/          # Main application (~51 files, ~21k LOC)
 │   ├── core/          # Screen capture, input, codec, audio, camera, recording
 │   ├── network/       # Protocol, P2P, relay, NAT traversal
 │   ├── crypto/        # E2E encryption (NaCl Box), Argon2 auth
 │   ├── services/      # Streaming pipeline, connection service
 │   ├── ui/            # PySide6 widgets + QSS themes (light/dark)
 │   ├── host_app.py    # OpenDesk Host: entry point incoming-only
-│   └── utils/         # Logging, platform detection
-├── tests/             # 123+ tests — unit, integration, edge cases
+│   └── utils/         # Logging, platform detection, off-thread async tasks
+├── tests/             # 150+ tests — unit, integration, edge cases
 └── uv.lock            # Locked dependencies
 ```
 
@@ -261,19 +263,37 @@ The screen capture, encoding, and network send run on **3 independent worker thr
 - **Back-pressure:** if the encoder is slow, the frame queue fills up and
   frames are dropped instead of accumulating latency.
 - **Watchdog:** if CaptureWorker fails (e.g. no screen access), the
-  EncoderWorker detects the stall within 5 seconds and stops the pipeline.
+  EncoderWorker detects the stall and stops the pipeline.  The timeout is
+  60 s to tolerate the slow Wayland startup (portal dialog + PipeWire).
 
 ## Incremental tile updates
 
 When only small regions of the screen change (e.g. typing, mouse movement),
 OpenDesk uses **128×128 JPEG tiles** instead of a full H.264 keyframe:
 
-- Changed tiles are detected via vectorised NumPy diff
+- Changed tiles are detected via a vectorised diff (OpenCV + NumPy) **before** any encoding
 - Each changed tile is JPEG-encoded at the configured quality level
 - The receiver composites tiles onto the last full keyframe reference
-- If >30% of tiles changed, a full keyframe is sent instead (more efficient)
+- If >30% of tiles changed, a full keyframe is sent instead (more efficient),
+  and the tile JPEGs are never encoded (two-phase decision)
 
 This approach saves bandwidth and encoding CPU for typical desktop usage.
+
+## Performance
+
+Recent optimisation work (details in
+[`docs/performance-optimizations.md`](docs/performance-optimizations.md)):
+
+- **Argon2 off the main thread:** session creation no longer freezes the Qt
+  main thread (previously up to ~2.5 s on Windows).
+- **No double hash:** creating a new session hashes the password once
+  (it used to hash twice and leave an orphan session behind).
+- **Two-phase tiles:** when more than 30% of tiles change, a keyframe is sent
+  without first encoding all the tile JPEGs.
+- **Cached codec probes:** hardware encoder detection is not repeated on every
+  encoder rebuild.
+- **Serialisation off the event loop:** `msg.encode()` (msgpack of frames) runs
+  on the network worker, not on the asyncio loop.
 
 ## Microphone & Webcam
 

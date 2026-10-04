@@ -459,9 +459,11 @@ class EncoderWorker(threading.Thread):
         any_changed = _changed_mask(current, prev, threshold)
 
         total_tiles = 0
-        changed = 0
-        # Pre-alloc list per tile data
-        tiles: list[tuple[bytes, int, int, int, int]] = []
+        # Fase 1: individua i tile cambiati senza codificarli.  Così, se
+        # il cambiamento supera ``_TILE_MAX_CHANGED_RATIO``, scegliamo il
+        # keyframe senza sprecare l'encoding JPEG di tutti i tile (che
+        # verrebbe comunque scartato).
+        changed_boxes: list[tuple[int, int, int, int]] = []
 
         for y in range(0, h, tile_size):
             th = min(tile_size, h - y)
@@ -470,37 +472,36 @@ class EncoderWorker(threading.Thread):
                 total_tiles += 1
                 tile_mask = any_changed[y : y + th, x : x + tw]
                 if tile_mask.sum() / tile_mask.size > _TILE_CHANGE_RATIO:
-                    cur_tile = current[y : y + th, x : x + tw]
-                    tile_bgr = cv2.cvtColor(cur_tile, cv2.COLOR_RGB2BGR)
-                    success, encoded = cv2.imencode(
-                        ".jpg",
-                        tile_bgr,
-                        [cv2.IMWRITE_JPEG_QUALITY, jpeg_q],
-                    )
-                    if success:
-                        tiles.append((encoded.tobytes(), x, y, tw, th))
-                        changed += 1
+                    changed_boxes.append((x, y, tw, th))
 
         # Come per il path keyframe: il frame è di proprietà del consumer
         # della coda, nessuna copia full-frame necessaria.
         self._prev_frame = current
 
         # Aggiorna change ratio per adaptive quality
-        if total_tiles > 0:
-            self._last_change_ratio = changed / total_tiles
-        else:
-            self._last_change_ratio = 0.0
+        self._last_change_ratio = len(changed_boxes) / total_tiles if total_tiles else 0.0
 
-        # Se troppi tile cambiati, meglio un full keyframe
-        if total_tiles > 0 and changed / total_tiles > 0.30:
+        # Fase 2: se troppi tile cambiati, meglio un full keyframe
+        if total_tiles > 0 and self._last_change_ratio > _TILE_MAX_CHANGED_RATIO:
             self._do_full_keyframe(current, w, h, pts)
             self._frame_count = 0
             return
 
-        for tile_data, tx, ty, tw, th in tiles:
-            packet = ("tile", tile_data, tx, ty, tw, th, pts)
+        # Fase 3: codifica e invia solo i tile effettivamente cambiati.
+        for x, y, tw, th in changed_boxes:
+            cur_tile = current[y : y + th, x : x + tw]
+            tile_bgr = cv2.cvtColor(cur_tile, cv2.COLOR_RGB2BGR)
+            success, encoded = cv2.imencode(
+                ".jpg",
+                tile_bgr,
+                [cv2.IMWRITE_JPEG_QUALITY, jpeg_q],
+            )
+            if not success:
+                continue
+            tile_data = encoded.tobytes()
+            packet = ("tile", tile_data, x, y, tw, th, pts)
             if self._queue_packet(packet) and self._on_send_tile:
-                self._on_send_tile(tile_data, tx, ty, tw, th, pts)
+                self._on_send_tile(tile_data, x, y, tw, th, pts)
 
     # ── adaptive quality ────────────────────────────────────────────
 

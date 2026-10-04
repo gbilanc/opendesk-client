@@ -444,20 +444,26 @@ class _RelaySession:
                     inner_payload=msg.payload,
                 )
 
+            # Serializza sul thread chiamante (tipicamente NetworkWorker):
+            # così l'event loop asyncio esegue solo write/drain e non resta
+            # bloccato dal msgpack di frame/keyframe grandi.
+            data = msg.encode()
             asyncio.run_coroutine_threadsafe(
-                self._send_async(msg, bypass_backpressure), self._loop
+                self._write_async(data, bypass_backpressure), self._loop
             )
             return True
         return False
 
     async def _send_async(self, msg: Message, bypass_backpressure: bool = False) -> None:
+        await self._write_async(msg.encode(), bypass_backpressure)
+
+    async def _write_async(self, data: bytes, bypass_backpressure: bool = False) -> None:
         if self._writer is None:
             if not bypass_backpressure:
                 with self._send_lock:
                     self._pending_sends = max(0, self._pending_sends - 1)
             return
         try:
-            data = msg.encode()
             self._writer.write(data)
             await asyncio.wait_for(
                 self._writer.drain(),

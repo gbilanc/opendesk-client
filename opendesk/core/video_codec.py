@@ -11,6 +11,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from functools import lru_cache
 from threading import Lock, RLock
 from typing import Any
 
@@ -53,6 +54,7 @@ def _candidates(prefer_hw: bool = True) -> list[str]:
     return sw
 
 
+@lru_cache(maxsize=32)
 def _try_open_codec(name: str, fps: int = 30) -> bool:
     """Try to open *name* with actual encoding parameters.
 

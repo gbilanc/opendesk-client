@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
-import random
+import secrets
 import string
 import time
 from dataclasses import dataclass, field
@@ -39,10 +39,15 @@ _SESSION_MAX_AGE = 86400  # 24 hours — discard sessions older than this
 # Password hasher
 # ---------------------------------------------------------------------------
 
+# Parametri OWASP Argon2id (minimum): m=19 MiB, t=2, p=1.
+# La configurazione precedente (t=3, m=64 MiB, p=4) era ~3× più costosa
+# e bloccava il main thread Qt per ~2.5 s a ogni ``create_session``
+# (vedi stall_dump.txt).  ``needs_rehash`` aggiorna gli hash esistenti
+# al prossimo login riuscito, quindi il cambio è trasparente.
 _hasher = PasswordHasher(
-    time_cost=3,  # number of iterations
-    memory_cost=65536,  # 64 MiB
-    parallelism=4,  # number of threads
+    time_cost=2,  # number of iterations
+    memory_cost=19456,  # 19 MiB
+    parallelism=1,  # number of lanes/threads
     hash_len=32,
     salt_len=16,
 )
@@ -94,7 +99,7 @@ def generate_session_id() -> str:
     str
         A 9-digit number grouped in blocks of 3.
     """
-    digits = [str(random.randint(0, 9)) for _ in range(_SESSION_ID_LENGTH)]
+    digits = [secrets.choice(string.digits) for _ in range(_SESSION_ID_LENGTH)]
     blocks = [
         "".join(digits[i : i + _SESSION_ID_BLOCK_SIZE])
         for i in range(0, _SESSION_ID_LENGTH, _SESSION_ID_BLOCK_SIZE)
@@ -111,7 +116,7 @@ def generate_otp() -> str:
         An 8-character alphanumeric OTP.
     """
     alphabet = string.ascii_uppercase + string.digits
-    return "".join(random.choices(alphabet, k=_OTP_LENGTH))
+    return "".join(secrets.choice(alphabet) for _ in range(_OTP_LENGTH))
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +224,12 @@ class AuthManager:
 
     # ── session management ──────────────────────────────────────────
 
-    def create_session(self, password: str, one_time: bool = False) -> PendingSession:
+    def create_session(
+        self,
+        password: str,
+        one_time: bool = False,
+        password_hash: str | None = None,
+    ) -> PendingSession:
         """Create a pending session (like AnyDesk waiting for connection).
 
         Parameters
@@ -229,6 +239,11 @@ class AuthManager:
         one_time : bool
             If ``True``, the session is valid for a single connection
             and auto-expires.
+        password_hash : str | None
+            Pre-computed Argon2 hash.  Pass this to avoid hashing on the
+            caller thread (Argon2 is CPU-bound and would block the Qt
+            main thread): compute it off-thread, then create the session
+            with the ready hash.  When ``None`` the hash is computed here.
 
         Returns
         -------
@@ -246,7 +261,9 @@ class AuthManager:
 
         session = PendingSession(
             session_id=session_id,
-            password_hash=hash_password(password),
+            password_hash=(
+                password_hash if password_hash is not None else hash_password(password)
+            ),
             is_one_time=one_time,
             otp=otp,
             expires_at=time.time() + _OTP_VALIDITY_SECONDS if one_time else 0,

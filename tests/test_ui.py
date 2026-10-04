@@ -37,21 +37,17 @@ class TestSessionInfoWidget:
 
     def test_initial_state(self, qapp: QApplication) -> None:
         """Widget initialises with placeholder values."""
-        from opendesk.crypto.auth import AuthManager
         from opendesk.ui.session_info import SessionInfoWidget
 
-        auth = AuthManager()
-        widget = SessionInfoWidget(auth, device_id="test-uuid-1234", device_name="MyPC")
+        widget = SessionInfoWidget(device_id="test-uuid-1234", device_name="MyPC")
         assert widget.session_id == ""
         assert widget.password == ""
 
     def test_set_session(self, qapp: QApplication) -> None:
         """set_session() updates the displayed session info."""
-        from opendesk.crypto.auth import AuthManager
         from opendesk.ui.session_info import SessionInfoWidget
 
-        auth = AuthManager()
-        widget = SessionInfoWidget(auth, device_id="abcd1234-xxxx", device_name="TestPC")
+        widget = SessionInfoWidget(device_id="abcd1234-xxxx", device_name="TestPC")
         widget.set_session("123 456 789", "ABC12345")
         assert widget.session_id == "123 456 789"
         assert widget.password == "ABC12345"
@@ -59,12 +55,10 @@ class TestSessionInfoWidget:
     def test_device_name_changed_signal(self, qapp: QApplication) -> None:
         """Editing the device name emits device_name_changed."""
 
-        from opendesk.crypto.auth import AuthManager
         from opendesk.ui.session_info import SessionInfoWidget
 
         emitted_names: list[str] = []
-        auth = AuthManager()
-        widget = SessionInfoWidget(auth, device_id="test-uuid", device_name="OldName")
+        widget = SessionInfoWidget(device_id="test-uuid", device_name="OldName")
 
         widget.device_name_changed.connect(lambda n: emitted_names.append(n))
 
@@ -78,11 +72,9 @@ class TestSessionInfoWidget:
     def test_copy_device_id(self, qapp: QApplication) -> None:
         """Copy button places device ID on clipboard."""
 
-        from opendesk.crypto.auth import AuthManager
         from opendesk.ui.session_info import SessionInfoWidget
 
-        auth = AuthManager()
-        widget = SessionInfoWidget(auth, device_id="abcdef01-1234-5678", device_name="PC")
+        widget = SessionInfoWidget(device_id="abcdef01-1234-5678", device_name="PC")
         widget.set_session("111 222 333", "PASS1234")
 
         widget._copy_device_id()

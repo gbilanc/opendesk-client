@@ -414,14 +414,16 @@ Il relay utilizza i seguenti codici di errore (standardizzati in `MessageType.ER
 Il relay server supporta autenticazione tramite `AuthManager` (da `opendesk/crypto/auth.py`):
 
 - Le password sono hashate con **Argon2id** (memory-hard, resistente a GPU/ASIC)
-- Parametri: 3 iterazioni, 64 MiB memoria, 4 thread paralleli
+- Parametri: 2 iterazioni, 19 MiB memoria, 1 thread — minimo raccomandato OWASP
 - Supporto **One-Time Password (OTP)**: password monouso valide 5 minuti
 - Credenziali persistenti su file JSON in `~/.opendesk/credentials.json`
+- Gli hash creati con parametri precedenti vengono ri-generati automaticamente
+  al primo login riuscito (`needs_rehash`)
 
 ### 8.2 Session ID
 
 - Formato: `"XXX YYY ZZZ"` (9 cifre in blocchi da 3, stile AnyDesk)
-- Generato casualmente con `random.randint()`
+- Generato con `secrets.choice()` (CSPRNG), così come gli OTP
 - Unicità garantita: se il generatore produce un duplicato, continua a rigenerare
 
 ### 8.3 Cleanup automatico

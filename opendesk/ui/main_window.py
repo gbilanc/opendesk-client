@@ -31,6 +31,7 @@ from opendesk.core.clipboard_sync import ClipboardSync
 from opendesk.core.file_transfer import FileTransferManager, TransferState
 from opendesk.core.keyboard_state import caps_lock_active
 from opendesk.core.platform_config import HealthSeverity, get_platform_config
+from opendesk.crypto.auth import hash_password
 from opendesk.network.protocol import Message, MessageType
 from opendesk.network.relay_client import RelayRole
 from opendesk.services.connection_service import ConnectionService
@@ -41,6 +42,7 @@ from opendesk.ui.file_transfer_ui import FileBrowserDock
 from opendesk.ui.session_info import SessionInfoWidget
 from opendesk.ui.settings_dialog import SettingsDialog
 from opendesk.ui.viewer import ViewerWindow
+from opendesk.utils.async_task import run_async
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +99,6 @@ class MainWindow(QMainWindow):
 
         # Backward-compatible aliases (delegate to services)
         self._relay = self._connection.relay
-        self._auth_manager = self._connection.auth_manager
         self._device_id = self._connection.device_id
         self._device_name = self._connection.device_name
         self._host_session_id = ""  # kept locally for UI state
@@ -311,7 +312,6 @@ class MainWindow(QMainWindow):
 
         # Session info bar (shows your device ID + session)
         self._session_info = SessionInfoWidget(
-            self._auth_manager,
             device_id=self._device_id,
             device_name=self._device_name,
             parent=central,
@@ -452,8 +452,23 @@ class MainWindow(QMainWindow):
 
     @Slot(str, str)
     def _on_session_refreshed(self, session_id: str, password: str) -> None:
-        """Called when user clicks 'Nuova sessione' — create new session and re-host."""
-        self._connection.create_session(password)
+        """Called when user clicks 'Nuova sessione' — create new session and re-host.
+
+        L'hash Argon2 è CPU-bound: lo calcoliamo su un thread dedicato
+        per non congelare la UI, poi completiamo sul main thread.
+        """
+        self._session_info.setEnabled(False)
+        self._status_text.setText("Generating session...")
+        run_async(
+            lambda: hash_password(password),
+            lambda password_hash: self._finish_session_refresh(password, password_hash),
+            on_error=self._on_session_hash_error,
+            parent=self,
+        )
+
+    def _finish_session_refresh(self, password: str, password_hash: str) -> None:
+        """Completa la creazione della sessione con l'hash già calcolato."""
+        self._connection.create_session(password, password_hash=password_hash)
         self._settings.setValue("session/password", password)
         self._session_info.set_session(
             self._connection.session_id,
@@ -463,6 +478,13 @@ class MainWindow(QMainWindow):
         logger.info("New session created: %s", self._connection.session_id)
         self._status_text.setText(f"Hosting: {self._host_session_id}")
         self._connection.start_hosting()
+        self._session_info.setEnabled(True)
+
+    def _on_session_hash_error(self, message: str) -> None:
+        """Ripristina la UI se il calcolo dell'hash fallisce."""
+        logger.error("Session hash failed: %s", message)
+        self._session_info.setEnabled(True)
+        self._status_text.setText("Session creation failed")
 
     @Slot(str, str)
     def _on_relay_connected(self, role: str, session_id: str) -> None:
