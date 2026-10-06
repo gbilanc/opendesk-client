@@ -327,7 +327,6 @@ class MainWindow(QMainWindow):
         )
         self._connection_panel.connection_requested.connect(self._on_connection_requested)
         self._connection_panel.file_transfer_requested.connect(self._on_file_transfer_requested)
-        self._connection_panel.chat_toggled.connect(self._on_chat_toggled)
         self._connection_panel.disconnect_requested.connect(self._on_disconnect)
         layout.addWidget(self._connection_panel, 1)
 
@@ -843,6 +842,8 @@ class MainWindow(QMainWindow):
                 parent=self,
             )
             self._viewer_window.frame_timeout.connect(self._on_frame_timeout)
+            self._viewer_window.chat_requested.connect(self._on_chat_toggled)
+            self._viewer_window.files_requested.connect(self._show_file_transfer_dock)
             # Apply sharp text mode from settings
             sharp_text = self._settings.value("video/sharp_text_viewer", True, type=bool)
             self._viewer_window.set_sharp_text(sharp_text)

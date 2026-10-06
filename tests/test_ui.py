@@ -313,6 +313,44 @@ class TestChallengeResponse:
 # ═══════════════════════════════════════════════════════════════════
 
 
+class TestViewerToolbar:
+    """Tests for the viewer toolbar chat/file-transfer actions."""
+
+    def test_chat_and_files_signals(self, qapp: QApplication) -> None:
+        """Triggering the actions emits the corresponding signals."""
+        from opendesk.ui.viewer import ViewerToolbar
+
+        toolbar = ViewerToolbar()
+        toolbar.set_session_active(True)
+
+        chat: list[bool] = []
+        files: list[bool] = []
+        toolbar.chat_requested.connect(lambda: chat.append(True))
+        toolbar.files_requested.connect(lambda: files.append(True))
+
+        toolbar._chat_act.trigger()
+        toolbar._files_act.trigger()
+
+        assert chat == [True]
+        assert files == [True]
+
+    def test_session_active_toggles_actions(self, qapp: QApplication) -> None:
+        """Session-bound actions are disabled until a session is active."""
+        from opendesk.ui.viewer import ViewerToolbar
+
+        toolbar = ViewerToolbar()
+        assert not toolbar._chat_act.isEnabled()
+        assert not toolbar._files_act.isEnabled()
+
+        toolbar.set_session_active(True)
+        assert toolbar._chat_act.isEnabled()
+        assert toolbar._files_act.isEnabled()
+
+        toolbar.set_session_active(False)
+        assert not toolbar._chat_act.isEnabled()
+        assert not toolbar._files_act.isEnabled()
+
+
 class TestAuthSessionCleanup:
     """Tests for AuthManager session lifecycle."""
 

@@ -14,7 +14,9 @@ import logging
 
 from PySide6.QtCore import (
     QAbstractListModel,
+    QEvent,
     QModelIndex,
+    QRect,
     QSize,
     Qt,
     Signal,
@@ -131,8 +133,11 @@ class DeviceListModel(QAbstractListModel):
 class DeviceDelegate(QStyledItemDelegate):
     """Delegate per il rendering di ogni riga dispositivo.
 
-    Disegna: pallino stato (🟢/🔴) | nome dispositivo | session ID
+    Disegna: pallino stato (🟢/🔴) | nome dispositivo | session ID |
+    bottone "Connect" (solo per dispositivi online).
     """
+
+    connect_clicked = Signal(QModelIndex)
 
     _STATUS_ONLINE = "#22c55e"
     _STATUS_OFFLINE = "#ef4444"
@@ -140,6 +145,8 @@ class DeviceDelegate(QStyledItemDelegate):
     _TEXT_MUTED = "#94a3b8"
     _ITEM_HEIGHT = 44
     _MARGIN = 8
+    _BUTTON_WIDTH = 84
+    _BUTTON_HEIGHT = 26
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
         painter.save()
@@ -175,10 +182,12 @@ class DeviceDelegate(QStyledItemDelegate):
             or index.data(Qt.ItemDataRole.DisplayRole)
             or ""
         )
+        # Reserve room on the right for the per-row Connect button (online only)
+        reserve = self._BUTTON_WIDTH + 8 if online else 0
         painter.setPen(QColor(self._TEXT_PRIMARY))
         font = QFont("Segoe UI", 13, QFont.Weight.DemiBold)
         painter.setFont(font)
-        name_rect = rect.adjusted(24, 4, 0, -18)
+        name_rect = rect.adjusted(24, 4, -reserve, -18)
         painter.drawText(
             name_rect,
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
@@ -191,14 +200,44 @@ class DeviceDelegate(QStyledItemDelegate):
             painter.setPen(QColor(self._TEXT_MUTED))
             font2 = QFont("Segoe UI", 11)
             painter.setFont(font2)
-            id_rect = rect.adjusted(24, 18, 0, 0)
+            id_rect = rect.adjusted(24, 18, -reserve, 0)
             painter.drawText(
                 id_rect,
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
                 session_id,
             )
 
+        # Per-row Connect button (online devices only)
+        if online:
+            btn_rect = self._button_rect(option.rect)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(QColor("#2563eb")))
+            painter.drawRoundedRect(btn_rect, 6, 6)
+            painter.setPen(QColor("#ffffff"))
+            painter.setFont(QFont("Segoe UI", 11, QFont.Weight.DemiBold))
+            painter.drawText(btn_rect, Qt.AlignmentFlag.AlignCenter, "Connect")
+
         painter.restore()
+
+    def _button_rect(self, item_rect: QRect) -> QRect:
+        """Return the Connect button rectangle inside an item rect."""
+        return QRect(
+            item_rect.right() - 12 - self._BUTTON_WIDTH,
+            item_rect.center().y() - self._BUTTON_HEIGHT // 2,
+            self._BUTTON_WIDTH,
+            self._BUTTON_HEIGHT,
+        )
+
+    def editorEvent(  # noqa: N802
+        self, event, model, option: QStyleOptionViewItem, index: QModelIndex
+    ) -> bool:
+        """Emit ``connect_clicked`` when the per-row button is clicked."""
+        if event.type() == QEvent.Type.MouseButtonRelease:
+            online = index.data(Qt.ItemDataRole.UserRole + 3) or False
+            if online and self._button_rect(option.rect).contains(event.position().toPoint()):
+                self.connect_clicked.emit(index)
+                return True
+        return super().editorEvent(event, model, option, index)
 
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:  # noqa: N802
         return QSize(200, self._ITEM_HEIGHT)
@@ -220,8 +259,7 @@ class ConnectionPanel(QWidget):
     """
 
     connection_requested = Signal(str, str)  # session_id, password
-    file_transfer_requested = Signal(str, str)  # device_id, password
-    chat_toggled = Signal()  # toggle chat panel visibility
+    file_transfer_requested = Signal(str, str)  # device_id, password (programmatic API)
     disconnect_requested = Signal()  # disconnect current session
 
     def __init__(
@@ -256,7 +294,8 @@ class ConnectionPanel(QWidget):
 
         self._list_view = QListView()
         self._list_view.setModel(self._model)
-        self._list_view.setItemDelegate(DeviceDelegate(self))
+        self._delegate = DeviceDelegate(self)
+        self._list_view.setItemDelegate(self._delegate)
         self._list_view.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._list_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list_view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -278,56 +317,6 @@ class ConnectionPanel(QWidget):
         # ── Action buttons row ──
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
-
-        self._connect_btn = QPushButton("Connect")
-        self._connect_btn.setProperty("class", "primary")
-        self._connect_btn.setEnabled(False)
-        self._connect_btn.clicked.connect(self._on_connect)
-        btn_row.addWidget(self._connect_btn)
-
-        self._transfer_btn = QPushButton("Transfer Files")
-        self._transfer_btn.setEnabled(False)
-        self._transfer_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #059669;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 6px 18px;
-                font-weight: 600;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background-color: #047857;
-            }
-            QPushButton:disabled {
-                background-color: #94a3b8;
-            }
-        """)
-        self._transfer_btn.clicked.connect(self._on_file_transfer)
-        btn_row.addWidget(self._transfer_btn)
-
-        self._chat_btn = QPushButton("Chat")
-        self._chat_btn.setEnabled(False)
-        self._chat_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #7c3aed;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 6px 18px;
-                font-weight: 600;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background-color: #6d28d9;
-            }
-            QPushButton:disabled {
-                background-color: #94a3b8;
-            }
-        """)
-        self._chat_btn.clicked.connect(self._on_chat)
-        btn_row.addWidget(self._chat_btn)
 
         # ── Disconnect button ──
         btn_row.addStretch()
@@ -412,7 +401,7 @@ class ConnectionPanel(QWidget):
         layout.addStretch()
 
     def _setup_connections(self) -> None:
-        self._list_view.selectionModel().selectionChanged.connect(self._on_selection_changed)
+        self._delegate.connect_clicked.connect(self._on_row_connect)
         self._list_view.doubleClicked.connect(self._on_double_clicked)
         self._list_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list_view.customContextMenuRequested.connect(self._on_context_menu)
@@ -426,10 +415,7 @@ class ConnectionPanel(QWidget):
         self._model.set_devices(filtered)
 
     def set_connected(self, connected: bool) -> None:
-        """Enable/disable Disconnect and Chat based on connection state.
-        Connect and Transfer Files are controlled by selection state.
-        """
-        self._chat_btn.setEnabled(connected)
+        """Enable/disable Disconnect based on connection state."""
         self._disconnect_btn.setEnabled(connected)
 
     # ── context menu ───────────────────────────────────────────────
@@ -487,24 +473,6 @@ class ConnectionPanel(QWidget):
         has_devices = count > 0
         self._list_view.setVisible(has_devices)
         self._empty_widget.setVisible(not has_devices)
-        self._connect_btn.setEnabled(False)
-        self._transfer_btn.setEnabled(False)
-
-    def _on_selection_changed(self) -> None:
-        """Enable/disable connect and transfer buttons based on selection."""
-        indexes = self._list_view.selectionModel().selectedIndexes()
-        if not indexes:
-            self._connect_btn.setEnabled(False)
-            self._transfer_btn.setEnabled(False)
-            return
-        idx = indexes[0]
-        session_id = idx.data(Qt.ItemDataRole.UserRole + 1) or ""
-        can_connect = bool(session_id)
-        self._connect_btn.setEnabled(can_connect)
-        self._transfer_btn.setEnabled(can_connect)
-        # Chat button is controlled by connection state, not selection
-
-        # Connection is only initiated via the Connect button, not on selection
 
     def _on_double_clicked(self, index: QModelIndex) -> None:
         """Double-click is disabled; connection only starts via the Connect button."""
@@ -536,18 +504,8 @@ class ConnectionPanel(QWidget):
         """Emit disconnect_requested signal."""
         self.disconnect_requested.emit()
 
-    @Slot()
-    def _on_connect(self) -> None:
-        """Connect to the selected device via the model."""
-        indexes = self._list_view.selectionModel().selectedIndexes()
-        if not indexes:
-            return
-        idx = indexes[0]
-
-        device_id = idx.data(Qt.ItemDataRole.UserRole) or ""
-        session_id = idx.data(Qt.ItemDataRole.UserRole + 1) or ""
-        trusted = idx.data(Qt.ItemDataRole.UserRole + 2) or False
-
+    def _connect_device(self, device_id: str, session_id: str, trusted: bool) -> None:
+        """Connect to a device, prompting for a password when needed."""
         if not session_id:
             QMessageBox.warning(
                 self,
@@ -555,40 +513,17 @@ class ConnectionPanel(QWidget):
                 "This device is not currently connected to the relay.\nPlease try again later.",
             )
             return
-
         password = "" if trusted else self._prompt_password(device_id)
         if password is not None:
-            # Use device_id (not session_id) for lookup
             self.connection_requested.emit(device_id, password)
 
-    @Slot()
-    def _on_file_transfer(self) -> None:
-        """Initiate a file-transfer-only connection to the selected device."""
-        indexes = self._list_view.selectionModel().selectedIndexes()
-        if not indexes:
-            return
-        idx = indexes[0]
-
-        device_id = idx.data(Qt.ItemDataRole.UserRole) or ""
-        session_id = idx.data(Qt.ItemDataRole.UserRole + 1) or ""
-        trusted = idx.data(Qt.ItemDataRole.UserRole + 2) or False
-
-        if not session_id:
-            QMessageBox.warning(
-                self,
-                "Device offline",
-                "This device is not currently connected to the relay.\nPlease try again later.",
-            )
-            return
-
-        password = "" if trusted else self._prompt_password(device_id)
-        if password is not None:
-            self.file_transfer_requested.emit(device_id, password)
-
-    @Slot()
-    def _on_chat(self) -> None:
-        """Toggle the chat panel visibility."""
-        self.chat_toggled.emit()
+    @Slot(QModelIndex)
+    def _on_row_connect(self, index: QModelIndex) -> None:
+        """Connect to the device whose per-row button was clicked."""
+        device_id = index.data(Qt.ItemDataRole.UserRole) or ""
+        session_id = index.data(Qt.ItemDataRole.UserRole + 1) or ""
+        trusted = index.data(Qt.ItemDataRole.UserRole + 2) or False
+        self._connect_device(device_id, session_id, trusted)
 
     def _prompt_password(self, device_id: str) -> str | None:
         pwd, ok = QInputDialog.getText(

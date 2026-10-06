@@ -811,6 +811,8 @@ class ViewerToolbar(QToolBar):
     camera_toggled = Signal(bool)
     disconnect_requested = Signal()
     ctrl_alt_del_requested = Signal()
+    chat_requested = Signal()
+    files_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("Viewer Controls", parent)
@@ -874,6 +876,22 @@ class ViewerToolbar(QToolBar):
 
         self.addSeparator()
 
+        # Chat (acts on the current connection)
+        self._chat_act = QAction("💬 Chat", self)
+        self._chat_act.setToolTip("Open chat with the connected peer")
+        self._chat_act.setEnabled(False)
+        self._chat_act.triggered.connect(self.chat_requested)
+        self.addAction(self._chat_act)
+
+        # File transfer (acts on the current connection)
+        self._files_act = QAction("📁 Files", self)
+        self._files_act.setToolTip("Open file transfer with the connected peer")
+        self._files_act.setEnabled(False)
+        self._files_act.triggered.connect(self.files_requested)
+        self.addAction(self._files_act)
+
+        self.addSeparator()
+
         # Ctrl+Alt+Del
         cad_act = QAction("✱ Ctrl+Alt+Del", self)
         cad_act.setToolTip("Send Ctrl+Alt+Del to the remote computer")
@@ -893,6 +911,11 @@ class ViewerToolbar(QToolBar):
     def set_camera_checked(self, checked: bool) -> None:
         """Set camera toggle button state without emitting signal."""
         self._cam_act.setChecked(checked)
+
+    def set_session_active(self, active: bool) -> None:
+        """Enable/disable actions bound to the current session."""
+        self._chat_act.setEnabled(active)
+        self._files_act.setEnabled(active)
 
     def _on_sharp_toggled(self, checked: bool) -> None:
         """Forward sharp toggle to the signal."""
@@ -917,6 +940,8 @@ class ViewerWindow(QMainWindow):
     MIN_HEIGHT = 600
 
     frame_timeout = Signal()
+    chat_requested = Signal()
+    files_requested = Signal()
 
     def __init__(
         self,
@@ -951,6 +976,8 @@ class ViewerWindow(QMainWindow):
         self._toolbar.camera_toggled.connect(self._on_camera_toggled)
         self._toolbar.ctrl_alt_del_requested.connect(self._on_ctrl_alt_del)
         self._toolbar.disconnect_requested.connect(self._on_disconnect_clicked)
+        self._toolbar.chat_requested.connect(self.chat_requested)
+        self._toolbar.files_requested.connect(self.files_requested)
         self.addToolBar(self._toolbar)
 
         # ── Status bar ──
@@ -991,6 +1018,7 @@ class ViewerWindow(QMainWindow):
     def set_connection_active(self, active: bool, peer_name: str = "") -> None:
         """Update UI state for connection status."""
         self._viewer.set_connection_active(active)
+        self._toolbar.set_session_active(active)
         if active and peer_name:
             self._status_label.setText(f"Connected to {peer_name}")
             self.setWindowTitle(f"OpenDesk — {peer_name}")
