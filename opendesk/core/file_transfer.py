@@ -32,6 +32,7 @@ from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
+from typing import BinaryIO
 
 from opendesk.network.protocol import Message, MessageType
 
@@ -105,6 +106,14 @@ class TransferJob:
     expected_seq: int = 0
     temp_path: str = ""
     final_path: str = ""
+
+
+@dataclass
+class _ReceiveTarget:
+    """Open write handle + incremental SHA-256 for an incoming file."""
+
+    handle: BinaryIO
+    hasher: "hashlib._Hash"
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +202,7 @@ class FileTransferManager:
     ) -> None:
         self._max_concurrent = max_concurrent
         self._jobs: dict[str, TransferJob] = {}
-        self._active_count: int = 0
+        self._receive_targets: dict[str, _ReceiveTarget] = {}
         self._receive_root = (
             Path(receive_root or Path.home() / "Downloads" / "OpenDesk").expanduser().resolve()
         )
@@ -209,6 +218,8 @@ class FileTransferManager:
 
     def shutdown(self) -> None:
         """Stop the background event loop. Call on application exit."""
+        for job_id in list(self._receive_targets):
+            self._close_receive_target(job_id)
         self._bg_loop.stop()
 
     # ── properties ──────────────────────────────────────────────────
@@ -259,35 +270,35 @@ class FileTransferManager:
             Remote directory where the files should be saved.
             Passed to the receiver via FILE_REQUEST payload.
         """
-        return self._bg_loop.run(self._send_files_async(paths, send_fn, remote_dest_path))
-
-    async def _send_files_async(
-        self,
-        paths: list[str | Path],
-        send_fn: Callable,
-        remote_dest_path: str = "",
-    ) -> None:
-        """Async implementation of send_files."""
+        # Register jobs on the caller thread so the background coroutine
+        # never mutates ``self._jobs`` concurrently with UI accessors.
         jobs: list[TransferJob] = []
         for path in paths:
             path_obj = Path(path)
             if not path_obj.exists():
                 logger.warning("File not found: %s", path)
                 continue
-
-            file_info = FileInfo.from_path(path_obj)
-            job_id = f"send-{uuid.uuid4().hex}"
             job = TransferJob(
-                id=job_id,
-                file_info=file_info,
+                id=f"send-{uuid.uuid4().hex}",
+                file_info=FileInfo.from_path(path_obj),
                 direction=TransferDirection.SEND,
             )
-            self._jobs[job_id] = job
+            self._jobs[job.id] = job
             jobs.append(job)
+        return self._bg_loop.run(self._send_files_async(jobs, send_fn, remote_dest_path))
 
-            # Compute SHA256 in background
-            file_info.sha256 = await self._compute_sha256(path_obj)
-            logger.info("File transfer queued: %s (%d bytes)", file_info.name, file_info.size)
+    async def _send_files_async(
+        self,
+        jobs: list[TransferJob],
+        send_fn: Callable,
+        remote_dest_path: str = "",
+    ) -> None:
+        """Hash files, then send a FILE_REQUEST for each (background)."""
+        for job in jobs:
+            job.file_info.sha256 = await self._compute_sha256(Path(job.file_info.path))
+            logger.info(
+                "File transfer queued: %s (%d bytes)", job.file_info.name, job.file_info.size
+            )
 
         # Send file request messages with the sender's job_id so the
         # receiver echoes it back in FILE_ACCEPT and both sides use
@@ -327,8 +338,17 @@ class FileTransferManager:
         send_fn: Callable,
     ) -> None:
         """Async implementation of send_chunks."""
+        await self._stream_file_async(job, send_fn)
+
+    async def _stream_file_async(self, job: TransferJob, send_fn: Callable) -> None:
+        """Stream a local file in chunks, honouring cancellation.
+
+        Runs on the background event loop.  Any error fails the job
+        instead of leaving it stuck IN_PROGRESS.
+        """
         path = Path(job.file_info.path)
         if not path.exists():
+            send_fn(Message.file_error(job.id, "File missing"))
             self._fail_job(job, "File missing")
             return
 
@@ -336,31 +356,38 @@ class FileTransferManager:
         job.started_at = time.time()
         self._push_update("transfer", job.id)
 
-        with open(path, "rb") as f:
-            seq = 0
-            while True:
-                chunk = f.read(_CHUNK_SIZE)
-                if not chunk:
-                    break
+        seq = 0
+        try:
+            with open(path, "rb") as f:
+                while True:
+                    if job.state == TransferState.CANCELLED:
+                        logger.info("Send cancelled: %s", job.id)
+                        return
 
-                send_fn(Message.file_chunk(job.id, seq, chunk, is_last=False))
+                    chunk = f.read(_CHUNK_SIZE)
+                    if not chunk:
+                        break
 
-                job.bytes_transferred += len(chunk)
-                job.progress = job.bytes_transferred / job.file_info.size
-                seq += 1
+                    send_fn(Message.file_chunk(job.id, seq, chunk, is_last=False))
 
-                # Throttle progress updates to avoid flooding the queue
-                if seq % 10 == 0:
-                    self._push_update("transfer", job.id)
+                    job.bytes_transferred += len(chunk)
+                    job.progress = job.bytes_transferred / job.file_info.size
+                    seq += 1
 
-                # Yield control between chunks
-                await asyncio.sleep(0)
+                    # Throttle progress updates to avoid flooding the queue
+                    if seq % 10 == 0:
+                        self._push_update("transfer", job.id)
 
-        send_fn(Message.file_complete(job.id))
-        job.state = TransferState.COMPLETED
-        job.completed_at = time.time()
-        self._push_update("transfer", job.id)
-        logger.info("File sent: %s (%d chunks)", job.file_info.name, seq)
+                    # Yield control between chunks
+                    await asyncio.sleep(0)
+
+            send_fn(Message.file_complete(job.id))
+            job.state = TransferState.COMPLETED
+            job.completed_at = time.time()
+            self._push_update("transfer", job.id)
+            logger.info("File sent: %s (%d chunks)", job.file_info.name, seq)
+        except Exception as e:  # noqa: BLE001 — surface any failure to the job
+            self._fail_job(job, f"Send failed: {e}")
 
     # ── receiving ───────────────────────────────────────────────────
 
@@ -405,12 +432,15 @@ class FileTransferManager:
             dest_dir.mkdir(parents=True, exist_ok=True)
             final_path = self._unique_destination(dest_dir, job.file_info.name)
             temp_path = final_path.with_name(f".{final_path.name}.{job.id}{_PART_SUFFIX}")
-            temp_path.touch(exist_ok=False)
+            handle = open(temp_path, "wb")
             job.final_path = str(final_path)
             job.temp_path = str(temp_path)
             job.file_info.path = str(dest_dir)
             job.state = TransferState.ACCEPTED
             job.started_at = time.time()
+            self._receive_targets[job.id] = _ReceiveTarget(
+                handle=handle, hasher=hashlib.sha256()
+            )
             self._push_update("transfer", job.id)
             return True
         except OSError as e:
@@ -448,9 +478,13 @@ class FileTransferManager:
             self._fail_job(job, "Received more bytes than declared")
             return
 
+        target = self._receive_targets.get(job.id)
+        if target is None:
+            self._fail_job(job, "Missing receive target")
+            return
         try:
-            with open(job.temp_path, "ab") as target:
-                target.write(data)
+            target.handle.write(data)
+            target.hasher.update(data)
         except OSError as e:
             self._fail_job(job, f"Write failed: {e}")
             return
@@ -473,8 +507,13 @@ class FileTransferManager:
             self._fail_job(job, "Received size differs from declared size")
             self._remove_partial(job)
             return False
+        target = self._receive_targets.pop(job.id, None)
         try:
-            checksum = self._sha256_file(Path(job.temp_path))
+            if target is not None:
+                target.handle.close()
+                checksum = target.hasher.hexdigest()
+            else:
+                checksum = self._sha256_file(Path(job.temp_path))
             if job.file_info.sha256 and checksum != job.file_info.sha256:
                 self._fail_job(job, "SHA-256 verification failed")
                 self._remove_partial(job)
@@ -520,6 +559,7 @@ class FileTransferManager:
     def _fail_job(self, job: TransferJob, error: str) -> None:
         job.state = TransferState.FAILED
         job.error = error
+        self._close_receive_target(job.id)
         self._push_update("transfer", job.id)
         logger.error("Transfer failed: %s — %s", job.file_info.name, error)
 
@@ -531,13 +571,18 @@ class FileTransferManager:
         return name
 
     def _resolve_receive_dir(self, requested: str) -> Path:
-        if not requested:
-            return self._receive_root
-        candidate = Path(requested).expanduser().resolve()
-        home = Path.home().resolve()
-        if not candidate.is_dir() or not candidate.is_relative_to(home):
-            raise OSError("Destination must be an existing directory inside the home folder")
-        return candidate
+        """Resolve the destination directory, falling back to the default.
+
+        A requested path is honoured only if it is an existing directory
+        inside the user's home.  Anything else (empty, a file, outside
+        home) falls back to ``receive_root`` instead of failing the job.
+        """
+        if requested:
+            candidate = Path(requested).expanduser().resolve()
+            home = Path.home().resolve()
+            if candidate.is_dir() and candidate.is_relative_to(home):
+                return candidate
+        return self._receive_root
 
     @staticmethod
     def _unique_destination(dest_dir: Path, name: str) -> Path:
@@ -556,13 +601,21 @@ class FileTransferManager:
                 digest.update(chunk)
         return digest.hexdigest()
 
-    @staticmethod
-    def _remove_partial(job: TransferJob) -> None:
+    def _remove_partial(self, job: TransferJob) -> None:
+        self._close_receive_target(job.id)
         if job.temp_path:
             try:
                 Path(job.temp_path).unlink(missing_ok=True)
             except OSError:
                 logger.warning("Could not remove partial transfer: %s", job.temp_path)
+
+    def _close_receive_target(self, job_id: str) -> None:
+        target = self._receive_targets.pop(job_id, None)
+        if target is not None:
+            try:
+                target.handle.close()
+            except OSError:
+                logger.warning("Could not close partial transfer: %s", job_id)
 
     # ── directory listing ─────────────────────────────────────────────
 
@@ -663,7 +716,7 @@ class FileTransferManager:
         send_fn : callable
             Function to send a ``Message``.
         local_dest : str or Path, optional
-            Local destination path. If None, uses filename in Downloads.
+            Local destination directory. If None, uses the default receive root.
         """
         name = Path(remote_path).name
         job_id = f"dl-{uuid.uuid4().hex}"
@@ -720,40 +773,7 @@ class FileTransferManager:
     async def _send_download_chunks_async(self, job: TransferJob, send_fn: Callable) -> None:
         """Send file chunks for a download request (background)."""
         send_fn(Message.file_download_accept(job.id))
-
-        path = Path(job.file_info.path)
-        if not path.exists():
-            self._fail_job(job, "File missing")
-            send_fn(Message.file_error(job.id, "File missing"))
-            return
-
-        job.state = TransferState.IN_PROGRESS
-        job.started_at = time.time()
-        self._push_update("transfer", job.id)
-
-        with open(path, "rb") as f:
-            seq = 0
-            while True:
-                chunk = f.read(_CHUNK_SIZE)
-                if not chunk:
-                    break
-
-                send_fn(Message.file_chunk(job.id, seq, chunk, is_last=False))
-
-                job.bytes_transferred += len(chunk)
-                job.progress = job.bytes_transferred / job.file_info.size
-                seq += 1
-
-                if seq % 10 == 0:
-                    self._push_update("transfer", job.id)
-
-                await asyncio.sleep(0)
-
-        send_fn(Message.file_complete(job.id))
-        job.state = TransferState.COMPLETED
-        job.completed_at = time.time()
-        self._push_update("transfer", job.id)
-        logger.info("Download sent: %s (%d chunks)", job.file_info.name, seq)
+        await self._stream_file_async(job, send_fn)
 
     def handle_download_accept(self, msg: Message) -> None:
         """Handle FILE_DOWNLOAD_ACCEPT — prepare the local temporary file."""
