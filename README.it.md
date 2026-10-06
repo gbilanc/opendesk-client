@@ -10,8 +10,8 @@ Applicazione di desktop remoto multipiattaforma (simile a TeamViewer / AnyDesk).
 
 [![PyPI version](https://img.shields.io/pypi/v/opendesk?color=blue)](https://pypi.org/project/opendesk/)
 [![Python versions](https://img.shields.io/pypi/pyversions/opendesk)](https://pypi.org/project/opendesk/)
-[![License](https://img.shields.io/pypi/l/opendesk?color=green)](https://github.com/opendesk/opendesk-client/blob/main/LICENSE)
-[![CI](https://github.com/opendesk/opendesk-client/actions/workflows/ci.yml/badge.svg)](https://github.com/opendesk/opendesk-client/actions/workflows/ci.yml)
+[![License](https://img.shields.io/pypi/l/opendesk?color=green)](https://github.com/gbilanc/opendesk-client/blob/main/LICENSE)
+[![CI](https://github.com/gbilanc/opendesk-client/actions/workflows/ci.yml/badge.svg)](https://github.com/gbilanc/opendesk-client/actions/workflows/ci.yml)
 
 - **Piattaforme:** Windows, macOS, Linux
 - **Tecnologie:** Python 3.12+, PySide6 (Qt6), PyAV (FFmpeg), crittografia E2E
@@ -24,23 +24,14 @@ Applicazione di desktop remoto multipiattaforma (simile a TeamViewer / AnyDesk).
 
 ## Installazione
 
-### Installazione rapida (bootstrap)
+### Installazione rapida (dai sorgenti)
 
 ```bash
-# Linux / macOS
-curl -fsSL https://opendesk.io/bootstrap.sh | bash
+git clone https://github.com/gbilanc/opendesk-client
+cd opendesk-client
+uv sync
+uv run opendesk
 ```
-
-```powershell
-# Windows (PowerShell come Amministratore)
-iwr -useb https://opendesk.io/bootstrap.ps1 | iex
-```
-
-Lo script di bootstrap gestisce:
-1. ✅ Installazione di Python 3.12+ (se mancante)
-2. ✅ Dipendenze di sistema (ffmpeg, libxtst, pipewire, ecc.)
-3. ✅ `pip install opendesk` (o `pipx install opendesk`)
-4. ✅ Voce desktop / scorciatoia menu Start
 
 ### Tramite pip
 
@@ -54,7 +45,7 @@ pip install opendesk
 ### Tramite uv (sviluppo)
 
 ```bash
-git clone https://github.com/opendesk/opendesk-client
+git clone https://github.com/gbilanc/opendesk-client
 cd opendesk-client
 uv sync
 uv run opendesk
@@ -149,7 +140,7 @@ cartella *Esecuzione automatica*; su macOS usare un LaunchAgent.
 
 ```bash
 # Clona e installa dai sorgenti
-git clone https://github.com/opendesk/opendesk-client
+git clone https://github.com/gbilanc/opendesk-client
 cd opendesk-client
 uv sync --dev          # installa con le dipendenze di sviluppo
 

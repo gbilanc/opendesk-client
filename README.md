@@ -10,8 +10,8 @@ Multi-platform remote desktop application (TeamViewer / AnyDesk-like).
 
 [![PyPI version](https://img.shields.io/pypi/v/opendesk?color=blue)](https://pypi.org/project/opendesk/)
 [![Python versions](https://img.shields.io/pypi/pyversions/opendesk)](https://pypi.org/project/opendesk/)
-[![License](https://img.shields.io/pypi/l/opendesk?color=green)](https://github.com/opendesk/opendesk-client/blob/main/LICENSE)
-[![CI](https://github.com/opendesk/opendesk-client/actions/workflows/ci.yml/badge.svg)](https://github.com/opendesk/opendesk-client/actions/workflows/ci.yml)
+[![License](https://img.shields.io/pypi/l/opendesk?color=green)](https://github.com/gbilanc/opendesk-client/blob/main/LICENSE)
+[![CI](https://github.com/gbilanc/opendesk-client/actions/workflows/ci.yml/badge.svg)](https://github.com/gbilanc/opendesk-client/actions/workflows/ci.yml)
 
 - **Platforms:** Windows, macOS, Linux
 - **Tech:** Python 3.12+, PySide6 (Qt6), PyAV (FFmpeg), E2E encryption
@@ -23,23 +23,14 @@ Multi-platform remote desktop application (TeamViewer / AnyDesk-like).
 
 ## Install
 
-### Quick install (bootstrap)
+### Quick install (from source)
 
 ```bash
-# Linux / macOS
-curl -fsSL https://opendesk.io/bootstrap.sh | bash
+git clone https://github.com/gbilanc/opendesk-client
+cd opendesk-client
+uv sync
+uv run opendesk
 ```
-
-```powershell
-# Windows (PowerShell as Administrator)
-iwr -useb https://opendesk.io/bootstrap.ps1 | iex
-```
-
-The bootstrap script handles:
-1. ✅ Python 3.12+ installation (if missing)
-2. ✅ System dependencies (ffmpeg, libxtst, pipewire, etc.)
-3. ✅ `pip install opendesk` (or `pipx install opendesk`)
-4. ✅ Desktop entry / Start Menu shortcut
 
 ### Via pip
 
@@ -53,7 +44,7 @@ pip install opendesk
 ### Via uv (development)
 
 ```bash
-git clone https://github.com/opendesk/opendesk-client
+git clone https://github.com/gbilanc/opendesk-client
 cd opendesk-client
 uv sync
 uv run opendesk
@@ -132,7 +123,7 @@ cartella *Esecuzione automatica*; su macOS usare un LaunchAgent.
 
 ```bash
 # Clone and install from source
-git clone https://github.com/opendesk/opendesk-client
+git clone https://github.com/gbilanc/opendesk-client
 cd opendesk-client
 uv sync --dev          # install with dev dependencies
 

@@ -11,7 +11,7 @@
 ### Installazione rapida
 
 ```bash
-git clone https://github.com/opendesk/opendesk-client
+git clone https://github.com/gbilanc/opendesk-client
 cd opendesk-client
 uv sync
 uv run opendesk
@@ -107,7 +107,7 @@ brew install ffmpeg
 ## ⚙️ Sviluppo
 
 ```bash
-git clone https://github.com/opendesk/opendesk-client
+git clone https://github.com/gbilanc/opendesk-client
 cd opendesk-client
 uv sync --extra dev
 uv run opendesk
