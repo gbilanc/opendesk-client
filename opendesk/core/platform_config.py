@@ -23,6 +23,15 @@ from opendesk.utils.platform import Platform, current_platform, is_wayland
 
 logger = logging.getLogger(__name__)
 
+# Silence benign Qt Wayland text-input v3 diagnostics (leave-event noise on
+# popups/docks) that clutter logs without affecting behaviour.
+os.environ["QT_LOGGING_RULES"] = ";".join(
+    filter(
+        None,
+        [os.environ.get("QT_LOGGING_RULES", ""), "qt.qpa.wayland.textinput=false"],
+    )
+)
+
 
 # ---------------------------------------------------------------------------
 # Health issue dataclass
