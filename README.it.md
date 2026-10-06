@@ -60,6 +60,21 @@ uv sync
 uv run opendesk
 ```
 
+### Avvio rapido dal repository
+
+Dopo `uv sync`, avvia il client con lo script incluso (usa il venv locale,
+con fallback a `uv`):
+
+```bash
+./avvia.sh                # Linux / macOS
+```
+
+```bat
+avvia.bat                 # Windows
+```
+
+Gli argomenti vengono inoltrati a `opendesk`, es. `./avvia.sh --log-level=WARNING`.
+
 ### Post-installazione: dipendenze di sistema
 
 Dopo l'installazione, esegui questo comando per assicurarti che tutti i

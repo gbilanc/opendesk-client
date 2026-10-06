@@ -26,6 +26,17 @@ uv run opendesk-host
 > **Nota:** `uv sync` crea automaticamente un ambiente virtuale isolato e installa
 > tutte le dipendenze necessarie. Non serve installare Python globalmente.
 
+### Avvio rapido dal repository
+
+Dopo `uv sync`, avvia il client con lo script incluso (usa il venv locale,
+con fallback a `uv`):
+
+```bash
+./avvia.sh                       # Linux / macOS
+avvia.bat                        # Windows
+./avvia.sh --log-level=WARNING   # gli argomenti sono inoltrati a opendesk
+```
+
 ### Aggiornamento
 
 ```bash
