@@ -98,6 +98,7 @@ class ConnectionService(QObject):
         self._relay.client_disconnected.connect(self._on_client_disconnected)
         self._relay.client_auth_requested.connect(self._on_client_auth_requested)
         self._relay.client_auth_result.connect(self._on_client_auth_result)
+        self._relay.trust_secret_received.connect(self._on_trust_secret_received)
 
         # ── Shared signals (from both host and client) ──
         self._relay.frame_received.connect(self.frame_received.emit)
@@ -191,9 +192,7 @@ class ConnectionService(QObject):
         ``password_hash`` permette di passare un hash Argon2 già calcolato
         (fuori dal main thread) evitando il blocco della UI.
         """
-        session = self._auth.create_session(
-            password, one_time=False, password_hash=password_hash
-        )
+        session = self._auth.create_session(password, one_time=False, password_hash=password_hash)
         self._session_id = session.session_id
         self._password = password
         logger.info("New session created: %s", self._session_id)
@@ -213,8 +212,8 @@ class ConnectionService(QObject):
             port,
             self._host_session_id,
         )
-        # Passa gli ID dei dispositivi trusted per l'auto-auth
-        trusted_ids = {d.device_id for d in self._device_registry.trusted()}
+        # Passa i segreti per-device dei dispositivi trusted per l'auto-auth
+        # e per la proof E2EE delle sessioni senza password.
         self._relay.start_hosting(
             host,
             port,
@@ -222,7 +221,7 @@ class ConnectionService(QObject):
             self._password,
             device_id=self._device_id,
             device_name=self._device_name,
-            trusted_device_ids=trusted_ids,
+            trusted_devices=self._device_registry.trusted_secrets(),
         )
 
     def stop_hosting(self) -> None:
@@ -259,6 +258,7 @@ class ConnectionService(QObject):
             password,
             device_id=self._device_id,
             connection_mode=connection_mode,
+            known_device_secrets=self._device_registry.known_peer_secrets(),
         )
 
     def disconnect(self) -> None:
@@ -307,7 +307,6 @@ class ConnectionService(QObject):
             return
         host, port = self._get_relay_config()
         status_callback("Reconnecting to relay...")
-        trusted_ids = {d.device_id for d in self._device_registry.trusted()}
         self._relay.start_hosting(
             host,
             port,
@@ -315,7 +314,7 @@ class ConnectionService(QObject):
             self._password,
             device_id=self._device_id,
             device_name=self._device_name,
-            trusted_device_ids=trusted_ids,
+            trusted_devices=self._device_registry.trusted_secrets(),
         )
 
     # ── host event handlers → forward as signals ────────────────────
@@ -396,6 +395,12 @@ class ConnectionService(QObject):
         """
         self.auth_result.emit(success, message)
         self.client_auth_result.emit(success, message)
+
+    @Slot(str, str)
+    def _on_trust_secret_received(self, device_id: str, secret: str) -> None:
+        """Pin the per-device secret received from a trusted host."""
+        logger.info("Pinned per-device secret for %s", device_id[:8])
+        self._device_registry.set_peer_secret(device_id, secret)
 
     # ── shared event handlers ──────────────────────────────────────
 

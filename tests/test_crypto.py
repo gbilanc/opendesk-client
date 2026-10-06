@@ -113,6 +113,75 @@ class TestE2EEncryption:
         msg.payload["proof"] = "forged"
         assert not session._accept_remote_key(msg.payload)
 
+    def test_trusted_device_per_device_secret_roundtrip(self) -> None:
+        """Trusted (password-less) peers establish E2E via the per-device secret."""
+        host = _RelaySession(
+            "relay",
+            1,
+            "session",
+            "host-password",
+            RelayRole.HOST,
+            queue.Queue(),
+            device_id="host-1",
+            trusted_devices={"client-1": "device-secret"},
+        )
+        client = _RelaySession(
+            "relay",
+            1,
+            "session",
+            "",
+            RelayRole.CLIENT,
+            queue.Queue(),
+            device_id="client-1",
+        )
+        # The host sets this when authenticating a trusted device.
+        host._proof_secret = "device-secret"
+
+        assert client._accept_remote_key(
+            host._key_exchange_message(MessageType.KEY_EXCHANGE).payload
+        )
+        assert host._accept_remote_key(
+            client._key_exchange_message(MessageType.KEY_EXCHANGE_ACK).payload
+        )
+
+        encrypted = host._encrypt_peer_message(Message.chat_message("private"))
+        assert encrypted.encrypted is True
+        assert client._decrypt_peer_message(encrypted).payload == {"text": "private"}
+
+    def test_trusted_device_rejects_changed_secret(self) -> None:
+        """A pinned per-device secret cannot be silently replaced."""
+        client = _RelaySession(
+            "relay",
+            1,
+            "session",
+            "",
+            RelayRole.CLIENT,
+            queue.Queue(),
+            device_id="client-1",
+            known_device_secrets={"host-1": "pinned"},
+        )
+        host = _RelaySession(
+            "relay",
+            1,
+            "session",
+            "host-password",
+            RelayRole.HOST,
+            queue.Queue(),
+            device_id="host-1",
+        )
+        host._proof_secret = "rotated"
+        assert not client._accept_remote_key(
+            host._key_exchange_message(MessageType.KEY_EXCHANGE).payload
+        )
+
+    def test_passwordless_accepts_legacy_unverified_key(self) -> None:
+        """A password-less peer accepts a legacy host key that has no proof."""
+        client = _RelaySession(
+            "relay", 1, "session", "", RelayRole.CLIENT, queue.Queue(), device_id="client-1"
+        )
+        legacy = Message.key_exchange(E2EEncryption().get_public_key_string())
+        assert client._accept_remote_key(legacy.payload)
+
     def test_key_rotation(self) -> None:
         """After key rotation, old ciphertexts should not decrypt."""
         alice = E2EEncryption()

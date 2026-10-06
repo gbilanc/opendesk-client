@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -31,6 +32,14 @@ class DeviceEntry:
     online: bool = False
     trusted: bool = False  # pre-authorized
     session_id: str = ""  # current session (if online)
+    # Per-device secret (hex) used as the E2EE key-exchange proof for
+    # password-less trusted sessions.  Generated when the device is
+    # marked trusted; the peer learns it on first connect (TOFU) and
+    # rejects later changes.
+    secret: str = ""
+    # Secret the *peer* generated for us (learned when they trust us).
+    # Kept separate from ``secret`` so mutual trust doesn't collide.
+    peer_secret: str = ""
 
 
 _REGISTRY_PATH = Path.home() / ".opendesk" / "device_registry.json"
@@ -165,10 +174,68 @@ class DeviceRegistry:
         return False
 
     def set_trusted(self, device_id: str, trusted: bool) -> None:
-        """Mark/unmark a device as pre-authorized."""
+        """Mark/unmark a device as pre-authorized.
+
+        When marking as trusted, a per-device secret is generated if the
+        device doesn't have one yet.
+        """
         if device_id in self._devices:
-            self._devices[device_id].trusted = trusted
+            entry = self._devices[device_id]
+            entry.trusted = trusted
+            if trusted:
+                if not entry.secret:
+                    entry.secret = secrets.token_hex(32)
+            else:
+                # Revoking trust forgets the secrets: re-trusting generates
+                # a fresh one (rotation) and the peer must re-pin it.
+                entry.secret = ""
+                entry.peer_secret = ""
             self._save()
+
+    def forget_secrets(self, device_id: str) -> None:
+        """Clear both per-device secrets, forcing a fresh key exchange."""
+        entry = self._devices.get(device_id)
+        if entry is not None:
+            entry.secret = ""
+            entry.peer_secret = ""
+            self._save()
+
+    def get_secret(self, device_id: str) -> str:
+        """Return the per-device secret, generating one on first use."""
+        entry = self._devices.get(device_id)
+        if entry is None:
+            return ""
+        if not entry.secret:
+            entry.secret = secrets.token_hex(32)
+            self._save()
+        return entry.secret
+
+    def set_peer_secret(self, device_id: str, secret: str) -> None:
+        """Pin a peer-provided per-device secret (host's secret for us)."""
+        if device_id and secret:
+            self.upsert(device_id, peer_secret=secret)
+
+    def trusted_secrets(self) -> dict[str, str]:
+        """Map of trusted device_id → our per-device secret (never empty).
+
+        Passed to the host session: used to verify a trusted peer.
+        """
+        result: dict[str, str] = {}
+        for entry in self._devices.values():
+            if entry.trusted:
+                result[entry.device_id] = self.get_secret(entry.device_id)
+        return result
+
+    def known_peer_secrets(self) -> dict[str, str]:
+        """Map of peer device_id → secret the peer shared with us.
+
+        Passed to the client session: used to pin and detect changes.
+        """
+        return {
+            entry.device_id: entry.peer_secret
+            for entry in self._devices.values()
+            if entry.peer_secret
+        }
 
     def merge_from_relay(self, devices: list[dict]) -> None:
         """Merge device list received from the relay.

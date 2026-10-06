@@ -452,6 +452,7 @@ class ConnectionPanel(QWidget):
 
         menu.addSeparator()
         action_copy_id = menu.addAction("📋 Copia UUID dispositivo")
+        action_forget = menu.addAction("🧹 Dimentica segreti per-device")
 
         selected = menu.exec(self._list_view.viewport().mapToGlobal(pos))
 
@@ -459,6 +460,13 @@ class ConnectionPanel(QWidget):
             from PySide6.QtWidgets import QApplication
 
             QApplication.clipboard().setText(device_id)
+            return
+
+        if selected == action_forget and self._registry:
+            self._registry.forget_secrets(device_id)
+            self._model.set_devices(
+                [d for d in self._registry.all() if d.device_id != self._local_device_id]
+            )
             return
 
         if selected == action_toggle and self._registry:

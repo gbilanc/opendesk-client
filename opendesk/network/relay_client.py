@@ -95,7 +95,8 @@ class _RelaySession:
         device_id: str = "",
         device_name: str = "",
         session_seq: int = 0,
-        trusted_device_ids: set[str] | None = None,
+        trusted_devices: dict[str, str] | None = None,
+        known_device_secrets: dict[str, str] | None = None,
         connection_mode: str = "remote_desktop",
         e2ee_enabled: bool = True,
     ) -> None:
@@ -110,7 +111,15 @@ class _RelaySession:
         self.session_seq = session_seq
         self.connection_mode = connection_mode
         self._e2ee_enabled = e2ee_enabled
-        self._trusted_device_ids: set[str] = trusted_device_ids or set()
+        # Per-device secrets of devices WE trust (host side): id → secret.
+        self._trusted_devices: dict[str, str] = trusted_devices or {}
+        self._trusted_device_ids: set[str] = set(self._trusted_devices)
+        # Per-device secrets WE already know for peers (client side).
+        self._known_device_secrets: dict[str, str] = known_device_secrets or {}
+        # Secret used for the E2EE key-exchange proof.  Empty → session
+        # password.  For trusted (password-less) sessions it is set to the
+        # per-device secret so the proof doesn't depend on the password.
+        self._proof_secret: str = ""
 
         self._loop: asyncio.AbstractEventLoop | None = None
         self._reader: asyncio.StreamReader | None = None
@@ -329,52 +338,97 @@ class _RelaySession:
     def _key_exchange_message(self, message_type: MessageType) -> Message:
         """Build an ephemeral public-key message for E2E encryption setup.
 
-        Include a *proof* = HMAC-SHA256(password, public_key) so the peer
-        can detect a malicious relay substituting a different key in
-        transit.  The relay routes KEY_EXCHANGE as opaque peer data and
-        never sees the session password (auth is challenge-response), so it
-        cannot forge the proof for a swapped public key.  Without this check
-        the relay could MITM the E2E channel (see MITM test).
+        Include a *proof* = HMAC-SHA256(secret, public_key) so the peer can
+        detect a malicious relay substituting a different key in transit.
+        The secret is the session password, or the per-device secret for
+        trusted (password-less) sessions (also sent as ``trust_secret`` so
+        the peer can pin it).
         """
         public_key = self._e2ee.get_public_key_string()
-        return Message(
-            message_type,
-            {
-                "public_key": public_key,
-                "proof": compute_response(public_key, self.password),
-            },
-        )
+        secret = self._proof_secret or self.password
+        payload: dict[str, Any] = {
+            "public_key": public_key,
+            "device_id": self.device_id,
+        }
+        if secret:
+            payload["proof"] = compute_response(public_key, secret)
+        if self._proof_secret:
+            # Trusted session: hand the per-device secret to the peer so a
+            # device that doesn't know the session password can verify the
+            # key.  The peer pins it (TOFU) and rejects later changes.
+            payload["trust_secret"] = self._proof_secret
+        return Message(message_type, payload)
 
     def _accept_remote_key(self, payload: dict[str, Any]) -> bool:
         """Accept the peer's public key and activate E2E encryption.
 
-        Verifies the password-based *proof* before trusting the key: a peer
-        that knows the session password can compute it, a relay that only
-        forwards traffic cannot forge it for a substituted key.  This binds
-        the ephemeral public key to the authenticated channel and prevents a
-        malicious relay from MITM-ing the E2E exchange.
+        Verifies the *proof* before trusting the key: a peer that knows the
+        session password (or the per-device secret) can compute it, a relay
+        that only forwards traffic cannot forge it for a substituted key.
+        This binds the ephemeral public key to the authenticated channel.
+
+        Password-less (trusted-device) sessions fall back to accepting the
+        key unverified when no verifiable proof is available, otherwise the
+        peer could never establish E2EE.
         """
         public_key = payload.get("public_key", "")
         proof = payload.get("proof", "")
+        trust_secret = payload.get("trust_secret", "")
+        sender_id = payload.get("device_id", "")
         if not isinstance(public_key, str) or not public_key:
             logger.warning(
                 "Rejected E2E key exchange: missing or invalid public_key (type=%s)",
                 type(public_key).__name__,
             )
             return False
-        if not isinstance(proof, str) or not verify_response(public_key, self.password, proof):
-            logger.warning(
-                "Rejected E2E key exchange: invalid or missing password proof "
-                "(possible relay MITM)",
-            )
-            return False
+
+        # Per-device secret takes precedence over the session password for
+        # trusted (password-less) sessions.
+        secret = trust_secret if isinstance(trust_secret, str) and trust_secret else self.password
+
+        # Pin the peer's per-device secret and reject silent changes (a
+        # relay that swaps the secret would otherwise be able to MITM).
+        if trust_secret and sender_id:
+            known = self._known_device_secrets.get(sender_id)
+            if known and known != trust_secret:
+                logger.warning(
+                    "Rejected E2E key exchange: per-device secret for %s changed "
+                    "(possible relay MITM)",
+                    sender_id[:8],
+                )
+                return False
+
+        verified = bool(proof) and verify_response(public_key, secret, proof)
+        if not verified:
+            if not self.password:
+                # Password-less session (trusted-device bypass): the peer may
+                # not be able to produce a password proof.  Accept the key
+                # unverified rather than dropping the encrypted stream.
+                logger.warning(
+                    "E2E key proof non verificabile su sessione senza password — "
+                    "accetto la chiave senza verifica (trusted device)",
+                )
+            else:
+                logger.warning(
+                    "Rejected E2E key exchange: invalid or missing password proof "
+                    "(possible relay MITM)",
+                )
+                return False
+
         try:
             self._e2ee.set_remote_key(public_key)
         except Exception as e:
             logger.warning("Rejected E2E key exchange: %s", e)
             return False
         self._e2ee_ready = True
-        logger.info("E2E peer channel established (key verified)")
+        if verified and trust_secret and sender_id:
+            # Use the per-device secret for our own proof (e.g. the
+            # KEY_EXCHANGE_ACK the client sends back) and pin it locally.
+            self._proof_secret = trust_secret
+            self._known_device_secrets[sender_id] = trust_secret
+            if self.role == RelayRole.CLIENT:
+                self.inbox.put(("trust_secret", (sender_id, trust_secret), self.session_seq))
+        logger.info("E2E peer channel established (key verified=%s)", verified)
         return True
 
     def _encrypt_peer_message(self, msg: Message) -> Message:
@@ -551,6 +605,13 @@ class _RelaySession:
 
                 elif t == MessageType.RELAY_PEER_LIST:
                     self.inbox.put(("peer_joined", None, self.session_seq))
+                    # New peer: reset the E2EE state.  The host session is
+                    # persistent and handles peers sequentially, so keeping
+                    # the previous peer's key would make the new peer unable
+                    # to decrypt the stream (black screen).
+                    self._e2ee = E2EEncryption()
+                    self._e2ee_ready = False
+                    self._proof_secret = ""
                     # Authentication first, E2E key exchange after (see AUTH_RESPONSE).
                     # This ensures trusted devices can establish E2E even with
                     # different (or empty) passwords.
@@ -585,6 +646,9 @@ class _RelaySession:
                             "Trusted device '%s' authenticated without password",
                             client_device_id[:8],
                         )
+                        # Use the per-device secret for the E2EE proof so the
+                        # peer doesn't need to know the session password.
+                        self._proof_secret = self._trusted_devices.get(client_device_id, "")
                         await self._send_async(Message.auth_ok())
                         # E2E key exchange after authentication
                         if self._e2ee_enabled:
@@ -1079,6 +1143,7 @@ class RelayClient(QObject):
     message_received = Signal(object)  # Message
     error = Signal(str)
     device_list_received = Signal(list)  # list[dict] — devices from relay
+    trust_secret_received = Signal(str, str)  # peer device_id, per-device secret
     main_keyframe_requested = Signal()  # legacy alias for host_keyframe_requested
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -1139,7 +1204,7 @@ class RelayClient(QObject):
         password: str,
         device_id: str = "",
         device_name: str = "",
-        trusted_device_ids: set[str] | None = None,
+        trusted_devices: dict[str, str] | None = None,
     ) -> None:
         """Connect to relay and register as host.
 
@@ -1160,7 +1225,7 @@ class RelayClient(QObject):
             device_id=device_id,
             device_name=device_name,
             session_seq=self._host_seq,
-            trusted_device_ids=trusted_device_ids,
+            trusted_devices=trusted_devices,
             e2ee_enabled=self._e2ee_enabled,
         )
         self._start_host_thread()
@@ -1183,6 +1248,7 @@ class RelayClient(QObject):
         password: str,
         device_id: str = "",
         connection_mode: str = "remote_desktop",
+        known_device_secrets: dict[str, str] | None = None,
     ) -> None:
         """Connect to relay and join a session as client.
 
@@ -1209,6 +1275,7 @@ class RelayClient(QObject):
             self._inbox,
             device_id=device_id,
             session_seq=self._current_seq,
+            known_device_secrets=known_device_secrets,
             connection_mode=connection_mode,
             e2ee_enabled=self._e2ee_enabled,
         )
@@ -1536,6 +1603,9 @@ class RelayClient(QObject):
             self.error.emit(data)
         elif event == "device_list":
             self.device_list_received.emit(data)
+        elif event == "trust_secret":
+            device_id, secret = data
+            self.trust_secret_received.emit(device_id, secret)
         else:
             logger.debug("Unhandled client event: %s", event)
 

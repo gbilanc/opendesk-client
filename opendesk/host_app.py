@@ -213,7 +213,6 @@ class HostService(QObject):
         clean_id = self._session_id.replace(" ", "")
         self.status_changed.emit(f"Connecting to relay {host}:{port}...")
         logger.info("Starting host on relay %s:%s session=%s", host, port, clean_id)
-        trusted_ids = {d.device_id for d in self._device_registry.trusted()}
         self._relay.start_hosting(
             host,
             port,
@@ -221,7 +220,7 @@ class HostService(QObject):
             self._password,
             device_id=self._device_id,
             device_name=self._device_name,
-            trusted_device_ids=trusted_ids,
+            trusted_devices=self._device_registry.trusted_secrets(),
         )
 
     def stop(self) -> None:
@@ -293,7 +292,6 @@ class HostService(QObject):
             return
         host, port = self._get_relay_config()
         self.status_changed.emit("Reconnecting to relay...")
-        trusted_ids = {d.device_id for d in self._device_registry.trusted()}
         self._relay.start_hosting(
             host,
             port,
@@ -301,7 +299,7 @@ class HostService(QObject):
             self._password,
             device_id=self._device_id,
             device_name=self._device_name,
-            trusted_device_ids=trusted_ids,
+            trusted_devices=self._device_registry.trusted_secrets(),
         )
 
     # ── file transfer polling ──────────────────────────────────────────
