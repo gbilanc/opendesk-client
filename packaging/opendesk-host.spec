@@ -102,7 +102,7 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleName": "OpenDesk Host",
             "CFBundleDisplayName": "OpenDesk Host",
-            "CFBundleShortVersionString": "1.5.0",
+            "CFBundleShortVersionString": "1.6.0",
             "NSHighResolutionCapable": True,
             "LSUIElement": True,
         },
