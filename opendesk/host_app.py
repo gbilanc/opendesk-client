@@ -94,7 +94,6 @@ class HostService(QObject):
     chat_message_received = Signal(str, bool)
     chat_open_requested = Signal(bool)
     file_transfer_started = Signal()
-    incoming_file_requested = Signal(str)  # pending TransferJob id
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -476,7 +475,8 @@ class HostService(QObject):
         elif t == MessageType.FILE_REQUEST:
             job_id = self._file_transfer.handle_file_request(msg)
             if job_id:
-                self.incoming_file_requested.emit(job_id)
+                # Auto-accept: trasferimento in background, nessuna conferma host.
+                self.respond_to_incoming_file(job_id, True)
         elif t == MessageType.FILE_CHUNK:
             self._file_transfer.handle_chunk(msg)
         elif t == MessageType.FILE_ACCEPT:
@@ -1017,7 +1017,6 @@ class HostWindow(QMainWindow):
         svc.chat_message_received.connect(self._on_chat_message)
         svc.chat_open_requested.connect(self._on_chat_open)
         svc.file_transfer_started.connect(self._on_file_transfer_event)
-        svc.incoming_file_requested.connect(self._on_incoming_file_request)
 
     # ── Slots: stato ─────────────────────────────────────────────────────
 
@@ -1098,31 +1097,12 @@ class HostWindow(QMainWindow):
 
     # ── File transfer handlers ──────────────────────────────────────────
 
-    @Slot(str)
-    def _on_incoming_file_request(self, job_id: str) -> None:
-        """Ask the host user before accepting a remote file upload."""
-        job = self._service.file_transfer.get_job(job_id)
-        if job is None:
-            return
-        destination = job.file_info.path or str(Path.home() / "Downloads" / "OpenDesk")
-        reply = QMessageBox.question(
-            self,
-            "Incoming file transfer",
-            f"Accept '{job.file_info.name}' ({job.file_info.size:,} bytes)\n"
-            f"Destination: {destination}?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        self._service.respond_to_incoming_file(job_id, reply == QMessageBox.StandardButton.Yes)
-
     @Slot()
     def _on_file_transfer_event(self) -> None:
         """Mostra il dock file transfer quando il remoto invia un file."""
         dock = self._ensure_transfer_dock()
         if not dock.isVisible():
             dock.show()
-            dock.raise_()
-            dock.activateWindow()
             dock.set_connected(True)
             dock.set_status("Connected — file transfer ready")
             self._service.file_transfer.request_remote_listing(

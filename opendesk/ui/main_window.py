@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 import queue
-from pathlib import Path
 
 import numpy as np
 from PySide6.QtCore import QSettings, QSize, Qt, QTimer, Slot
@@ -714,26 +713,9 @@ class MainWindow(QMainWindow):
                 self._clipboard_sync.receive_from_remote(msg)
         elif msg.type == MessageType.FILE_REQUEST:
             job_id = self._file_transfer.handle_file_request(msg)
-            job = self._file_transfer.get_job(job_id) if job_id else None
-            if job is None:
-                return
-            destination = job.file_info.path or str(Path.home() / "Downloads" / "OpenDesk")
-            reply = QMessageBox.question(
-                self,
-                "Incoming file transfer",
-                f"Accept '{job.file_info.name}' ({job.file_info.size:,} bytes)\n"
-                f"Destination: {destination}?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if reply == QMessageBox.StandardButton.Yes and self._file_transfer.accept_incoming(
-                job.id
-            ):
-                self._relay.send_message(Message.file_accept(job.id))
-            else:
-                reason = job.error or "Rejected by local user"
-                self._file_transfer.reject_incoming(job.id, reason)
-                self._relay.send_message(Message.file_reject(job.id, reason))
+            if job_id and self._file_transfer.accept_incoming(job_id):
+                # Auto-accept: trasferimento in background, nessuna conferma utente.
+                self._relay.send_message(Message.file_accept(job_id))
         elif msg.type == MessageType.FILE_CHUNK:
             self._file_transfer.handle_chunk(msg)
             job_id = msg.payload.get("job_id", "")
