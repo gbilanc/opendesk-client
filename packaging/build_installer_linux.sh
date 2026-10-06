@@ -121,6 +121,16 @@ echo "==> [6/6] Building portable tarball"
 TAR="$DIST/${PKG}-${VERSION}-linux.tar.gz"
 tar -C dist -czf "$TAR" "$PKG"
 
+# Firma GPG opzionale del .deb (detached ASCII signature).
+if [ -n "${OPENDESK_GPG_KEY:-}" ]; then
+    echo "==> Signing $DEB with GPG key $OPENDESK_GPG_KEY"
+    GPG_ARGS=(--batch --yes --armor --local-user "$OPENDESK_GPG_KEY")
+    if [ -n "${OPENDESK_GPG_PASSPHRASE:-}" ]; then
+        GPG_ARGS+=(--pinentry-mode loopback --passphrase "$OPENDESK_GPG_PASSPHRASE")
+    fi
+    gpg "${GPG_ARGS[@]}" --detach-sign "$DEB"
+fi
+
 echo ""
 echo "==> DONE"
 echo "    $DEB"

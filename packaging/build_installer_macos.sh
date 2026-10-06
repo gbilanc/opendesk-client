@@ -58,5 +58,17 @@ if [ -n "${OPENDESK_SIGN_IDENTITY:-}" ]; then
     codesign --force --sign "$OPENDESK_SIGN_IDENTITY" "$DMG" || true
 fi
 
+# Notarizzazione (richiede credenziali Apple Developer).
+if [ -n "${OPENDESK_NOTARY_APPLE_ID:-}" ] && [ -n "${OPENDESK_NOTARY_TEAM_ID:-}" ] \
+    && [ -n "${OPENDESK_NOTARY_PASSWORD:-}" ]; then
+    echo "==> Notarizing $DMG"
+    xcrun notarytool submit "$DMG" \
+        --apple-id "$OPENDESK_NOTARY_APPLE_ID" \
+        --team-id "$OPENDESK_NOTARY_TEAM_ID" \
+        --password "$OPENDESK_NOTARY_PASSWORD" \
+        --wait
+    xcrun stapler staple "$DMG"
+fi
+
 echo ""
 echo "==> DONE: $DMG"

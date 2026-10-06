@@ -16,6 +16,19 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      # Signing credentials (repository secrets; empty = unsigned build)
+      WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+      WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+      MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+      MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+      MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+      MACOS_NOTARY_TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
+      MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+      LINUX_GPG_PRIVATE_KEY: ${{ secrets.LINUX_GPG_PRIVATE_KEY }}
+      LINUX_GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
 
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +42,14 @@ jobs:
         run: uv python pin 3.12
 
       # ── Linux ──────────────────────────────────────────────────────
+      - name: Import GPG key (Linux)
+        if: runner.os == 'Linux' && env.LINUX_GPG_PRIVATE_KEY != ''
+        run: |
+          echo "$LINUX_GPG_PRIVATE_KEY" | base64 --decode | gpg --batch --import
+          KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec:/ {print $5; exit}')
+          echo "OPENDESK_GPG_KEY=$KEY_ID" >> "$GITHUB_ENV"
+          echo "OPENDESK_GPG_PASSPHRASE=$LINUX_GPG_PASSPHRASE" >> "$GITHUB_ENV"
+
       - name: Build installer (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -37,6 +58,20 @@ jobs:
           bash packaging/build_installer_linux.sh
 
       # ── Windows ────────────────────────────────────────────────────
+      - name: Import code-signing certificate (Windows)
+        if: runner.os == 'Windows' && env.WINDOWS_CERT_PFX_BASE64 != ''
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "cert.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERT_PFX_BASE64))
+          "OPENDESK_SIGN_PFX=$pfx" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "OPENDESK_SIGN_PASS=$env:WINDOWS_CERT_PASSWORD" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse `
+              -Filter signtool.exe -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1
+          if ($signtool) { $signtool.DirectoryName | Out-File -Append -Encoding utf8 $env:GITHUB_PATH }
+          else { Write-Warning "signtool.exe not found in Windows SDK" }
+
       - name: Install Inno Setup (Windows)
         if: runner.os == 'Windows'
         run: choco install innosetup -y --no-progress
@@ -47,6 +82,27 @@ jobs:
         run: powershell -ExecutionPolicy Bypass -File packaging/build_installer.ps1
 
       # ── macOS ──────────────────────────────────────────────────────
+      - name: Import code-signing certificate (macOS)
+        if: runner.os == 'macOS' && env.MACOS_CERT_P12_BASE64 != ''
+        run: |
+          echo "$MACOS_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          security create-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+              -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s \
+              -k "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" \
+              $(security list-keychains -d user | tr -d '"')
+          {
+            echo "OPENDESK_SIGN_IDENTITY=$MACOS_SIGN_IDENTITY"
+            echo "OPENDESK_NOTARY_APPLE_ID=$MACOS_NOTARY_APPLE_ID"
+            echo "OPENDESK_NOTARY_TEAM_ID=$MACOS_NOTARY_TEAM_ID"
+            echo "OPENDESK_NOTARY_PASSWORD=$MACOS_NOTARY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
       - name: Build installer (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -59,6 +115,7 @@ jobs:
           name: installer-${{ runner.os }}
           path: |
             dist/*.deb
+            dist/*.deb.asc
             dist/*.tar.gz
             dist/*.exe
             dist/*.dmg
