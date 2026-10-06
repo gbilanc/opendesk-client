@@ -7,7 +7,7 @@
 #define MyAppName "OpenDesk Host"
 ; Version can be overridden from the build script: ISCC /DMyAppVersion=x.y.z
 #ifndef MyAppVersion
-#define MyAppVersion "1.5.0"
+#define MyAppVersion "1.6.0"
 #endif
 #define MyAppPublisher "OpenDesk"
 #define MyAppExeName "opendesk-host.exe"
