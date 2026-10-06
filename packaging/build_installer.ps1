@@ -6,6 +6,16 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot  # packaging/ -> repo root
 Set-Location $Root
 
+# Read version from pyproject.toml (single source of truth)
+$Version = (Select-String -Path "$Root\pyproject.toml" -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+if (-not $Version) { throw "Unable to read version from pyproject.toml" }
+Write-Host "==> Version: $Version"
+
+# Optional code signing (set OPENDESK_SIGN_PFX to a .pfx path, optionally
+# OPENDESK_SIGN_PASS for the password) — signs the installer if configured
+$SignPfx = $env:OPENDESK_SIGN_PFX
+$SignPass = $env:OPENDESK_SIGN_PASS
+
 Write-Host "==> [1/5] Installing project dependencies (uv sync)"
 uv sync
 
@@ -23,7 +33,26 @@ $ISCC = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 if (-not (Test-Path $ISCC)) { $ISCC = "C:\Program Files\Inno Setup 6\ISCC.exe" }
 if (-not (Test-Path $ISCC)) { $ISCC = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" }
 if (-not (Test-Path $ISCC)) { throw "Inno Setup not found (ISCC.exe). Install it via: winget install JRSoftware.InnoSetup" }
-& $ISCC "packaging\installer\opendesk-host.iss"
+& $ISCC "/DMyAppVersion=$Version" "packaging\installer\opendesk-host.iss"
+
+$SetupExe = "$Root\dist\OpenDeskHostSetup-$Version.exe"
+
+# Optional signing of the final installer
+if ($SignPfx -and (Test-Path $SignPfx)) {
+    $Signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
+    if (-not $Signtool) {
+        Write-Warning "signtool.exe not found in PATH - skipping signing"
+    } else {
+        Write-Host "==> Signing $SetupExe"
+        if ($SignPass) {
+            & $Signtool sign /f $SignPfx /p $SignPass /fd sha256 /tr http://timestamp.digicert.com /td sha256 $SetupExe
+        } else {
+            & $Signtool sign /f $SignPfx /fd sha256 /tr http://timestamp.digicert.com /td sha256 $SetupExe
+        }
+    }
+} else {
+    Write-Warning "Installer unsigned (set OPENDESK_SIGN_PFX to sign) - SmartScreen may warn users"
+}
 
 Write-Host ""
-Write-Host "==> DONE: $Root\dist\OpenDeskHostSetup-1.0.0.exe"
+Write-Host "==> DONE: $SetupExe"
