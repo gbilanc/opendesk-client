@@ -169,14 +169,52 @@ class _RelaySession:
                 )
                 last_pong = self._last_pong_time
                 if last_pong and (time.time() - last_pong) > 3 * _PING_INTERVAL:
-                    logger.warning(
-                        "Keep-alive: nessun PONG da %.0fs — link forse half-open",
+                    # Link half-open: i PING partono ma non tornano i PONG.
+                    # Il relay considera il peer attivo (riceve i nostri
+                    # PING), quindi l'host resterebbe "paired" con noi per
+                    # sempre e i nuovi join prenderebbero 409.  Usciamo
+                    # noi: DISCONNECT best-effort (funziona se il verso
+                    # client→relay è vivo) e chiusura socket.
+                    logger.error(
+                        "Keep-alive: nessun PONG da %.0fs — link half-open: "
+                        "chiudo la sessione per liberare il pairing sul relay",
                         time.time() - last_pong,
                     )
+                    try:
+                        await self._send_async(
+                            Message.disconnect("keep-alive timeout (half-open link)"),
+                            bypass_backpressure=True,
+                        )
+                    except Exception:
+                        pass
+                    self.inbox.put(
+                        ("error", "Connection half-open (no PONG from relay)", self.session_seq)
+                    )
+                    self.inbox.put(("disconnected", None, self.session_seq))
+                    await self._close_writer()
+                    return
             except Exception as e:  # noqa: BLE001 — non far morire il keep-alive
                 logger.debug("ping_loop: invio PING fallito (%s), proseguo", e)
 
     # ── lifecycle ───────────────────────────────────────────────────
+
+    async def _close_writer(self) -> None:
+        """Chiude e rilascia il TCP writer (idempotente).
+
+        Indispensabile a ogni uscita dai loop ``_run_host``/``_run_client``:
+        senza, un break da ERROR (es. 409 "already paired") lascerebbe il
+        socket aperto fino a fine-processo — il relay terrebbe il peer
+        "connesso" e l'host resterebbe paired anche dopo la chiusura.
+        """
+        writer = self._writer
+        if writer is None:
+            return
+        self._writer = None
+        try:
+            writer.close()
+            await asyncio.wait_for(writer.wait_closed(), timeout=2.0)
+        except Exception:
+            pass
 
     def start(self) -> None:
         """Run the asyncio event loop in the current thread (blocking)."""
@@ -208,11 +246,20 @@ class _RelaySession:
         """
         self._running.clear()
         if self._writer:
+            # DISCONNECT esplicito PRIMA del close: avvisa il relay (che
+            # rimuove il peer e scolla l'host con 410) anche nel caso in
+            # cui il reader locale non vedesse EOF per tempo.  Best-effort:
+            # una rete morta non deve bloccare lo shutdown dell'UI.
             try:
-                self._writer.close()
+                await asyncio.wait_for(
+                    self._send_async(
+                        Message.disconnect("session closed"), bypass_backpressure=True
+                    ),
+                    timeout=2.0,
+                )
             except Exception:
                 pass
-            self._writer = None
+        await self._close_writer()
         if self._decoder:
             self._decoder.release()
             self._decoder = None
@@ -741,6 +788,7 @@ class _RelaySession:
         finally:
             await gen.aclose()
             ping_task.cancel()
+            await self._close_writer()
         self.inbox.put(("disconnected", None, self.session_seq))
         logger.debug("Host session ended: disconnected event queued")
 
@@ -1070,6 +1118,7 @@ class _RelaySession:
             watchdog_task.cancel()
             ping_task.cancel()
             await gen.aclose()
+            await self._close_writer()
         self.inbox.put(("disconnected", None, self.session_seq))
         logger.debug("Client session ended: disconnected event queued")
 
