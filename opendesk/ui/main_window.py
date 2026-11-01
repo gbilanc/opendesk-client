@@ -90,6 +90,7 @@ class MainWindow(QMainWindow):
         self._connection.host_auth_result.connect(self._on_host_auth_result)
         self._connection.client_auth_result.connect(self._on_client_auth_result)
         self._connection.frame_received.connect(self._on_frame_received)
+        self._connection.tile_received.connect(self._on_tile_received)
         self._connection.message_received.connect(self._on_relay_message)
         self._connection.error.connect(self._on_relay_error)
         self._connection.device_list_received.connect(self._on_device_list_received)
@@ -628,6 +629,11 @@ class MainWindow(QMainWindow):
     def _on_frame_received(self, rgb_data: np.ndarray, width: int, height: int) -> None:
         if self._viewer_window is not None:
             self._viewer_window.display_frame(rgb_data, width, height)
+
+    @Slot(np.ndarray, int, int, int, int)
+    def _on_tile_received(self, rgb_data: np.ndarray, x: int, y: int, w: int, h: int) -> None:
+        if self._viewer_window is not None:
+            self._viewer_window.display_tile(rgb_data, x, y, w, h)
 
     @Slot()
     def _on_frame_timeout(self) -> None:

@@ -59,7 +59,9 @@ class RelayRole(Enum):
 # Constants
 # ---------------------------------------------------------------------------
 
-_POLL_INTERVAL_MS = 50  # poll inbox every 50 ms
+_POLL_INTERVAL_MS = 16  # poll inbox every 16 ms (~60 Hz); i frame stale
+# sono coalesced per ciclo, quindi il costo risveglio e' quasi nullo
+# e la latenza di presentazione non puo' superare 16 ms
 _CONNECT_TIMEOUT = 15.0  # max seconds to wait for TCP connection
 _STOP_JOIN_TIMEOUT = 8.0  # max seconds to wait for session thread to stop
 _SEND_DRAIN_TIMEOUT = 5.0  # max seconds to wait for TCP send buffer to drain
@@ -891,7 +893,7 @@ class _RelaySession:
                     height = payload.get("height", 0)
                     data = payload.get("data")
                     is_keyframe = payload.get("keyframe", False)
-                    logger.info(
+                    logger.debug(
                         "VIDEO_FRAME: %dx%d keyframe=%s len=%d",
                         width,
                         height,
@@ -911,6 +913,10 @@ class _RelaySession:
                             )
                             if rgb is not None:
                                 _frame_count += 1
+                                # decode() restituisce un array fresco a ogni
+                                # chiamata: il riferimento (mutato in-place
+                                # dalla composizione tile) richiede una copia,
+                                # ma l'inbox può prendere rgb direttamente.
                                 self._reference_frame = rgb.copy()
                                 self._frame_width = width
                                 self._frame_height = height
@@ -918,9 +924,9 @@ class _RelaySession:
                                 self._last_keyframe_time = now
                                 self._last_video_activity_time = now
                                 self.inbox.put(
-                                    ("frame", (rgb.copy(), width, height), self.session_seq),
+                                    ("frame", (rgb, width, height), self.session_seq),
                                 )
-                                logger.info(
+                                logger.debug(
                                     "Frame decoded: %dx%d (%s)",
                                     width,
                                     height,
@@ -976,14 +982,22 @@ class _RelaySession:
                                 tile_rgb = cv2.cvtColor(tile_bgr, cv2.COLOR_BGR2RGB)
                                 # Composite onto reference frame
                                 ref_h, ref_w = self._reference_frame.shape[:2]
+                                self._last_video_activity_time = time.time()
                                 if ty + th <= ref_h and tx + tw <= ref_w:
                                     self._reference_frame[ty : ty + th, tx : tx + tw] = tile_rgb
-                                    self._last_video_activity_time = time.time()
+                                    # Invia all'UI SOLO la regione del tile:
+                                    # niente copia full-frame del reference
+                                    # (~6 MB a 1080p) né ricostruzione
+                                    # QPixmap per ogni tile.
                                     self.inbox.put(
                                         (
-                                            "frame",
+                                            "tile",
                                             (
-                                                self._reference_frame.copy(),
+                                                tile_rgb,
+                                                tx,
+                                                ty,
+                                                tw,
+                                                th,
                                                 self._frame_width,
                                                 self._frame_height,
                                             ),
@@ -1137,6 +1151,7 @@ class RelayClient(QObject):
     client_auth_requested = Signal()
     client_auth_result = Signal(bool, str)  # success, message
     frame_received = Signal(np.ndarray, int, int)  # rgb_data, width, height
+    tile_received = Signal(np.ndarray, int, int, int, int)  # rgb, x, y, w, h
     client_keyframe_requested = Signal()  # remote host needs a keyframe
 
     # ── Shared signals (from both host and client) ──
@@ -1595,6 +1610,9 @@ class RelayClient(QObject):
         elif event == "frame":
             rgb, w, h = data
             self.frame_received.emit(rgb, w, h)
+        elif event == "tile":
+            rgb, x, y, w, h, _fw, _fh = data
+            self.tile_received.emit(rgb, x, y, w, h)
         elif event == "keyframe_requested":
             self.client_keyframe_requested.emit()
         elif event == "message":

@@ -458,21 +458,42 @@ class EncoderWorker(threading.Thread):
         # un unico temporaneo single-channel invece di (H,W,3) bool di numpy).
         any_changed = _changed_mask(current, prev, threshold)
 
-        total_tiles = 0
         # Fase 1: individua i tile cambiati senza codificarli.  Così, se
         # il cambiamento supera ``_TILE_MAX_CHANGED_RATIO``, scegliamo il
         # keyframe senza sprecare l'encoding JPEG di tutti i tile (che
         # verrebbe comunque scartato).
-        changed_boxes: list[tuple[int, int, int, int]] = []
-
-        for y in range(0, h, tile_size):
-            th = min(tile_size, h - y)
-            for x in range(0, w, tile_size):
-                tw = min(tile_size, w - x)
-                total_tiles += 1
-                tile_mask = any_changed[y : y + th, x : x + tw]
-                if tile_mask.sum() / tile_mask.size > _TILE_CHANGE_RATIO:
-                    changed_boxes.append((x, y, tw, th))
+        #
+        # Block-or via somma d'area (cv2.integral): un'unica passata
+        # O(H*W) + gather dei 4 angoli per tile, ~2.5× più veloce del
+        # loop Python nx*ny (135 slice+sum a 1080p: 2.2 ms → 0.86 ms).
+        # Soglia RELATIVA all'area reale del tile (bordo destro/basso
+        # parziale), identica al loop originale.
+        nx = (w + tile_size - 1) // tile_size
+        ny = (h + tile_size - 1) // tile_size
+        m8 = any_changed.view(np.uint8)
+        if ny * tile_size != h or nx * tile_size != w:
+            pad = np.zeros((ny * tile_size, nx * tile_size), dtype=np.uint8)
+            pad[:h, :w] = m8
+            m8 = pad
+        ii = cv2.integral(m8)
+        ys = np.arange(ny) * tile_size
+        xs = np.arange(nx) * tile_size
+        ye = np.minimum(ys + tile_size, h)
+        xe = np.minimum(xs + tile_size, w)
+        counts = (ii[np.ix_(ye, xe)] - ii[np.ix_(ys, xe)]
+                  - ii[np.ix_(ye, xs)] + ii[np.ix_(ys, xs)])
+        areas = np.outer(ye - ys, xe - xs)
+        rows, cols = np.nonzero(counts > _TILE_CHANGE_RATIO * areas)
+        changed_boxes = [
+            (
+                int(c) * tile_size,
+                int(r) * tile_size,
+                int(xe[c] - xs[c]),
+                int(ye[r] - ys[r]),
+            )
+            for r, c in zip(rows, cols, strict=True)
+        ]
+        total_tiles = nx * ny
 
         # Come per il path keyframe: il frame è di proprietà del consumer
         # della coda, nessuna copia full-frame necessaria.

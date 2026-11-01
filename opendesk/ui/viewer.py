@@ -321,21 +321,27 @@ class RemoteViewer(QGraphicsView):
                 if rgb_data.shape[2] != 3:
                     return
                 h, w, _ = rgb_data.shape
-                expected_size = w * h * 3
 
-                # Get a pre-allocated buffer from the ring buffer
-                if not self._frame_buffers or len(self._frame_buffers[-1]) != expected_size:
-                    buf = bytearray(expected_size)
-                else:
-                    buf = self._frame_buffers.popleft()
+                # Il mittente (inbox relay) consegna una copia privata di
+                # solo suo consumo: nessun round-trip nel ring-buffer,
+                # il QImage wrappingpa direttamente l'array (~6MB a 1080p
+                # di memcpy risparmiati per frame).  Il ring-buffer resta
+                # per i frame non-contiguous e per il path bytes.
+                if not rgb_data.flags["C_CONTIGUOUS"]:
+                    if (
+                        not self._frame_buffers
+                        or len(self._frame_buffers[-1]) != w * h * 3
+                    ):
+                        buf = bytearray(w * h * 3)
+                    else:
+                        buf = self._frame_buffers.popleft()
+                    np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 3)[:] = rgb_data
+                    self._frame_buffers.append(buf)
+                    rgb_data = np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 3)
 
-                # Copia diretta numpy → bytearray pre-allocato: evita il
-                # temporaneo intermedio di .tobytes() (~6 MB a 1080p/frame).
-                np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 3)[:] = rgb_data
-                self._frame_buffers.append(buf)
-                img = QImage(buf, w, h, w * 3, QImage.Format.Format_RGB888)
+                img = QImage(rgb_data, w, h, w * 3, QImage.Format.Format_RGB888)
                 # Keep a reference so the buffer is not GC'd while QImage uses it
-                img._np_buffer = buf  # type: ignore[attr-defined]
+                img._np_buffer = rgb_data  # type: ignore[attr-defined]
             elif isinstance(rgb_data, bytes):
                 img = QImage(rgb_data, width, height, width * 3, QImage.Format.Format_RGB888)
             else:
@@ -390,6 +396,30 @@ class RemoteViewer(QGraphicsView):
                 self._scene.removeItem(self._pixmap_item)
                 self._pixmap_item = None
             self._frame_buffers.clear()
+
+    def display_tile(self, rgb_data: np.ndarray, x: int, y: int, w: int, h: int) -> None:
+        """Blit a single JPEG tile region into the current frame pixmap.
+
+        Avoids the full-frame copy + QPixmap rebuild that a per-tile
+        "frame" update would cost (~6 MB @1080p per tile).  Tiles are
+        only sent after a keyframe established the pixmap, so
+        ``_pixmap_item`` is expected to exist; if not, the tile is
+        dropped and the host will resync via keyframe request.
+        """
+        if self._pixmap_item is None:
+            return
+        pixmap = self._pixmap_item.pixmap()
+        if pixmap.isNull() or x + w > pixmap.width() or y + h > pixmap.height():
+            return
+        img = QImage(rgb_data, w, h, w * 3, QImage.Format.Format_RGB888).copy()
+        painter = QPainter(pixmap)
+        painter.drawImage(x, y, img)
+        painter.end()
+        self._pixmap_item.setPixmap(pixmap)
+        self._frame_count_since_hud += 1
+        self._last_frame_time = time.time()
+        if self._connection_active:
+            self._frame_timeout_timer.start(_FRAME_TIMEOUT_MS)
 
     def set_connection_active(self, active: bool) -> None:
         """Mark connection state for UI updates."""
@@ -1014,6 +1044,10 @@ class ViewerWindow(QMainWindow):
     def display_frame(self, rgb_data: np.ndarray, width: int, height: int) -> None:
         """Display a decoded frame in the viewer."""
         self._viewer.display_frame(rgb_data, width, height)
+
+    def display_tile(self, rgb_data: np.ndarray, x: int, y: int, w: int, h: int) -> None:
+        """Blit a single tile region into the viewer frame."""
+        self._viewer.display_tile(rgb_data, x, y, w, h)
 
     def set_connection_active(self, active: bool, peer_name: str = "") -> None:
         """Update UI state for connection status."""

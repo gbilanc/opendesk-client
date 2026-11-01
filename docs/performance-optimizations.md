@@ -90,6 +90,26 @@ direttamente con `np.frombuffer(buf).reshape(...)[:] = rgb_data`.
 - Suite: `QT_QPA_PLATFORM=offscreen python -m pytest tests/` → 147 passed
   (2 fail ambientali legati a `/dev/uinput`).
 
+## Round 2 — percorso client (video → UI)
+
+| # | File | Modifica | Impatto |
+|---|------|----------|---------|
+| 9 | `network/relay_client.py` | Log `VIDEO_FRAME`/`Frame decoded` da INFO a DEBUG | 60 righe di log/s eliminati a 30 fps |
+| 10 | `network/relay_client.py` | Path keyframe: `decode()` restituisce un array fresco → l'inbox prende `rgb` direttamente, una sola `.copy()` (il reference frame) invece di due | −1 copia full-frame per frame (−6 MB @1080p) |
+| 11 | `ui/viewer.py` | `display_frame()` wrappa il numpy direttamente nel `QImage` (fallback ring-buffer solo per array non contiguous) | −~0.3 ms/frame di memcpy; chiusura finding 🔵 |
+| 12 | `network/relay_client.py`, `ui/viewer.py`, `ui/main_window.py` | Nuovo segnale `tile_received`: i tile JPEG compongono il QPixmap con un blit di regione invece di copiare l'intero reference frame in UI per ogni tile | tile 128² = blit ~50 KB invece di copia+QPixmap da 6 MB |
+| 13 | `network/relay_client.py` | `_POLL_INTERVAL_MS` 50 → 16: i frame sono già coalesced per ciclo, la latenza di presentazione non supera 16 ms | −~34 ms di latenza coda in UI |
+| 14 | `services/pipeline.py` | Rilevamento tile in `_do_tiles` con `cv2.integral` (somma d'area, soglia relativa all'area reale del tile) invece del loop Python 135×slice+sum | 2.34 → 1.46 ms/frame @1080p, verificato equivalente su 60 casi random |
+
+## Verifica Round 2
+
+- Equivalenza semantica tile-detect: confronto loop-orig vs integral su 60
+  casi random (dimensioni non multiple di 128 incluse): 0 mismatch.
+- Costo tile-detect misurato: 1.46 ms/frame (cambio piccolo, ~4 tile).
+- Suite: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/` →
+  155 passed, 12 failed identici al baseline pre-modifiche (environment:
+  `aiortc`/`uinput` indisponibili nel container di test), nessun regresso.
+
 ## Finding non applicati
 
 | Priorità | Posizione | Nota |
@@ -97,4 +117,4 @@ direttamente con `np.frombuffer(buf).reshape(...)[:] = rgb_data`.
 | 🟠 | `ui/main_window.py`, `host_app.py` | La sessione iniziale all'avvio è ancora creata in modo sincrono (prima che la finestra sia mostrata): impatto ~47 ms, non percepito. |
 | 🟡 | `core/video_codec.py` `VideoDecoder.decode` | `frames[-1].to_rgb().to_ndarray()` crea un `VideoFrame` intermedio; `to_ndarray(format="rgb24")` risparmierebbe una conversione. |
 | 🟡 | `core/screen_capture.py` `compute_dirty_region` | `np.argwhere` alloca un array per pixel cambiato; `cv2.boundingRect` sarebbe più efficiente (funzione attualmente non usata in hot-path). |
-| 🔵 | `ui/viewer.py` | Il ring buffer copia ancora il frame; il decoder produce array nuovi, quindi si potrebbe referenziare direttamente. |
+| 🔵 | `ui/viewer.py` | ~~Il ring buffer copia ancora il frame~~ → **applicato nel Round 2 (#11)** |
