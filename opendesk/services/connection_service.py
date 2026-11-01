@@ -43,6 +43,7 @@ class ConnectionService(QObject):
         auth_requested()
         auth_result(success: bool, message: str)
         frame_received(rgb: np.ndarray, width: int, height: int)
+        tile_received(rgb: np.ndarray, x: int, y: int, w: int, h: int)
         message_received(msg: Message)
         device_list_received(devices: list[dict])
         error(error_msg: str)
@@ -58,6 +59,7 @@ class ConnectionService(QObject):
     host_auth_result = Signal(bool, str)  # un client remoto si è autenticato a NOI (host)
     client_auth_result = Signal(bool, str)  # NOI ci siamo autenticati a un host remoto (client)
     frame_received = Signal(np.ndarray, int, int)
+    tile_received = Signal(np.ndarray, int, int, int, int)  # rgb, x, y, w, h
     message_received = Signal(object)
     device_list_received = Signal(list)
     error = Signal(str)
@@ -102,6 +104,7 @@ class ConnectionService(QObject):
 
         # ── Shared signals (from both host and client) ──
         self._relay.frame_received.connect(self.frame_received.emit)
+        self._relay.tile_received.connect(self.tile_received.emit)
         self._relay.message_received.connect(self.message_received.emit)
         self._relay.device_list_received.connect(self._on_device_list_from_relay)
 
