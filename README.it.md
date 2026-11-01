@@ -220,6 +220,7 @@ supporto all'accelerazione hardware.
 | **LOW** | 32 | ~0.5 Mbps | Connessioni lente |
 | **MEDIUM** | 27 | ~2 Mbps | Bilanciato |
 | **HIGH** (default) | 23 | ~8 Mbps | Buona qualità |
+| **SHARP** | 18 | ~15 Mbps | Testo nitido, ottimo per la lettura |
 | **LOSSLESS** | 16 | ~20+ Mbps | LAN / quasi lossless |
 
 CRF (Constant Rate Factor) è la modalità di controllo di rate predefinita:
@@ -239,8 +240,15 @@ preferenza:
 | `h264_amf` | HW (AMD) | GPU AMD + driver |
 | `hevc_vaapi` | HW (Intel/AMD) | Driver VAAPI (Linux) |
 | `h264_vaapi` | HW (Intel/AMD) | Driver VAAPI (Linux) |
-| `hevc_videotoolbox` | HW (Apple) | macOS |
-| `h264` (libx264) | SW | Sempre disponibile |
+| `hevc_qsv` | HW (Intel) | Intel Quick Sync + driver |
+| `h264_qsv` | HW (Intel) | Intel Quick Sync + driver |
+| `hevc` | SW | Fallback (x265) |
+| `h264` | SW | Fallback, sempre disponibile |
+
+> **Nota:** `hevc_videotoolbox`/`h264_videotoolbox` (HW Apple) sono esclusi
+> intenzionalmente: il bitstream generato da PyAV non è decodificabile dal
+> decoder H.264 interno dell'app, quindi su macOS si ricade sugli encoder
+> software.
 
 Seleziona il codec in **Strumenti → Impostazioni → Video → Encoder**.
 

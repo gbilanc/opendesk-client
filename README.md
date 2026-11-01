@@ -203,6 +203,7 @@ with hardware acceleration support.
 | **LOW** | 32 | ~0.5 Mbps | Slow connections |
 | **MEDIUM** | 27 | ~2 Mbps | Balanced |
 | **HIGH** (default) | 23 | ~8 Mbps | Good quality |
+| **SHARP** | 18 | ~15 Mbps | Sharp text, great for reading |
 | **LOSSLESS** | 16 | ~20+ Mbps | LAN / near-lossless |
 
 CRF (Constant Rate Factor) is the default rate control mode, providing
@@ -220,8 +221,14 @@ OpenDesk supports multiple codecs, auto-detected in order of preference:
 | `h264_amf` | HW (AMD) | AMD GPU + drivers |
 | `hevc_vaapi` | HW (Intel/AMD) | VAAPI drivers (Linux) |
 | `h264_vaapi` | HW (Intel/AMD) | VAAPI drivers (Linux) |
-| `hevc_videotoolbox` | HW (Apple) | macOS |
-| `h264` (libx264) | SW | Always available |
+| `hevc_qsv` | HW (Intel) | Intel Quick Sync + drivers |
+| `h264_qsv` | HW (Intel) | Intel Quick Sync + drivers |
+| `hevc` | SW | Fallback (x265) |
+| `h264` | SW | Fallback, always available |
+
+> **Note:** `hevc_videotoolbox`/`h264_videotoolbox` (Apple Silicon HW) are
+> intentionally excluded: the bitstream PyAV emits cannot be parsed by the
+> app's H.264 decoder, so macOS falls back to the software encoders.
 
 Select the codec in **Tools → Settings → Video → Encoder**.
 
