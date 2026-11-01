@@ -47,15 +47,12 @@ def setup_host_app() -> None:
     """Create the desktop entry file for the host application."""
     print("Setting up desktop entry...")
 
-    system = "darwin"
     data_home = Path.home() / ".local" / "share"
     apps_dir = data_home / "applications"
     icons_dir = data_home / "icons" / "hicolor" / "256x256" / "apps"
 
     apps_dir.mkdir(parents=True, exist_ok=True)
     icons_dir.mkdir(parents=True, exist_ok=True)
-
-    icon_src = Path(__file__).parent / "opendesk" / "ui" / "resources" / "opendesk.svg"
 
     desktop_file = apps_dir / "opendesk-host.desktop"
     desktop_content = """[Desktop Entry]
@@ -76,9 +73,7 @@ StartupWMClass=opendesk
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Install OpenDesk Host on macOS."
-    )
+    parser = argparse.ArgumentParser(description="Install OpenDesk Host on macOS.")
     parser.add_argument(
         "--skip-deps",
         action="store_true",

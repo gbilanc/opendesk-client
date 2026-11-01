@@ -38,7 +38,9 @@ def detect_platform() -> platform.system():
     return system
 
 
-def run_cmd(cmd: list[str], cwd: str | None = None, check: bool = True) -> subprocess.CompletedProcess:
+def run_cmd(
+    cmd: list[str], cwd: str | None = None, check: bool = True
+) -> subprocess.CompletedProcess:
     """Run a shell command and return the result."""
     print(f"  Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, cwd=cwd, text=True)
@@ -51,7 +53,9 @@ def run_cmd(cmd: list[str], cwd: str | None = None, check: bool = True) -> subpr
 def install_system_deps_windows() -> None:
     """Install system dependencies on Windows."""
     print("Installing Windows system dependencies...")
-    run_cmd(["choco", "install", "-y", "ffmpeg", "libx11-6", "libxext6", "libxrender1", "libxtst6"])
+    run_cmd(
+        ["choco", "install", "-y", "ffmpeg", "libx11-6", "libxext6", "libxrender1", "libxtst6"]
+    )
 
 
 def install_system_deps_linux() -> None:
@@ -65,10 +69,34 @@ def install_system_deps_linux() -> None:
             run_cmd(["apt-get", "update"])
         else:
             print("  Installing via apt-get...")
-            run_cmd(["sudo", "apt-get", "install", "-y", "ffmpeg", "libx11-6", "libxext6", "libxrender1", "libxtst6"])
+            run_cmd(
+                [
+                    "sudo",
+                    "apt-get",
+                    "install",
+                    "-y",
+                    "ffmpeg",
+                    "libx11-6",
+                    "libxext6",
+                    "libxrender1",
+                    "libxtst6",
+                ]
+            )
     elif system == "Fedora":
         print("  Installing via dnf...")
-        run_cmd(["sudo", "dnf", "install", "-y", "ffmpeg", "libX11", "libXext", "libXrender", "libXtst"])
+        run_cmd(
+            [
+                "sudo",
+                "dnf",
+                "install",
+                "-y",
+                "ffmpeg",
+                "libX11",
+                "libXext",
+                "libXrender",
+                "libXtst",
+            ]
+        )
 
 
 def install_system_deps_darwin() -> None:
@@ -103,7 +131,6 @@ def setup_host_app() -> None:
     """Create the desktop entry file for the host application."""
     print("Setting up desktop entry...")
 
-    system = detect_platform()
     data_home = Path.home() / ".local" / "share"
     apps_dir = data_home / "applications"
     icons_dir = data_home / "icons" / "hicolor" / "256x256" / "apps"
@@ -186,7 +213,7 @@ def main() -> None:
     target_dir = Path(args.target_dir)
     target_dir = target_dir.resolve()
 
-    print(f"OpenDesk Host — Cross-Platform Installer")
+    print("OpenDesk Host — Cross-Platform Installer")
     print(f"Target directory: {target_dir}\n")
 
     system = detect_platform()
@@ -213,7 +240,7 @@ def main() -> None:
 
     print("\nInstallation complete!")
     print(f"Run: {target_dir}/opendesk-host --log-level=WARNING")
-    print(f"Config: Set OPENDESK_LOG_LEVEL=WARNING if needed.\n")
+    print("Config: Set OPENDESK_LOG_LEVEL=WARNING if needed.\n")
 
 
 if __name__ == "__main__":

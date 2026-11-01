@@ -159,11 +159,7 @@ class CaptureWorker(threading.Thread):
                         # ~11 ms/frame a 1080p (33% del budget a 30 fps).
                         # Per downscale lievi (>= 0.7) INTER_LINEAR è quasi
                         # indistinguibile e ~5x più veloce (≈2.3 ms).
-                        interpolation = (
-                            cv2.INTER_AREA
-                            if scale < 0.7
-                            else cv2.INTER_LINEAR
-                        )
+                        interpolation = cv2.INTER_AREA if scale < 0.7 else cv2.INTER_LINEAR
                         data = cv2.resize(data, (nw, nh), interpolation=interpolation)
 
                 # ── Invia all'encoder (non bloccante) ──
@@ -480,8 +476,7 @@ class EncoderWorker(threading.Thread):
         xs = np.arange(nx) * tile_size
         ye = np.minimum(ys + tile_size, h)
         xe = np.minimum(xs + tile_size, w)
-        counts = (ii[np.ix_(ye, xe)] - ii[np.ix_(ys, xe)]
-                  - ii[np.ix_(ye, xs)] + ii[np.ix_(ys, xs)])
+        counts = ii[np.ix_(ye, xe)] - ii[np.ix_(ys, xe)] - ii[np.ix_(ye, xs)] + ii[np.ix_(ys, xs)]
         areas = np.outer(ye - ys, xe - xs)
         rows, cols = np.nonzero(counts > _TILE_CHANGE_RATIO * areas)
         changed_boxes = [

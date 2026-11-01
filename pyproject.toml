@@ -95,6 +95,11 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 
+[tool.ruff.lint.per-file-ignores]
+# Costanti Win32 (WM_*, SC_*) negli script di debug/repro: naming Win32 intenzionale
+"tests/probe_*.py" = ["N806"]
+"tests/repro_*.py" = ["N806"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = false

@@ -817,7 +817,7 @@ class _HARDWAREINPUT(ctypes.Structure):
     ]
 
 
-class _INPUT_UNION(ctypes.Union):
+class _INPUT_UNION(ctypes.Union):  # noqa: N801 — nome Win32 (INPUT union)
     _fields_ = [
         ("mi", _MOUSEINPUT),
         ("ki", _KEYBDINPUT),

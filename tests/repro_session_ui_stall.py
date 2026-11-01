@@ -225,8 +225,7 @@ def main() -> int:
             time.sleep(0.01)
         ps = phase_stats[name]
         print(
-            f"  processEvents: n={len(ps)} max={max(ps) * 1000:.0f}ms "
-            f"tot={sum(ps) * 1000:.0f}ms"
+            f"  processEvents: n={len(ps)} max={max(ps) * 1000:.0f}ms tot={sum(ps) * 1000:.0f}ms"
         )
 
     def do_minimize() -> None:

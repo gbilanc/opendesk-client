@@ -13,6 +13,7 @@ Procedura di test raccomandata (eseguire su una macchina Windows reale):
   2. Connetti un client e avvia lo streaming               (baseline stream)
   3. Riesegui dopo il deploy della patch e confronta i delta
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,11 +32,7 @@ def find_opendesk_host_process() -> psutil.Process | None:
         try:
             name = (proc.info["name"] or "").lower()
             cmdline = " ".join(proc.info.get("cmdline") or []).lower()
-            if (
-                "opendesk" in name
-                or "opendesk" in cmdline
-                or "host_app" in cmdline
-            ):
+            if "opendesk" in name or "opendesk" in cmdline or "host_app" in cmdline:
                 return proc
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
@@ -50,11 +47,7 @@ def main() -> None:
     parser.add_argument("--out", default="ram_report.csv")
     args = parser.parse_args()
 
-    proc = (
-        psutil.Process(args.pid)
-        if args.pid
-        else find_opendesk_host_process()
-    )
+    proc = psutil.Process(args.pid) if args.pid else find_opendesk_host_process()
     if proc is None:
         sys.exit("Processo opendesk-host non trovato (usa --pid)")
 
@@ -66,12 +59,14 @@ def main() -> None:
         t0 = time.time()
         while time.time() - t0 < args.duration:
             mem = proc.memory_info()
-            writer.writerow([
-                round(time.time() - t0, 1),
-                round(mem.rss / 1024 / 1024, 1),
-                round(mem.private / 1024 / 1024, 1),
-                proc.num_threads(),
-            ])
+            writer.writerow(
+                [
+                    round(time.time() - t0, 1),
+                    round(mem.rss / 1024 / 1024, 1),
+                    round(mem.private / 1024 / 1024, 1),
+                    proc.num_threads(),
+                ]
+            )
             f.flush()
             time.sleep(args.interval)
     print(f"Report scritto in {args.out}")

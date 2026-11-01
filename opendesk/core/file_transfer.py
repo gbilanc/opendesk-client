@@ -113,7 +113,7 @@ class _ReceiveTarget:
     """Open write handle + incremental SHA-256 for an incoming file."""
 
     handle: BinaryIO
-    hasher: "hashlib._Hash"
+    hasher: hashlib._Hash
 
 
 # ---------------------------------------------------------------------------
@@ -438,9 +438,7 @@ class FileTransferManager:
             job.file_info.path = str(dest_dir)
             job.state = TransferState.ACCEPTED
             job.started_at = time.time()
-            self._receive_targets[job.id] = _ReceiveTarget(
-                handle=handle, hasher=hashlib.sha256()
-            )
+            self._receive_targets[job.id] = _ReceiveTarget(handle=handle, hasher=hashlib.sha256())
             self._push_update("transfer", job.id)
             return True
         except OSError as e:

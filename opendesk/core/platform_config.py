@@ -817,7 +817,7 @@ def _apply_capture_method_override(cfg: PlatformConfig) -> None:
             cfg.capture_method = requested
     else:
         logger.warning(
-            "video/capture_method=%s non disponibile su questa piattaforma " "(%s) — uso %s",
+            "video/capture_method=%s non disponibile su questa piattaforma (%s) — uso %s",
             raw,
             ", ".join(m.name for m in cfg.capture_methods_available) or "nessuno",
             cfg.capture_method.name,

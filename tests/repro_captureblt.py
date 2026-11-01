@@ -23,7 +23,6 @@ CAPTUREBLT = 0x40000000
 
 def measure(mode: str, churn_stop: threading.Event) -> None:
     """BitBlt continuo misurando le durate (mode: 'mss' o 'nocap')."""
-    import mss
 
     # bitblt manuale per controllare i flag
     srcdc = user32.GetWindowDC(0)
@@ -35,9 +34,7 @@ def measure(mode: str, churn_stop: threading.Event) -> None:
     ctypes.cast(bmi, ctypes.POINTER(ctypes.c_int32))[2] = -800  # height
     ctypes.cast(bmi, ctypes.POINTER(ctypes.c_uint16))[6] = 1  # planes
     ctypes.cast(bmi, ctypes.POINTER(ctypes.c_uint16))[7] = 32  # bpp
-    bmp = gdi32.CreateDIBSection(
-        memdc, bmi, 0, ctypes.byref(ctypes.c_void_p()), None, 0
-    )
+    bmp = gdi32.CreateDIBSection(memdc, bmi, 0, ctypes.byref(ctypes.c_void_p()), None, 0)
     gdi32.SelectObject(memdc, bmp)
 
     flags = SRCCOPY | CAPTUREBLT if mode == "mss" else SRCCOPY
@@ -60,7 +57,7 @@ def measure(mode: str, churn_stop: threading.Event) -> None:
 
 
 def main() -> int:
-    app = QApplication.instance() or QApplication(sys.argv)
+    _app = QApplication.instance() or QApplication(sys.argv)  # noqa: F841 — serve l'instance()
     churn_stop = threading.Event()
 
     print("--- BitBlt sotto churn DWM (finestre reali) ---")
@@ -106,8 +103,13 @@ def main() -> int:
     gdi32.SelectObject(memdc, bmp)
     gdi32.BitBlt(memdc, 0, 0, 1280, 800, srcdc, 0, 0, SRCCOPY)
     gdi32.GdiFlush()
-    img = QImage(ctypes.cast(buf, ctypes.POINTER(ctypes.c_ubyte)), 1280, 800, 1280 * 4,
-                 QImage.Format.Format_ARGB32)
+    img = QImage(
+        ctypes.cast(buf, ctypes.POINTER(ctypes.c_ubyte)),
+        1280,
+        800,
+        1280 * 4,
+        QImage.Format.Format_ARGB32,
+    )
     img.mirrored(False, True).copy().save("bitblt_nocap.png")
     gdi32.DeleteObject(bmp)
     gdi32.DeleteDC(memdc)

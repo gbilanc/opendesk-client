@@ -1,4 +1,5 @@
 """Generate opendesk-host.ico (multi-size) from opendesk.svg using Qt + Pillow."""
+
 from __future__ import annotations
 
 import sys

@@ -8,9 +8,8 @@ Usage: uv run python tests/probe_host_window.py
 from __future__ import annotations
 
 import ctypes
-from ctypes import wintypes
-
 import time
+from ctypes import wintypes
 
 user32 = ctypes.windll.user32
 EnumWindowsProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)

@@ -16,6 +16,7 @@ Environment variables:
 """
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -41,7 +42,19 @@ def install_system_deps() -> None:
         run_cmd(["apt-get", "update"])
     else:
         print("  Installing via apt-get...")
-        run_cmd(["sudo", "apt-get", "install", "-y", "ffmpeg", "libx11-6", "libxext6", "libxrender1", "libxtst6"])
+        run_cmd(
+            [
+                "sudo",
+                "apt-get",
+                "install",
+                "-y",
+                "ffmpeg",
+                "libx11-6",
+                "libxext6",
+                "libxrender1",
+                "libxtst6",
+            ]
+        )
 
 
 def install_opendesk() -> None:
@@ -54,7 +67,6 @@ def setup_host_app() -> None:
     """Create the desktop entry file for the host application."""
     print("Setting up desktop entry...")
 
-    system = "linux"
     data_home = Path.home() / ".local" / "share"
     apps_dir = data_home / "applications"
     icons_dir = data_home / "icons" / "hicolor" / "256x256" / "apps"
@@ -111,9 +123,7 @@ Categories=Network;RemoteAccess;
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Install OpenDesk Host on Linux."
-    )
+    parser = argparse.ArgumentParser(description="Install OpenDesk Host on Linux.")
     parser.add_argument(
         "--skip-deps",
         action="store_true",

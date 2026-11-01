@@ -11,7 +11,6 @@ import threading
 import time
 
 import numpy as np
-
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
@@ -40,9 +39,7 @@ def main() -> int:
         from opendesk.core.video_codec import EncoderConfig, VideoEncoder
 
         try:
-            enc = VideoEncoder(
-                EncoderConfig(width=1280, height=800, fps=30, codec="h264", crf=14)
-            )
+            enc = VideoEncoder(EncoderConfig(width=1280, height=800, fps=30, codec="h264", crf=14))
         except Exception as e:
             print(f"encoder init failed: {e}")
             return

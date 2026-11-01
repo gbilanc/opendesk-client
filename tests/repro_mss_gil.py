@@ -40,7 +40,7 @@ def main() -> int:
         t0 = time.monotonic()
         while not stop.is_set():
             raw = sct.grab(mon)
-            buf = bytearray(raw.rgb)
+            _buf = bytearray(raw.rgb)  # noqa: F841 — allocazione necessaria al benchmark
             n += 1
         dt = time.monotonic() - t0
         print(f"  (mss: {n} grab in {dt:.1f}s = {n / dt:.1f} fps)")

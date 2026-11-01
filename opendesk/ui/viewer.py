@@ -328,10 +328,7 @@ class RemoteViewer(QGraphicsView):
                 # di memcpy risparmiati per frame).  Il ring-buffer resta
                 # per i frame non-contiguous e per il path bytes.
                 if not rgb_data.flags["C_CONTIGUOUS"]:
-                    if (
-                        not self._frame_buffers
-                        or len(self._frame_buffers[-1]) != w * h * 3
-                    ):
+                    if not self._frame_buffers or len(self._frame_buffers[-1]) != w * h * 3:
                         buf = bytearray(w * h * 3)
                     else:
                         buf = self._frame_buffers.popleft()

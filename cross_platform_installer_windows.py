@@ -34,7 +34,9 @@ def run_cmd(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
 def install_system_deps() -> None:
     """Install system dependencies on Windows via Choco."""
     print("Installing Windows system dependencies...")
-    run_cmd(["choco", "install", "-y", "ffmpeg", "libx11-6", "libxext6", "libxrender1", "libxtst6"])
+    run_cmd(
+        ["choco", "install", "-y", "ffmpeg", "libx11-6", "libxext6", "libxrender1", "libxtst6"]
+    )
 
 
 def install_opendesk() -> None:
@@ -47,15 +49,12 @@ def setup_host_app() -> None:
     """Create the desktop entry file for the host application."""
     print("Setting up desktop entry...")
 
-    system = "windows"
     data_home = Path.home() / ".local" / "share"
     apps_dir = data_home / "applications"
     icons_dir = data_home / "icons" / "hicolor" / "256x256" / "apps"
 
     apps_dir.mkdir(parents=True, exist_ok=True)
     icons_dir.mkdir(parents=True, exist_ok=True)
-
-    icon_src = Path(__file__).parent / "opendesk" / "ui" / "resources" / "opendesk.svg"
 
     desktop_file = apps_dir / "opendesk-host.desktop"
     desktop_content = """[Desktop Entry]
@@ -76,9 +75,7 @@ StartupWMClass=opendesk
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Install OpenDesk Host on Windows."
-    )
+    parser = argparse.ArgumentParser(description="Install OpenDesk Host on Windows.")
     parser.add_argument(
         "--skip-deps",
         action="store_true",
