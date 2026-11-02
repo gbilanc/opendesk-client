@@ -274,9 +274,9 @@ def test_tile_grid_drift() -> None:
     mean_drift = final_drift.mean()
     final_bad = int(np.any(final_drift > 5, axis=2).sum())
 
-    assert mean_drift < 3.0, (
-        f"Deriva media troppo alta: {mean_drift:.2f} (limite: 3.0) — indica drift progressivo"
-    )
+    assert (
+        mean_drift < 3.0
+    ), f"Deriva media troppo alta: {mean_drift:.2f} (limite: 3.0) — indica drift progressivo"
     assert final_bad < w * h * 0.05, f"Troppi pixel degradati: {final_bad}/{w * h} (limite: 5%)"
 
     enc.release()
@@ -425,9 +425,9 @@ def test_tile_bounds_check() -> None:
         if ty + th <= ref_h and tx + tw <= ref_w:
             ref[ty : ty + th, tx : tx + tw] = tile
             # Verifica che il tile sia stato compositato correttamente
-            assert np.array_equal(ref[ty : ty + th, tx : tx + tw], tile), (
-                f"Composit fallita a ({tx},{ty},{tw}x{th})"
-            )
+            assert np.array_equal(
+                ref[ty : ty + th, tx : tx + tw], tile
+            ), f"Composit fallita a ({tx},{ty},{tw}x{th})"
         else:
             # Tile fuori dai bounds → deve essere scartato
             print(f"  Tile ({tx},{ty},{tw}x{th}) fuori bounds — scartato (corretto)")
@@ -458,9 +458,9 @@ def test_small_character_detected_with_current_threshold() -> None:
     ratio = float(changed.sum()) / changed.size
 
     # 80/16384 ≈ 0.49% — sotto la vecchia soglia 0.5%, sopra quella nuova
-    assert ratio > _TILE_CHANGE_RATIO, (
-        f"ratio {ratio:.5f} deve superare _TILE_CHANGE_RATIO {_TILE_CHANGE_RATIO}"
-    )
+    assert (
+        ratio > _TILE_CHANGE_RATIO
+    ), f"ratio {ratio:.5f} deve superare _TILE_CHANGE_RATIO {_TILE_CHANGE_RATIO}"
     assert ratio < 0.005, (
         f"ratio {ratio:.5f} deve restare sotto la vecchia soglia 0.005 "
         "(dimostra che il bug riguardava proprio questo caso)"
@@ -481,7 +481,7 @@ def test_caret_detected_with_current_threshold() -> None:
     changed = np.any(diff > _TILE_THRESHOLD, axis=2)
     ratio = float(changed.sum()) / changed.size
 
-    assert ratio > _TILE_CHANGE_RATIO, (
-        f"caret ratio {ratio:.5f} deve superare _TILE_CHANGE_RATIO {_TILE_CHANGE_RATIO}"
-    )
+    assert (
+        ratio > _TILE_CHANGE_RATIO
+    ), f"caret ratio {ratio:.5f} deve superare _TILE_CHANGE_RATIO {_TILE_CHANGE_RATIO}"
     print(f"  Caret di testo: change_ratio = {ratio:.5f} — rilevato ✓")
