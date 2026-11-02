@@ -62,6 +62,7 @@ class ConnectionService(QObject):
     tile_received = Signal(np.ndarray, int, int, int, int)  # rgb, x, y, w, h
     message_received = Signal(object)
     device_list_received = Signal(list)
+    p2p_state_changed = Signal(str)
     error = Signal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -101,6 +102,7 @@ class ConnectionService(QObject):
         self._relay.client_auth_requested.connect(self._on_client_auth_requested)
         self._relay.client_auth_result.connect(self._on_client_auth_result)
         self._relay.trust_secret_received.connect(self._on_trust_secret_received)
+        self._relay.p2p_state_changed.connect(self.p2p_state_changed.emit)
 
         # ── Shared signals (from both host and client) ──
         self._relay.frame_received.connect(self.frame_received.emit)

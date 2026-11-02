@@ -89,6 +89,7 @@ class MainWindow(QMainWindow):
         self._connection.auth_requested.connect(self._on_auth_requested)
         self._connection.host_auth_result.connect(self._on_host_auth_result)
         self._connection.client_auth_result.connect(self._on_client_auth_result)
+        self._connection.p2p_state_changed.connect(self._on_p2p_state_changed)
         self._connection.frame_received.connect(self._on_frame_received)
         self._connection.tile_received.connect(self._on_tile_received)
         self._connection.message_received.connect(self._on_relay_message)
@@ -579,6 +580,14 @@ class MainWindow(QMainWindow):
         else:
             logger.warning("Client authentication failed: %s", message)
             self._status_text.setText("Client authentication failed")
+
+    @Slot(str)
+    def _on_p2p_state_changed(self, state: str) -> None:
+        """Show whether the data path is direct or relayed."""
+        if state == "connected":
+            self._status_text.setText("Direct P2P connection active")
+        elif state == "failed":
+            self._status_text.setText("P2P unavailable — using relay")
 
     @Slot(bool, str)
     def _on_client_auth_result(self, success: bool, message: str) -> None:
