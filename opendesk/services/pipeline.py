@@ -453,6 +453,7 @@ class EncoderWorker(threading.Thread):
         # Full-frame diff mask via il helper condiviso (cv2.absdiff + cv2.max,
         # un unico temporaneo single-channel invece di (H,W,3) bool di numpy).
         any_changed = _changed_mask(current, prev, threshold)
+        assert any_changed is not None
 
         # Fase 1: individua i tile cambiati senza codificarli.  Così, se
         # il cambiamento supera ``_TILE_MAX_CHANGED_RATIO``, scegliamo il

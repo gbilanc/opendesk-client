@@ -575,7 +575,7 @@ class MainWindow(QMainWindow):
                 self._clipboard_sync.start(self._send_clipboard_message)
 
             # Request initial remote file listing
-            if self._file_transfer_send_fn:
+            if self._file_transfer_send_fn is not None:
                 self._file_transfer.request_remote_listing("/", self._file_transfer_send_fn)
         else:
             logger.warning("Client authentication failed: %s", message)
@@ -617,7 +617,7 @@ class MainWindow(QMainWindow):
                 self._clipboard_sync.start(self._send_clipboard_message)
 
             # Request initial remote file listing
-            if self._file_transfer_send_fn:
+            if self._file_transfer_send_fn is not None:
                 self._file_transfer.request_remote_listing("/", self._file_transfer_send_fn)
 
             # If file-transfer-only, open the file transfer dock now

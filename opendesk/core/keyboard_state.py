@@ -77,7 +77,7 @@ def _check_win32() -> bool:
     try:
         import ctypes
 
-        return bool(ctypes.windll.user32.GetKeyState(0x14) & 0x0001)
+        return bool(ctypes.windll.user32.GetKeyState(0x14) & 0x0001)  # type: ignore[attr-defined]
     except Exception:
         logger.debug("Win32 Caps Lock check failed", exc_info=True)
         return False

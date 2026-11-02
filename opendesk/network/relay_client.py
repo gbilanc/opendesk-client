@@ -972,8 +972,9 @@ class _RelaySession:
                     self.inbox.put(("keyframe_requested", None, self.session_seq))
 
                 elif t == MessageType.ERROR:
-                    err = msg.payload.get("message", None)
-                    if err is None:
+                    raw_err = msg.payload.get("message")
+                    relay_err = raw_err if isinstance(raw_err, str) else None
+                    if relay_err is None:
                         # Payload senza 'message' — logghiamo il payload completo per debug
                         logger.warning(
                             "Host received ERROR from relay without message field "
@@ -988,15 +989,15 @@ class _RelaySession:
                             },
                             msg.payload.get("code", "N/A"),
                         )
-                        err = f"Relay error (code={msg.payload.get('code', 'N/A')})"
+                        relay_err = f"Relay error (code={msg.payload.get('code', 'N/A')})"
                     # "Peer disconnected" is expected when the remote client leaves.
                     # Treat it as a peer event, not a relay error.
-                    if "Peer disconnected" in err:
+                    if "Peer disconnected" in relay_err:
                         logger.info("Peer disconnected from our session")
                         self.inbox.put(("peer_disconnected", None, self.session_seq))
                     else:
-                        logger.warning("Host received ERROR from relay: %s", err)
-                        self.inbox.put(("error", err, self.session_seq))
+                        logger.warning("Host received ERROR from relay: %s", relay_err)
+                        self.inbox.put(("error", relay_err, self.session_seq))
 
                 elif t == MessageType.DISCONNECT:
                     logger.debug("Host received DISCONNECT — breaking loop")
@@ -1320,8 +1321,9 @@ class _RelaySession:
                     self.inbox.put(("keyframe_requested", None, self.session_seq))
 
                 elif t == MessageType.ERROR:
-                    err = msg.payload.get("message", None)
-                    if err is None:
+                    raw_err = msg.payload.get("message")
+                    relay_err = raw_err if isinstance(raw_err, str) else None
+                    if relay_err is None:
                         logger.warning(
                             "Client received ERROR without message field (payload=%s, code=%s)",
                             {
@@ -1334,9 +1336,9 @@ class _RelaySession:
                             },
                             msg.payload.get("code", "N/A"),
                         )
-                        err = f"Relay error (code={msg.payload.get('code', 'N/A')})"
-                    logger.debug("Client received ERROR: %s — breaking loop", err)
-                    self.inbox.put(("error", err, self.session_seq))
+                        relay_err = f"Relay error (code={msg.payload.get('code', 'N/A')})"
+                    logger.debug("Client received ERROR: %s — breaking loop", relay_err)
+                    self.inbox.put(("error", relay_err, self.session_seq))
                     break
 
                 elif t == MessageType.DISCONNECT:

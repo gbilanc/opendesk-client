@@ -176,7 +176,7 @@ class ClipboardSync(QObject):
                 max(_POLL_INTERVAL_MS, int(self._backoff_ms * _BACKOFF_MULTIPLIER)),
             )
         else:
-            self._backoff_ms = _POLL_INTERVAL_MS * _BACKOFF_MULTIPLIER
+            self._backoff_ms = int(_POLL_INTERVAL_MS * _BACKOFF_MULTIPLIER)
         self._last_slow_poll = now
         self._timer.start(self._backoff_ms)
         logger.info("Clipboard poll backoff: %dms", self._backoff_ms)

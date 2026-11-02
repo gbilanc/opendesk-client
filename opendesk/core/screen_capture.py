@@ -16,6 +16,7 @@ import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from threading import Lock
+from typing import Any
 
 import cv2
 import mss
@@ -522,14 +523,15 @@ class ScreenCapture:
     """
 
     def __init__(self, method: CaptureMethod | None = None) -> None:
+        self._method: CaptureMethod
         if method and method != CaptureMethod.AUTO:
             self._method = method
         else:
             self._method = get_platform_config().capture_method
         self._lock = Lock()
-        self._sct: mss.mss | None = None
+        self._sct: Any = None
         self._pw: PipeWireCapture | None = None
-        self._portal = None  # WaylandScreenCast — created lazily
+        self._portal: Any = None  # WaylandScreenCast — created lazily
         self._prev_frames: dict[int, np.ndarray] = {}
         # ── DXGI (Windows) ──
         self._dxgi: object | None = None  # dxcam camera, created lazily
@@ -812,7 +814,7 @@ class ScreenCapture:
 
     # ── internal: MSS ───────────────────────────────────────────────
 
-    def _get_sct(self) -> mss.mss:
+    def _get_sct(self) -> Any:
         if self._sct is None:
             with self._lock:
                 if self._sct is None:
@@ -948,7 +950,7 @@ class ScreenCapture:
         self._portal = wsc
         return wsc
 
-    def _capture_portal(self, monitor_index: int = 0) -> CapturedFrame:
+    def _capture_portal(self, monitor_index: int = 0) -> CapturedFrame | None:
         """Capture a single frame via the PORTAL backend.
 
         On any failure (timeout, no frames, helper crash) falls back
@@ -1066,6 +1068,8 @@ def screenshot(monitor_index: int = 0) -> Image.Image:
     if _global_capture is None:
         _global_capture = ScreenCapture()
     frame = _global_capture.capture_one(monitor_index)
+    if frame is None:
+        raise RuntimeError("Screenshot capture failed")
     return Image.fromarray(frame.data)
 
 
@@ -1139,8 +1143,8 @@ def _cursor_rgba(hcursor: int) -> tuple[int, int, np.ndarray] | None:
         import ctypes
         from ctypes import wintypes
 
-        user32 = ctypes.windll.user32
-        gdi32 = ctypes.windll.gdi32
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        gdi32 = ctypes.windll.gdi32  # type: ignore[attr-defined]
 
         class ICONINFO(ctypes.Structure):
             _fields_ = [
@@ -1239,9 +1243,9 @@ def _cursor_rgba(hcursor: int) -> tuple[int, int, np.ndarray] | None:
             return result
         finally:
             if ii.hbmMask:
-                ctypes.windll.gdi32.DeleteObject(wintypes.HBITMAP(ii.hbmMask))
+                ctypes.windll.gdi32.DeleteObject(wintypes.HBITMAP(ii.hbmMask))  # type: ignore[attr-defined]
             if ii.hbmColor:
-                ctypes.windll.gdi32.DeleteObject(wintypes.HBITMAP(ii.hbmColor))
+                ctypes.windll.gdi32.DeleteObject(wintypes.HBITMAP(ii.hbmColor))  # type: ignore[attr-defined]
     except Exception as e:
         logger.debug("cursor bitmap failed: %s", e)
         return None

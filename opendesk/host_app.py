@@ -547,7 +547,7 @@ def _toggle_topmost_win32(hwnd: int, topmost: bool) -> None:
     swp_nosize = 0x0001
     swp_noactivate = 0x0010
     insert_after = hwnd_topmost if topmost else hwnd_notopmost
-    ctypes.windll.user32.SetWindowPos(
+    ctypes.windll.user32.SetWindowPos(  # type: ignore[attr-defined]
         wintypes.HWND(hwnd),
         wintypes.HWND(insert_after),
         0,

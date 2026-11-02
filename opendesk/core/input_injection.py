@@ -348,7 +348,7 @@ class WaylandInputBackend(InputBackend):
             # NOTE: EV_SYN / SYN_REPORT must NOT be included — the kernel
             # implicitly supports them for every device.  Enabling them
             # explicitly causes UI_SET_EVBIT to fail with EINVAL.
-            capabilities = {
+            capabilities: dict[int, Any] = {
                 e.EV_KEY: (
                     e.BTN_LEFT,
                     e.BTN_MIDDLE,
@@ -466,11 +466,11 @@ class WaylandInputBackend(InputBackend):
 
         except PermissionError:
             raise
-        except OSError as e:
+        except OSError as exc:
             raise RuntimeError(
-                f"Failed to create uinput device: {e}\n"
+                f"Failed to create uinput device: {exc}\n"
                 "Ensure the uinput kernel module is loaded: sudo modprobe uinput"
-            ) from e
+            ) from exc
 
     def _key_to_evdev(self, key: str | int) -> int:
         from evdev import ecodes as e
@@ -615,7 +615,7 @@ class WaylandInputBackend(InputBackend):
         from evdev import AbsInfo, UInput
 
         try:
-            abs_caps = {
+            abs_caps: dict[int, Any] = {
                 self._e.EV_KEY: (
                     self._e.BTN_LEFT,
                     self._e.BTN_MIDDLE,
@@ -956,7 +956,7 @@ class WindowsInputBackend(InputBackend):
 
     def __init__(self) -> None:
 
-        self._user32 = ctypes.windll.user32
+        self._user32 = ctypes.windll.user32  # type: ignore[attr-defined]
 
         # Strutture SendInput (INPUT, MOUSEINPUT, KEYBDINPUT)
         self._INPUT_TYPE_MOUSE = 0

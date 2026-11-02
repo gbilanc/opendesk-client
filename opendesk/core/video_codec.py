@@ -65,6 +65,7 @@ def _try_open_codec(name: str, fps: int = 30) -> bool:
     try:
         container = av.open("pipe:", mode="w", format="h264" if "264" in name else "hevc")
         stream = container.add_stream(name, rate=fps)
+        assert isinstance(stream, av.VideoStream)
         stream.width = 32
         stream.height = 32
         stream.pix_fmt = "yuv420p"
@@ -395,11 +396,11 @@ class VideoEncoder:
 
             crf = self._actual_crf if self._actual_crf is not None else self._config.crf
             use_crf = crf is not None
-            if use_crf:
+            if crf is not None:
                 # Read the config-level CRF if not set dynamically
                 if self._actual_crf is None:
                     self._actual_crf = crf
-                self._actual_crf = max(0, min(51, self._actual_crf))
+                self._actual_crf = max(0, min(51, crf))
 
             is_hevc = "hevc" in codec
 

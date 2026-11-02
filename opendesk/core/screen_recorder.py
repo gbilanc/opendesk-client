@@ -11,6 +11,7 @@ import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import av
 import numpy as np
@@ -59,6 +60,8 @@ class ScreenRecorder:
         self._encoder: VideoEncoder | None = None
         self._status = RecordingStatus()
         self._output_path: Path | None = None
+        self._av_container: Any = None
+        self._av_stream: Any = None
 
     # ── properties ──────────────────────────────────────────────────
 

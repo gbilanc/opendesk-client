@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
 from importlib import util as importlib_util
+from typing import Any
 
 import av
 import numpy as np
@@ -70,9 +71,9 @@ class OpusCodec:
     def __init__(self, sample_rate: int = _SAMPLE_RATE, channels: int = _CHANNELS) -> None:
         self._sample_rate = sample_rate
         self._channels = channels
-        self._encoder_container = None
-        self._encoder_stream = None
-        self._decoder = None
+        self._encoder_container: Any = None
+        self._encoder_stream: Any = None
+        self._decoder: Any = None
 
     # ── encoder (stream-based API) ─────────────────────────────────
 
@@ -207,7 +208,7 @@ class AudioManager:
         self._stop_event = threading.Event()
 
         # Playback state
-        self._playback_device = None  # reusable speaker context
+        self._playback_device: Any = None  # reusable speaker context
         self._playback_lock = threading.Lock()
 
     # ── properties ──────────────────────────────────────────────────

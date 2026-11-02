@@ -27,7 +27,7 @@ import queue
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -253,7 +253,7 @@ class FileTransferManager:
 
     def send_files(
         self,
-        paths: list[str | Path],
+        paths: Sequence[str | Path],
         send_fn: Callable,
         remote_dest_path: str = "",
     ) -> Future:

@@ -90,12 +90,13 @@ class STUNProtocol(asyncio.DatagramProtocol):
 
     def __init__(self, request: bytes, timeout: float) -> None:
         self._request = request
-        self._transport: asyncio.DatagramTransport | None = None
+        self._transport: asyncio.BaseTransport | None = None
         self.result_future: asyncio.Future[ExternalEndpoint] = asyncio.Future()
 
-    def connection_made(self, transport: asyncio.DatagramTransport) -> None:
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self._transport = transport
-        transport.sendto(self._request)
+        if isinstance(transport, asyncio.DatagramTransport):
+            transport.sendto(self._request)
 
     def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
         import struct

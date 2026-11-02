@@ -66,7 +66,7 @@ class WaylandScreenCast:
 
     def __init__(self) -> None:
         self._session: WaylandCaptureSession | None = None
-        self._bus = None
+        self._bus: Any = None
         self._request_token: int = 0
         self._available: bool | None = None
         # Subprocess-based GStreamer reader
@@ -499,14 +499,17 @@ class WaylandScreenCast:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
+            stdout = self._helper_process.stdout
+            if stdout is None:
+                break
             r, _, _ = select.select(
-                [self._helper_process.stdout],
+                [stdout],
                 [],
                 [],
                 min(remaining, 1.0),
             )
             if r:
-                chunk = self._helper_process.stdout.read(8 - len(header))
+                chunk = stdout.read(8 - len(header))
                 if not chunk:
                     break
                 header += chunk
