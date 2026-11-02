@@ -41,6 +41,11 @@ from opendesk.crypto.challenge import (
     verify_response,
 )
 from opendesk.crypto.e2ee import E2EEncryption, EncryptedMessage
+from opendesk.network.p2p_transport import (
+    MEDIA_MESSAGE_TYPES,
+    P2PTransport,
+    build_ice_servers,
+)
 from opendesk.network.protocol import Message, MessageType
 
 logger = logging.getLogger(__name__)
@@ -68,6 +73,18 @@ _SEND_DRAIN_TIMEOUT = 5.0  # max seconds to wait for TCP send buffer to drain
 _SEND_MAX_CONSECUTIVE_TIMEOUTS = 3  # consecutive drain timeouts before disconnecting
 _SEND_MAX_PENDING = 20  # max pending sends before backpressure kicks in
 _PING_INTERVAL = 25.0  # s — keep-alive; il relay disconnette peer idle > 120s
+
+# Sentinel pushed into the incoming queue when the relay reader ends.
+_INCOMING_CLOSED = object()
+
+# Signalling messages handled internally; they must not be forwarded to the UI.
+_P2P_SIGNAL_TYPES = frozenset(
+    {
+        MessageType.P2P_OFFER,
+        MessageType.P2P_ANSWER,
+        MessageType.P2P_CLOSE,
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +118,9 @@ class _RelaySession:
         known_device_secrets: dict[str, str] | None = None,
         connection_mode: str = "remote_desktop",
         e2ee_enabled: bool = True,
+        p2p_enabled: bool = False,
+        ice_servers: list | None = None,
+        relay_fallback: bool = True,
     ) -> None:
         self.host = host
         self.port = port
@@ -113,6 +133,15 @@ class _RelaySession:
         self.session_seq = session_seq
         self.connection_mode = connection_mode
         self._e2ee_enabled = e2ee_enabled
+        self._p2p_enabled = p2p_enabled
+        self._ice_servers = ice_servers or []
+        self._relay_fallback = relay_fallback
+        self._authenticated = False
+        self._p2p: P2PTransport | None = None
+        self._p2p_ready = False
+        self._p2p_negotiation_started = False
+        self._pending_p2p_sends = 0
+        self._incoming: asyncio.Queue | None = None
         # Per-device secrets of devices WE trust (host side): id → secret.
         self._trusted_devices: dict[str, str] = trusted_devices or {}
         self._trusted_device_ids: set[str] = set(self._trusted_devices)
@@ -220,6 +249,7 @@ class _RelaySession:
         """Run the asyncio event loop in the current thread (blocking)."""
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
+        self._incoming = asyncio.Queue()
         self._running.set()
         try:
             if self.role == RelayRole.HOST:
@@ -510,6 +540,174 @@ class _RelaySession:
             raise ValueError("Invalid decrypted peer payload")
         return Message(msg.type, payload)
 
+    # ── direct P2P ──────────────────────────────────────────────────
+
+    def _schedule_p2p_send(self, msg: Message) -> bool:
+        """Queue a message for the P2P loop (thread-safe).
+
+        This is called from the UI/network-worker thread while the data
+        channel lives in the asyncio loop.  The pending counter mirrors the
+        relay backpressure behaviour.
+        """
+        if not self._p2p_ready or self._p2p is None or self._loop is None:
+            return False
+        with self._send_lock:
+            if self._pending_p2p_sends >= _SEND_MAX_PENDING:
+                return False
+            self._pending_p2p_sends += 1
+        try:
+            self._loop.call_soon_threadsafe(self._send_p2p_now, msg)
+        except RuntimeError:
+            with self._send_lock:
+                self._pending_p2p_sends = max(0, self._pending_p2p_sends - 1)
+            return False
+        return True
+
+    def _send_p2p_now(self, msg: Message) -> None:
+        try:
+            if self._p2p is not None and self._p2p_ready:
+                self._p2p.send(msg)
+        finally:
+            with self._send_lock:
+                self._pending_p2p_sends = max(0, self._pending_p2p_sends - 1)
+
+    async def _send_peer_signalling(self, msg: Message) -> None:
+        """Send a P2P signalling message through the relay.
+
+        Once E2EE is ready the SDP is encrypted like any other peer payload,
+        so the relay cannot read local IP addresses or DTLS fingerprints.
+        """
+        inner = self._encrypt_peer_message(msg)
+        await self._send_async(
+            Message.relay_route(inner.type.value, inner.payload),
+            bypass_backpressure=True,
+        )
+
+    def _maybe_start_p2p(self) -> None:
+        """Start the host-side P2P offer when authentication is complete."""
+        if not self._p2p_enabled or self._p2p_negotiation_started:
+            return
+        if self.role != RelayRole.HOST or not self._authenticated:
+            return
+        if self._e2ee_enabled and not self._e2ee_ready:
+            return
+        self._p2p_negotiation_started = True
+        asyncio.create_task(self._start_p2p_offer())
+
+    async def _start_p2p_offer(self) -> None:
+        try:
+            self._p2p = P2PTransport(
+                ice_servers=self._ice_servers,
+                on_message=self._on_p2p_message,
+                on_state_change=self._on_p2p_state_change,
+            )
+            sdp = await self._p2p.create_offer()
+            await self._send_peer_signalling(Message.p2p_offer(sdp))
+            logger.info("P2P offer sent to peer")
+        except Exception as e:
+            logger.warning("P2P offer failed, continuing on relay: %s", e)
+            self._close_p2p()
+
+    async def _handle_p2p_offer(self, payload: dict) -> None:
+        if not self._p2p_enabled:
+            return
+        sdp = payload.get("sdp", "")
+        if not isinstance(sdp, str) or not sdp:
+            logger.warning("Ignoring P2P offer without SDP")
+            return
+        try:
+            if self._p2p is None:
+                self._p2p = P2PTransport(
+                    ice_servers=self._ice_servers,
+                    on_message=self._on_p2p_message,
+                    on_state_change=self._on_p2p_state_change,
+                )
+            answer = await self._p2p.accept_offer(sdp)
+            await self._send_peer_signalling(Message.p2p_answer(answer))
+            logger.info("P2P answer sent to peer")
+        except Exception as e:
+            logger.warning("P2P offer handling failed, using relay: %s", e)
+            await self._send_peer_signalling(Message.p2p_close(str(e)))
+            self._close_p2p()
+
+    async def _handle_p2p_answer(self, payload: dict) -> None:
+        sdp = payload.get("sdp", "")
+        if self._p2p is None or not isinstance(sdp, str) or not sdp:
+            return
+        try:
+            await self._p2p.accept_answer(sdp)
+            logger.info("P2P answer accepted")
+        except Exception as e:
+            logger.warning("P2P answer failed, continuing on relay: %s", e)
+            await self._send_peer_signalling(Message.p2p_close(str(e)))
+            self._close_p2p()
+
+    def _on_p2p_message(self, data: bytes) -> None:
+        try:
+            msg = self._decrypt_peer_message(Message.decode(data))
+        except Exception as e:
+            logger.warning("Dropped P2P message: %s", e)
+            return
+        if self._incoming is not None:
+            self._incoming.put_nowait(msg)
+
+    def _on_p2p_state_change(self, state: str) -> None:
+        if state == "connected":
+            self._p2p_ready = True
+            logger.info("P2P direct path active")
+            self.inbox.put(("p2p_state", state, self.session_seq))
+        elif state in ("failed", "closed"):
+            self._p2p_ready = False
+            logger.info("P2P path %s — falling back to relay", state)
+            self.inbox.put(("p2p_state", state, self.session_seq))
+            if not self._relay_fallback and self._running.is_set():
+                self.inbox.put(
+                    (
+                        "error",
+                        "P2P connection failed and relay fallback is disabled",
+                        self.session_seq,
+                    )
+                )
+                self._running.clear()
+
+    def _close_p2p(self) -> None:
+        self._p2p_ready = False
+        if self._p2p is not None:
+            self._p2p.close()
+            self._p2p = None
+
+    async def _aclose_p2p(self) -> None:
+        """Close the P2P transport and wait for aiortc teardown."""
+        self._p2p_ready = False
+        transport = self._p2p
+        self._p2p = None
+        if transport is not None:
+            await transport.aclose()
+
+    async def _relay_reader_task(self) -> None:
+        """Read relay messages and feed the common incoming queue."""
+        try:
+            async for msg in self._read_loop():
+                if self._incoming is not None:
+                    await self._incoming.put(msg)
+        finally:
+            if self._incoming is not None:
+                self._incoming.put_nowait(_INCOMING_CLOSED)
+
+    async def _next_incoming(self) -> Message | None:
+        """Return the next relay/P2P message, or None when the session ends."""
+        if self._incoming is None:
+            return None
+        while self._running.is_set():
+            try:
+                item = await asyncio.wait_for(self._incoming.get(), timeout=1.0)
+            except TimeoutError:
+                continue
+            if item is _INCOMING_CLOSED:
+                return None
+            return item
+        return None
+
     def send_message(self, msg: Message) -> bool:
         """Send a message over the relay connection (thread-safe).
 
@@ -526,6 +724,25 @@ class _RelaySession:
             is_relay_control = msg.type in self._RELAY_CONTROL_TYPES
             bypass_backpressure = msg.type in self._BACKPRESSURE_BYPASS
 
+            # Encrypt peer-to-peer messages once, before choosing the path.
+            # Relay-internal control messages are sent as-is.
+            if not is_relay_control:
+                msg = self._encrypt_peer_message(msg)
+
+                # Prefer the direct data channel when it is established.
+                # Media is dropped on P2P backpressure instead of being sent
+                # twice; non-media may still fall back to the relay.
+                if self._p2p_ready:
+                    if self._schedule_p2p_send(msg):
+                        return True
+                    if msg.type in MEDIA_MESSAGE_TYPES:
+                        return False
+
+                msg = Message.relay_route(
+                    inner_type=msg.type.value,
+                    inner_payload=msg.payload,
+                )
+
             # Backpressure: only drop video frames/tiles when the send pipe is full
             if not bypass_backpressure:
                 if self._pending_sends >= _SEND_MAX_PENDING:
@@ -537,15 +754,6 @@ class _RelaySession:
                     return False
                 with self._send_lock:
                     self._pending_sends += 1
-
-            # Encrypt and wrap peer-to-peer messages in RELAY_ROUTE.
-            # Relay-internal control messages are sent as-is.
-            if not is_relay_control:
-                msg = self._encrypt_peer_message(msg)
-                msg = Message.relay_route(
-                    inner_type=msg.type.value,
-                    inner_payload=msg.payload,
-                )
 
             # Serializza sul thread chiamante (tipicamente NetworkWorker):
             # così l'event loop asyncio esegue solo write/drain e non resta
@@ -638,15 +846,19 @@ class _RelaySession:
         )
 
         ping_task = asyncio.create_task(self._ping_loop())
-        gen = self._read_loop()
+        reader_task = asyncio.create_task(self._relay_reader_task())
         try:
-            async for msg in gen:
+            while self._running.is_set():
+                msg = await self._next_incoming()
+                if msg is None:
+                    break
                 try:
                     msg = self._decrypt_peer_message(msg)
                 except ValueError as e:
                     logger.warning("Dropped encrypted host message: %s", e)
                     continue
-                self.inbox.put(("message", msg, self.session_seq))
+                if msg.type not in _P2P_SIGNAL_TYPES:
+                    self.inbox.put(("message", msg, self.session_seq))
 
                 t = msg.type
                 if t == MessageType.RELAY_REGISTER:
@@ -654,10 +866,13 @@ class _RelaySession:
 
                 elif t == MessageType.RELAY_PEER_LIST:
                     self.inbox.put(("peer_joined", None, self.session_seq))
-                    # New peer: reset the E2EE state.  The host session is
+                    # New peer: reset the E2EE/P2P state.  The host session is
                     # persistent and handles peers sequentially, so keeping
-                    # the previous peer's key would make the new peer unable
-                    # to decrypt the stream (black screen).
+                    # the previous peer's key or data channels would make the
+                    # new peer unable to decrypt the stream (black screen).
+                    self._close_p2p()
+                    self._authenticated = False
+                    self._p2p_negotiation_started = False
                     self._e2ee = E2EEncryption()
                     self._e2ee_ready = False
                     self._proof_secret = ""
@@ -682,6 +897,15 @@ class _RelaySession:
                         logger.warning(
                             "E2E key exchange ACK failed, continuing without encryption"
                         )
+                    else:
+                        self._maybe_start_p2p()
+
+                elif t == MessageType.P2P_ANSWER:
+                    await self._handle_p2p_answer(msg.payload)
+
+                elif t == MessageType.P2P_CLOSE:
+                    logger.info("Peer closed the P2P path — using relay")
+                    self._close_p2p()
 
                 elif t == MessageType.AUTH_RESPONSE:
                     client_hash = msg.payload.get("nonce_hash", "")
@@ -698,6 +922,7 @@ class _RelaySession:
                         # Use the per-device secret for the E2EE proof so the
                         # peer doesn't need to know the session password.
                         self._proof_secret = self._trusted_devices.get(client_device_id, "")
+                        self._authenticated = True
                         await self._send_async(Message.auth_ok())
                         # E2E key exchange after authentication
                         if self._e2ee_enabled:
@@ -709,6 +934,7 @@ class _RelaySession:
                                     ).payload,
                                 )
                             )
+                        self._maybe_start_p2p()
                         self.inbox.put(
                             (
                                 "auth_result",
@@ -720,6 +946,7 @@ class _RelaySession:
 
                     success = verify_response(self._auth_nonce, self.password, client_hash)
                     if success:
+                        self._authenticated = True
                         await self._send_async(Message.auth_ok())
                         # E2E key exchange after authentication
                         if self._e2ee_enabled:
@@ -731,6 +958,7 @@ class _RelaySession:
                                     ).payload,
                                 )
                             )
+                        self._maybe_start_p2p()
                         self.inbox.put(("auth_result", (True, "Authenticated"), self.session_seq))
                         logger.debug("Host auth OK — connection_mode=%s", client_connection_mode)
                     else:
@@ -786,8 +1014,9 @@ class _RelaySession:
                 else:
                     logger.debug("Host received unhandled message type %s", t)
         finally:
-            await gen.aclose()
             ping_task.cancel()
+            reader_task.cancel()
+            await self._aclose_p2p()
             await self._close_writer()
         self.inbox.put(("disconnected", None, self.session_seq))
         logger.debug("Host session ended: disconnected event queued")
@@ -857,16 +1086,19 @@ class _RelaySession:
 
         watchdog_task = asyncio.create_task(_keyframe_watchdog())
         ping_task = asyncio.create_task(self._ping_loop())
-
-        gen = self._read_loop()
+        reader_task = asyncio.create_task(self._relay_reader_task())
         try:
-            async for msg in gen:
+            while self._running.is_set():
+                msg = await self._next_incoming()
+                if msg is None:
+                    break
                 try:
                     msg = self._decrypt_peer_message(msg)
                 except ValueError as e:
                     logger.warning("Dropped encrypted client message: %s", e)
                     continue
-                self.inbox.put(("message", msg, self.session_seq))
+                if msg.type not in _P2P_SIGNAL_TYPES:
+                    self.inbox.put(("message", msg, self.session_seq))
 
                 t = msg.type
                 if t == MessageType.RELAY_REGISTER:
@@ -882,6 +1114,13 @@ class _RelaySession:
                         )
                         self.inbox.put(("disconnected", None, self.session_seq))
                         break
+
+                elif t == MessageType.P2P_OFFER:
+                    await self._handle_p2p_offer(msg.payload)
+
+                elif t == MessageType.P2P_CLOSE:
+                    logger.info("Peer closed the P2P path — using relay")
+                    self._close_p2p()
 
                 elif t == MessageType.KEY_EXCHANGE:
                     if not self._e2ee_enabled:
@@ -911,6 +1150,7 @@ class _RelaySession:
                     self.inbox.put(("auth_requested", None, self.session_seq))
 
                 elif t == MessageType.AUTH_OK:
+                    self._authenticated = True
                     self.inbox.put(("auth_result", (True, "Authenticated"), self.session_seq))
                     if self.connection_mode == "remote_desktop":
                         # Richiedi subito un keyframe per avviare lo streaming
@@ -1117,7 +1357,8 @@ class _RelaySession:
         finally:
             watchdog_task.cancel()
             ping_task.cancel()
-            await gen.aclose()
+            reader_task.cancel()
+            await self._aclose_p2p()
             await self._close_writer()
         self.inbox.put(("disconnected", None, self.session_seq))
         logger.debug("Client session ended: disconnected event queued")
@@ -1208,6 +1449,7 @@ class RelayClient(QObject):
     error = Signal(str)
     device_list_received = Signal(list)  # list[dict] — devices from relay
     trust_secret_received = Signal(str, str)  # peer device_id, per-device secret
+    p2p_state_changed = Signal(str)  # "connected" | "failed" | "closed"
     main_keyframe_requested = Signal()  # legacy alias for host_keyframe_requested
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -1224,6 +1466,14 @@ class RelayClient(QObject):
             True,
             type=bool,
         )
+        self._p2p_enabled = False
+        self._stun_server = ""
+        self._turn_url = ""
+        self._turn_username = ""
+        self._turn_credential = ""
+        self._relay_fallback = True
+        self._ice_servers: list = []
+        self._load_p2p_settings()
 
         # ── Client session (on-demand foreground) ──
         self._session: _RelaySession | None = None
@@ -1236,6 +1486,28 @@ class RelayClient(QObject):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._poll_inboxes)
         self._timer.start(_POLL_INTERVAL_MS)
+
+    def _load_p2p_settings(self) -> None:
+        """Read P2P/ICE settings from QSettings.
+
+        Called at session start so changes made in the settings dialog are
+        picked up without restarting the application.
+        """
+        settings = QSettings("OpenDesk", "OpenDesk")
+        self._p2p_enabled = settings.value("network/p2p_enabled", False, type=bool)
+        self._stun_server = settings.value(
+            "network/stun_server", "stun:stun.l.google.com:19302", type=str
+        )
+        self._turn_url = settings.value("network/turn_url", "", type=str)
+        self._turn_username = settings.value("network/turn_username", "", type=str)
+        self._turn_credential = settings.value("network/turn_credential", "", type=str)
+        self._relay_fallback = settings.value("network/enable_relay", True, type=bool)
+        self._ice_servers = build_ice_servers(
+            stun_server=self._stun_server,
+            turn_url=self._turn_url,
+            turn_username=self._turn_username,
+            turn_credential=self._turn_credential,
+        )
 
     # ── public API ──────────────────────────────────────────────────
 
@@ -1276,6 +1548,7 @@ class RelayClient(QObject):
         affect any active client session.
         """
         self._stop_host_session()
+        self._load_p2p_settings()
         self._drain_host_inbox()
         self._host_seq += 1
         self._host_role = RelayRole.HOST
@@ -1291,6 +1564,9 @@ class RelayClient(QObject):
             session_seq=self._host_seq,
             trusted_devices=trusted_devices,
             e2ee_enabled=self._e2ee_enabled,
+            p2p_enabled=self._p2p_enabled,
+            ice_servers=self._ice_servers,
+            relay_fallback=self._relay_fallback,
         )
         self._start_host_thread()
 
@@ -1327,6 +1603,7 @@ class RelayClient(QObject):
         """
         # Only stop a previous CLIENT session, NOT the host session
         self._stop_client_session()
+        self._load_p2p_settings()
         self._drain_inbox()
         self._current_seq += 1
         self._role = RelayRole.CLIENT
@@ -1342,6 +1619,9 @@ class RelayClient(QObject):
             known_device_secrets=known_device_secrets,
             connection_mode=connection_mode,
             e2ee_enabled=self._e2ee_enabled,
+            p2p_enabled=self._p2p_enabled,
+            ice_servers=self._ice_servers,
+            relay_fallback=self._relay_fallback,
         )
         self._start_client_thread()
 
@@ -1673,6 +1953,8 @@ class RelayClient(QObject):
         elif event == "trust_secret":
             device_id, secret = data
             self.trust_secret_received.emit(device_id, secret)
+        elif event == "p2p_state":
+            self.p2p_state_changed.emit(data)
         else:
             logger.debug("Unhandled client event: %s", event)
 
@@ -1701,5 +1983,7 @@ class RelayClient(QObject):
             self.error.emit(data)
         elif event in ("device_list", "device_update"):
             self.device_list_received.emit(data)
+        elif event == "p2p_state":
+            self.p2p_state_changed.emit(data)
         else:
             logger.debug("Unhandled host event: %s", event)

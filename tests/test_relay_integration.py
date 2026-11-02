@@ -42,46 +42,83 @@ class _PairedRelay:
         self._ready = threading.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
-        self._connected = asyncio.Event()
+        self._connected: asyncio.Event | None = None
+        self._stop_event: asyncio.Event | None = None
+        self._tasks: set[asyncio.Task] = set()
 
     async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        if self._a_writer is None:
-            self._a_reader, self._a_writer = reader, writer
-            writer.write(b"ok")
-            await writer.drain()
-            # Wait for peer B before forwarding
-            await self._connected.wait()
-            # Relay all messages from A → B
-            while True:
-                try:
-                    msg = await Message.from_reader(reader)
-                    await _write_async(self._b_writer, msg)
-                except Exception:
-                    break
-        elif self._b_writer is None:
-            self._b_reader, self._b_writer = reader, writer
-            writer.write(b"ok")
-            await writer.drain()
-            self._connected.set()
-            # Relay all messages from B → A
-            while True:
-                try:
-                    msg = await Message.from_reader(reader)
-                    await _write_async(self._a_writer, msg)
-                except Exception:
-                    break
+        task = asyncio.current_task()
+        if task is not None:
+            self._tasks.add(task)
+        try:
+            if self._a_writer is None:
+                self._a_reader, self._a_writer = reader, writer
+                writer.write(b"ok")
+                await writer.drain()
+                # Wait for peer B before forwarding
+                if self._connected is not None:
+                    await self._connected.wait()
+                # Relay all messages from A -> B
+                while True:
+                    try:
+                        msg = await Message.from_reader(reader)
+                        await _write_async(self._b_writer, msg)
+                    except Exception:
+                        break
+            elif self._b_writer is None:
+                self._b_reader, self._b_writer = reader, writer
+                writer.write(b"ok")
+                await writer.drain()
+                if self._connected is not None:
+                    self._connected.set()
+                # Relay all messages from B -> A
+                while True:
+                    try:
+                        msg = await Message.from_reader(reader)
+                        await _write_async(self._a_writer, msg)
+                    except Exception:
+                        break
+        finally:
+            if task is not None:
+                self._tasks.discard(task)
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
 
     async def _run(self) -> None:
+        self._connected = asyncio.Event()
+        self._stop_event = asyncio.Event()
         self._server = await asyncio.start_server(self._handle, "127.0.0.1", 0)
         self.port = self._server.sockets[0].getsockname()[1]
         self._ready.set()
+
         async with self._server:
-            await self._server.serve_forever()
+            await self._stop_event.wait()
+
+        # Stop accepting, then tear down active peers and handler tasks.
+        for writer in (self._a_writer, self._b_writer):
+            if writer is not None:
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+
+        for task in list(self._tasks):
+            task.cancel()
+        if self._tasks:
+            await asyncio.gather(*self._tasks, return_exceptions=True)
 
     def start(self) -> None:
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
-        self._loop.run_until_complete(self._run())
+        try:
+            self._loop.run_until_complete(self._run())
+        finally:
+            self._loop.close()
+            self._loop = None
 
     def start_thread(self) -> None:
         self._thread = threading.Thread(target=self.start, daemon=True)
@@ -89,10 +126,16 @@ class _PairedRelay:
         self._ready.wait(timeout=5)
 
     def stop(self) -> None:
-        if self._server:
-            self._server.close()
-        if self._loop:
-            self._loop.call_soon_threadsafe(self._loop.stop)
+        loop = self._loop
+        stop_event = self._stop_event
+        if loop is not None and stop_event is not None:
+            try:
+                loop.call_soon_threadsafe(stop_event.set)
+            except RuntimeError:
+                pass
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+            self._thread = None
 
 
 async def _connect_and_read_ok(

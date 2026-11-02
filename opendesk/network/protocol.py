@@ -106,6 +106,11 @@ class MessageType(IntEnum):
     RELAY_DEVICE_LIST = 0x83  # List of connected devices (id, name, session_id)
     RELAY_DEVICE_UPDATE = 0x84  # Device went online/offline
 
+    # ── Direct P2P signalling (forwarded by the relay) ──
+    P2P_OFFER = 0x90  # WebRTC offer from host to client
+    P2P_ANSWER = 0x91  # WebRTC answer from client to host
+    P2P_CLOSE = 0x92  # Direct path closed/refused; fall back to relay
+
 
 # ---------------------------------------------------------------------------
 # Data types
@@ -502,6 +507,18 @@ class Message:
             MessageType.RELAY_DEVICE_LIST,
             {"devices": devices},
         )
+
+    @classmethod
+    def p2p_offer(cls, sdp: str) -> Message:
+        return cls(MessageType.P2P_OFFER, {"sdp": sdp})
+
+    @classmethod
+    def p2p_answer(cls, sdp: str) -> Message:
+        return cls(MessageType.P2P_ANSWER, {"sdp": sdp})
+
+    @classmethod
+    def p2p_close(cls, reason: str = "") -> Message:
+        return cls(MessageType.P2P_CLOSE, {"reason": reason})
 
     @classmethod
     def video_tile(cls, data: bytes, x: int, y: int, width: int, height: int, pts: int) -> Message:

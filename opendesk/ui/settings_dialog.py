@@ -188,6 +188,21 @@ class SettingsDialog(QDialog):
         self._enable_relay.setChecked(True)
         net_layout.addRow("", self._enable_relay)
 
+        self._enable_p2p = QCheckBox("Prefer direct P2P connection (WebRTC)")
+        self._enable_p2p.setChecked(False)
+        net_layout.addRow("", self._enable_p2p)
+
+        self._turn_url = QLineEdit()
+        self._turn_url.setPlaceholderText("turn:turn.example.com:3478")
+        net_layout.addRow("TURN Server:", self._turn_url)
+
+        self._turn_username = QLineEdit()
+        net_layout.addRow("TURN Username:", self._turn_username)
+
+        self._turn_credential = QLineEdit()
+        self._turn_credential.setEchoMode(QLineEdit.EchoMode.Password)
+        net_layout.addRow("TURN Credential:", self._turn_credential)
+
         tabs.addTab(net_tab, "Network")
 
         # ── Tab 3: Security ──
@@ -403,6 +418,10 @@ class SettingsDialog(QDialog):
         self._enable_relay.setChecked(
             self._settings.value("network/enable_relay", True, type=bool)
         )
+        self._enable_p2p.setChecked(self._settings.value("network/p2p_enabled", False, type=bool))
+        self._turn_url.setText(self._settings.value("network/turn_url", ""))
+        self._turn_username.setText(self._settings.value("network/turn_username", ""))
+        self._turn_credential.setText(self._settings.value("network/turn_credential", ""))
 
         self._require_auth.setChecked(
             self._settings.value("security/require_auth", True, type=bool)
@@ -571,6 +590,10 @@ class SettingsDialog(QDialog):
         self._settings.setValue("network/relay_host", self._relay_host.text())
         self._settings.setValue("network/relay_port", self._relay_port.value())
         self._settings.setValue("network/enable_relay", self._enable_relay.isChecked())
+        self._settings.setValue("network/p2p_enabled", self._enable_p2p.isChecked())
+        self._settings.setValue("network/turn_url", self._turn_url.text())
+        self._settings.setValue("network/turn_username", self._turn_username.text())
+        self._settings.setValue("network/turn_credential", self._turn_credential.text())
 
         self._settings.setValue("security/require_auth", self._require_auth.isChecked())
         self._settings.setValue("security/e2ee", self._e2ee_check.isChecked())
