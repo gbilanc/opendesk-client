@@ -18,6 +18,7 @@ from PySide6.QtCore import (
     QAbstractListModel,
     QDir,
     QModelIndex,
+    QPersistentModelIndex,
     QRect,
     QSize,
     Qt,
@@ -97,7 +98,9 @@ class RemoteFileSystemModel(QAbstractItemModel):
 
     # ── QAbstractItemModel interface ────────────────────────────────
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
+    def rowCount(  # noqa: N802
+        self, parent: QModelIndex | QPersistentModelIndex = QModelIndex()
+    ) -> int:  # noqa: N802
         if not parent.isValid():
             return len(self._root.get("children") or [])
         node = parent.internalPointer() if parent.internalPointer() else self._root
@@ -106,10 +109,14 @@ class RemoteFileSystemModel(QAbstractItemModel):
         children = node.get("children")
         return 0 if children is None else len(children)
 
-    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
+    def columnCount(  # noqa: N802
+        self, parent: QModelIndex | QPersistentModelIndex = QModelIndex()
+    ) -> int:  # noqa: N802
         return 4  # name, size, type, modified
 
-    def index(self, row: int, column: int, parent: QModelIndex = QModelIndex()) -> QModelIndex:
+    def index(
+        self, row: int, column: int, parent: QModelIndex | QPersistentModelIndex = QModelIndex()
+    ) -> QModelIndex:
         if not self.hasIndex(row, column, parent):
             return QModelIndex()
 
@@ -121,7 +128,7 @@ class RemoteFileSystemModel(QAbstractItemModel):
             return QModelIndex()
         return self.createIndex(row, column, children[row])
 
-    def parent(self, index: QModelIndex) -> QModelIndex:
+    def parent(self, index: QModelIndex | QPersistentModelIndex = QModelIndex()) -> QModelIndex:  # type: ignore[override]
         if not index.isValid():
             return QModelIndex()
         node = index.internalPointer()
@@ -147,7 +154,9 @@ class RemoteFileSystemModel(QAbstractItemModel):
             return QModelIndex()
         return self.createIndex(row, 0, parent_node)
 
-    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
+    def data(
+        self, index: QModelIndex | QPersistentModelIndex, role: int = Qt.ItemDataRole.DisplayRole
+    ):
         if not index.isValid():
             return None
         node = index.internalPointer()
@@ -203,7 +212,7 @@ class RemoteFileSystemModel(QAbstractItemModel):
                 return headers[section]
         return None
 
-    def flags(self, index: QModelIndex) -> Qt.ItemFlags:
+    def flags(self, index: QModelIndex | QPersistentModelIndex) -> Qt.ItemFlag:
         if not index.isValid():
             return Qt.ItemFlag.NoItemFlags
         flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
@@ -422,12 +431,16 @@ class TransferListModel(QAbstractListModel):
 
     # ── QAbstractListModel interface ────────────────────────────────
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
+    def rowCount(  # noqa: N802
+        self, parent: QModelIndex | QPersistentModelIndex = QModelIndex()
+    ) -> int:  # noqa: N802
         if parent.isValid():
             return 0
         return len(self._jobs)
 
-    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
+    def data(
+        self, index: QModelIndex | QPersistentModelIndex, role: int = Qt.ItemDataRole.DisplayRole
+    ):
         if not index.isValid():
             return None
         job = self._jobs[index.row()]
@@ -451,7 +464,7 @@ class TransferListModel(QAbstractListModel):
             return f"{job.file_info.name} — {job.state.name}"
         return None
 
-    def flags(self, index: QModelIndex) -> Qt.ItemFlags:
+    def flags(self, index: QModelIndex | QPersistentModelIndex) -> Qt.ItemFlag:
         if not index.isValid():
             return Qt.ItemFlag.NoItemFlags
         return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
@@ -537,15 +550,20 @@ class TransferDelegate(QStyledItemDelegate):
         TransferState.ACCEPTED: "#2563eb",
     }
 
-    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         rect = option.rect
-        # Background — use QStyle.State_Selected (Qt6 API)
+        # Background — use QStyle.StateFlag.State_Selected (Qt6 API)
         from PySide6.QtWidgets import QStyle
 
-        selected = bool(option.state & QStyle.State_Selected)
+        selected = bool(option.state & QStyle.StateFlag.State_Selected)
         painter.fillRect(rect, QColor("#f8fafc") if selected else QColor("#ffffff"))
         # Bottom border
         painter.setPen(QPen(QColor("#f1f5f9"), 1))
@@ -619,7 +637,9 @@ class TransferDelegate(QStyledItemDelegate):
 
         painter.restore()
 
-    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:  # noqa: N802
+    def sizeHint(  # noqa: N802
+        self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
+    ) -> QSize:  # noqa: N802
         return QSize(300, _ITEM_HEIGHT)
 
     @staticmethod

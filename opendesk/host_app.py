@@ -16,6 +16,10 @@ import time
 import traceback
 import uuid
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from opendesk.ui.file_transfer_ui import FileBrowserDock
 
 from PySide6.QtCore import QEvent, QObject, QSettings, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QIcon
@@ -100,11 +104,11 @@ class HostService(QObject):
         self._settings = QSettings("OpenDesk", "OpenDesk")
 
         # ── Device identity (persistent UUID) ──
-        self._device_id = self._settings.value("device/id", "")
+        self._device_id = cast(str, self._settings.value("device/id", "", type=str))
         if not self._device_id:
             self._device_id = str(uuid.uuid4())
             self._settings.setValue("device/id", self._device_id)
-        self._device_name = self._settings.value("device/name", "")
+        self._device_name = cast(str, self._settings.value("device/name", "", type=str))
         if not self._device_name:
             self._device_name = f"Desktop-{self._device_id[:8]}"
             self._settings.setValue("device/name", self._device_name)
@@ -242,13 +246,13 @@ class HostService(QObject):
     # ── relay config ────────────────────────────────────────────────────
 
     def _get_relay_config(self) -> tuple[str, int]:
-        host = self._settings.value("network/relay_host", "")
+        host = cast(str, self._settings.value("network/relay_host", "", type=str))
         if not host:
             host = "127.0.0.1"
         if host == "0.0.0.0":
             host = "127.0.0.1"
         try:
-            port = int(self._settings.value("network/relay_port", 8474))
+            port = cast(int, self._settings.value("network/relay_port", 8474, type=int))
         except (ValueError, TypeError):
             port = 8474
         return host, port
@@ -598,7 +602,7 @@ class HostWindow(QMainWindow):
 
         # ── Sub-windows (lazy) ──
         self._chat_panel: ChatPanel | None = None
-        self._transfer_dock: QWidget | None = None
+        self._transfer_dock: FileBrowserDock | None = None
 
         # ── Build UI ──
         self._setup_central_widget()
@@ -1110,7 +1114,7 @@ class HostWindow(QMainWindow):
                 self._service.relay.send_message,
             )
 
-    def _ensure_transfer_dock(self) -> QWidget:
+    def _ensure_transfer_dock(self) -> FileBrowserDock:
         """Crea il dock file transfer al primo uso (lazy)."""
         if self._transfer_dock is None:
             from opendesk.ui.file_transfer_ui import FileBrowserDock

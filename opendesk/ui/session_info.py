@@ -84,7 +84,7 @@ class SessionInfoWidget(QWidget):
             }
             """)
         self._device_name_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._device_name_label.mousePressEvent = self._start_name_edit
+        self._device_name_label.mousePressEvent = self._start_name_edit  # type: ignore[method-assign]
         row1.addWidget(self._device_name_label)
 
         self._device_id_label = QLabel(self._device_id[:8])

@@ -12,11 +12,13 @@ import logging
 import time
 from collections import deque
 from collections.abc import Callable
+from typing import cast
 
 import numpy as np
 from PySide6.QtCore import (
     QPoint,
     QPointF,
+    QRect,
     QRectF,
     QSize,
     Qt,
@@ -154,14 +156,16 @@ class CameraOverlay(QWidget):
     def mousePressEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
-            self._drag_offset = event.globalPosition().toPoint() - self.parent().mapToGlobal(
-                self.pos()
-            )
+            parent = self.parent()
+            if isinstance(parent, QWidget):
+                self._drag_offset = event.globalPosition().toPoint() - parent.mapToGlobal(
+                    self.pos()
+                )
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
         if self._dragging:
             parent = self.parent()
-            if parent:
+            if isinstance(parent, QWidget):
                 global_pos = event.globalPosition().toPoint() - self._drag_offset
                 new_pos = parent.mapFromGlobal(global_pos)
                 pw, ph = parent.width(), parent.height()
@@ -336,11 +340,13 @@ class RemoteViewer(QGraphicsView):
                     self._frame_buffers.append(buf)
                     rgb_data = np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 3)
 
-                img = QImage(rgb_data, w, h, w * 3, QImage.Format.Format_RGB888)
+                img = QImage(cast(bytes, rgb_data), w, h, w * 3, QImage.Format.Format_RGB888)
                 # Keep a reference so the buffer is not GC'd while QImage uses it
                 img._np_buffer = rgb_data  # type: ignore[attr-defined]
             elif isinstance(rgb_data, bytes):
-                img = QImage(rgb_data, width, height, width * 3, QImage.Format.Format_RGB888)
+                img = QImage(
+                    cast(bytes, rgb_data), width, height, width * 3, QImage.Format.Format_RGB888
+                )
             else:
                 return
 
@@ -408,7 +414,7 @@ class RemoteViewer(QGraphicsView):
         pixmap = self._pixmap_item.pixmap()
         if pixmap.isNull() or x + w > pixmap.width() or y + h > pixmap.height():
             return
-        img = QImage(rgb_data, w, h, w * 3, QImage.Format.Format_RGB888).copy()
+        img = QImage(cast(bytes, rgb_data), w, h, w * 3, QImage.Format.Format_RGB888).copy()
         painter = QPainter(pixmap)
         painter.drawImage(x, y, img)
         painter.end()
@@ -671,52 +677,52 @@ class RemoteViewer(QGraphicsView):
     def _key_to_name(self, qt_key: int) -> str | None:
         """Convert a Qt key code to a remote key name."""
         # Common keys
-        key_map = {
-            QtKey.Key_Return: "return",
-            QtKey.Key_Enter: "return",
-            QtKey.Key_Tab: "tab",
-            QtKey.Key_Backspace: "backspace",
-            QtKey.Key_Delete: "delete",
-            QtKey.Key_Escape: "escape",
-            QtKey.Key_Home: "home",
-            QtKey.Key_End: "end",
-            QtKey.Key_PageUp: "pageup",
-            QtKey.Key_PageDown: "pagedown",
-            QtKey.Key_Up: "up",
-            QtKey.Key_Down: "down",
-            QtKey.Key_Left: "left",
-            QtKey.Key_Right: "right",
-            QtKey.Key_Space: "space",
-            QtKey.Key_Control: "ctrl",
-            QtKey.Key_Alt: "alt",
-            QtKey.Key_Shift: "shift",
-            QtKey.Key_Meta: "super",
-            QtKey.Key_Super_L: "super",
-            QtKey.Key_Super_R: "super",
-            QtKey.Key_CapsLock: "capslock",
-            QtKey.Key_AltGr: "altgr",
-            QtKey.Key_Insert: "insert",
-            QtKey.Key_Print: "print",
-            QtKey.Key_ScrollLock: "scrolllock",
-            QtKey.Key_Pause: "pause",
-            QtKey.Key_NumLock: "numlock",
-            QtKey.Key_Menu: "menu",
-            QtKey.Key_F1: "f1",
-            QtKey.Key_F2: "f2",
-            QtKey.Key_F3: "f3",
-            QtKey.Key_F4: "f4",
-            QtKey.Key_F5: "f5",
-            QtKey.Key_F6: "f6",
-            QtKey.Key_F7: "f7",
-            QtKey.Key_F8: "f8",
-            QtKey.Key_F9: "f9",
-            QtKey.Key_F10: "f10",
-            QtKey.Key_F11: "f11",
-            QtKey.Key_F12: "f12",
+        key_map: dict[int, str] = {
+            QtKey.Key.Key_Return: "return",
+            QtKey.Key.Key_Enter: "return",
+            QtKey.Key.Key_Tab: "tab",
+            QtKey.Key.Key_Backspace: "backspace",
+            QtKey.Key.Key_Delete: "delete",
+            QtKey.Key.Key_Escape: "escape",
+            QtKey.Key.Key_Home: "home",
+            QtKey.Key.Key_End: "end",
+            QtKey.Key.Key_PageUp: "pageup",
+            QtKey.Key.Key_PageDown: "pagedown",
+            QtKey.Key.Key_Up: "up",
+            QtKey.Key.Key_Down: "down",
+            QtKey.Key.Key_Left: "left",
+            QtKey.Key.Key_Right: "right",
+            QtKey.Key.Key_Space: "space",
+            QtKey.Key.Key_Control: "ctrl",
+            QtKey.Key.Key_Alt: "alt",
+            QtKey.Key.Key_Shift: "shift",
+            QtKey.Key.Key_Meta: "super",
+            QtKey.Key.Key_Super_L: "super",
+            QtKey.Key.Key_Super_R: "super",
+            QtKey.Key.Key_CapsLock: "capslock",
+            QtKey.Key.Key_AltGr: "altgr",
+            QtKey.Key.Key_Insert: "insert",
+            QtKey.Key.Key_Print: "print",
+            QtKey.Key.Key_ScrollLock: "scrolllock",
+            QtKey.Key.Key_Pause: "pause",
+            QtKey.Key.Key_NumLock: "numlock",
+            QtKey.Key.Key_Menu: "menu",
+            QtKey.Key.Key_F1: "f1",
+            QtKey.Key.Key_F2: "f2",
+            QtKey.Key.Key_F3: "f3",
+            QtKey.Key.Key_F4: "f4",
+            QtKey.Key.Key_F5: "f5",
+            QtKey.Key.Key_F6: "f6",
+            QtKey.Key.Key_F7: "f7",
+            QtKey.Key.Key_F8: "f8",
+            QtKey.Key.Key_F9: "f9",
+            QtKey.Key.Key_F10: "f10",
+            QtKey.Key.Key_F11: "f11",
+            QtKey.Key.Key_F12: "f12",
         }
         # F13–F24
         for i in range(13, 25):
-            key_map[getattr(QtKey, f"Key_F{i}")] = f"f{i}"
+            key_map[getattr(QtKey.Key, f"Key_F{i}")] = f"f{i}"
         if qt_key in key_map:
             return key_map[qt_key]
 
@@ -752,7 +758,7 @@ class RemoteViewer(QGraphicsView):
             return
         try:
             pixmap = QPixmap()
-            if pixmap.loadFromData(jpeg_data, "JPEG"):
+            if pixmap.loadFromData(jpeg_data, b"JPEG"):
                 self._camera_overlay.set_pixmap(pixmap)
         except Exception as e:
             logger.warning("Camera overlay update error: %s", e)
@@ -772,7 +778,7 @@ class RemoteViewer(QGraphicsView):
             y = _CAMERA_OVERLAY_MARGIN
             self._camera_overlay.move(x, y)
 
-    def drawForeground(self, painter: QPainter, rect: QRectF) -> None:  # noqa: N802
+    def drawForeground(self, painter: QPainter, rect: QRectF | QRect) -> None:  # noqa: N802
         """Paint HUD overlay on top of the remote view."""
         if not self._connection_active:
             return

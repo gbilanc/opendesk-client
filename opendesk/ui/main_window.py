@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import queue
+from typing import cast
 
 import numpy as np
 from PySide6.QtCore import QSettings, QSize, Qt, QTimer, Slot
@@ -78,8 +79,12 @@ class MainWindow(QMainWindow):
         self._stream = StreamService(self._connection.relay, self)
 
         # Load audio/camera preferences from settings
-        self._stream.audio_enabled = self._settings.value("audio/enabled", False, type=bool)
-        self._stream.camera_enabled = self._settings.value("camera/enabled", False, type=bool)
+        self._stream.audio_enabled = cast(
+            bool, self._settings.value("audio/enabled", False, type=bool)
+        )
+        self._stream.camera_enabled = cast(
+            bool, self._settings.value("camera/enabled", False, type=bool)
+        )
 
         # Map service signals → existing handlers
         self._connection.connected.connect(self._on_relay_connected)
@@ -137,7 +142,7 @@ class MainWindow(QMainWindow):
 
         # Create initial session and start hosting
         # Use persisted password if available, otherwise generate one
-        saved_pwd = self._settings.value("session/password", "")
+        saved_pwd = cast(str, self._settings.value("session/password", "", type=str))
         if not saved_pwd:
             import secrets
             import string
@@ -860,7 +865,9 @@ class MainWindow(QMainWindow):
             self._viewer_window.chat_requested.connect(self._on_chat_toggled)
             self._viewer_window.files_requested.connect(self._show_file_transfer_dock)
             # Apply sharp text mode from settings
-            sharp_text = self._settings.value("video/sharp_text_viewer", True, type=bool)
+            sharp_text = cast(
+                bool, self._settings.value("video/sharp_text_viewer", True, type=bool)
+            )
             self._viewer_window.set_sharp_text(sharp_text)
             # Sync mic/camera button state
             self._viewer_window.set_mic_checked(self._stream.audio_enabled)
@@ -1097,7 +1104,10 @@ class MainWindow(QMainWindow):
         """Toggle between light and dark theme."""
         from opendesk.app import toggle_theme
 
-        theme = toggle_theme(QApplication.instance())
+        app = QApplication.instance()
+        if app is None:
+            return
+        theme = toggle_theme(cast(QApplication, app))
         self.act_toggle_theme.setText(
             "Toggle &Light Theme" if theme == "dark" else "Toggle &Dark Theme"
         )

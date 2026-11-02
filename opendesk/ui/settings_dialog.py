@@ -7,6 +7,7 @@ Persists settings via QSettings.
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 from PySide6.QtCore import QSettings, Qt, Slot
 from PySide6.QtWidgets import (
@@ -377,68 +378,98 @@ class SettingsDialog(QDialog):
 
     def _load_settings(self) -> None:
         """Load current values from QSettings."""
-        quality = self._settings.value("video/quality", "SHARP")
+        quality = cast(str, self._settings.value("video/quality", "SHARP", type=str))
         idx = self._quality_combo.findText(quality.title())
         if idx >= 0:
             self._quality_combo.setCurrentIndex(idx)
 
-        scale = float(self._settings.value("video/resolution_scale", 1.0))
+        scale = cast(float, self._settings.value("video/resolution_scale", 1.0, type=float))
         scale_idx = self._resolution_scale.findData(scale)
         if scale_idx >= 0:
             self._resolution_scale.setCurrentIndex(scale_idx)
 
-        self._fps_spin.setValue(int(self._settings.value("video/max_fps", 30)))
-        self._adaptive_fps.setChecked(self._settings.value("video/adaptive_fps", True, type=bool))
+        self._fps_spin.setValue(cast(int, self._settings.value("video/max_fps", 30, type=int)))
+        self._adaptive_fps.setChecked(
+            cast(bool, self._settings.value("video/adaptive_fps", True, type=bool))
+        )
 
-        codec = self._settings.value("video/codec", "")
+        codec = cast(str, self._settings.value("video/codec", "", type=str))
         codec_idx = self._codec_combo.findData(codec)
         if codec_idx >= 0:
             self._codec_combo.setCurrentIndex(codec_idx)
-        self._hw_check.setChecked(self._settings.value("video/hw_encoding", True, type=bool))
+        self._hw_check.setChecked(
+            cast(bool, self._settings.value("video/hw_encoding", True, type=bool))
+        )
 
-        pixel_fmt = self._settings.value("video/pixel_format", self._plat_cfg.default_pixel_format)
+        pixel_fmt = cast(
+            str,
+            self._settings.value(
+                "video/pixel_format", self._plat_cfg.default_pixel_format, type=str
+            ),
+        )
         pf_idx = self._pixel_format.findData(pixel_fmt)
         if pf_idx >= 0:
             self._pixel_format.setCurrentIndex(pf_idx)
 
         self._sharp_text_viewer.setChecked(
-            self._settings.value("video/sharp_text_viewer", True, type=bool)
+            cast(bool, self._settings.value("video/sharp_text_viewer", True, type=bool))
         )
 
-        encoder_preset = self._settings.value("video/encoder_preset", "")
+        encoder_preset = cast(str, self._settings.value("video/encoder_preset", "", type=str))
         ep_idx = self._encoder_preset.findData(encoder_preset)
         if ep_idx >= 0:
             self._encoder_preset.setCurrentIndex(ep_idx)
 
         self._stun_server.setText(
-            self._settings.value("network/stun_server", "stun:stun.l.google.com:19302")
+            cast(
+                str,
+                self._settings.value(
+                    "network/stun_server", "stun:stun.l.google.com:19302", type=str
+                ),
+            )
         )
-        self._relay_host.setText(self._settings.value("network/relay_host", ""))
-        self._relay_port.setValue(int(self._settings.value("network/relay_port", 8474)))
+        self._relay_host.setText(
+            cast(str, self._settings.value("network/relay_host", "", type=str))
+        )
+        self._relay_port.setValue(
+            cast(int, self._settings.value("network/relay_port", 8474, type=int))
+        )
         self._enable_relay.setChecked(
-            self._settings.value("network/enable_relay", True, type=bool)
+            cast(bool, self._settings.value("network/enable_relay", True, type=bool))
         )
-        self._enable_p2p.setChecked(self._settings.value("network/p2p_enabled", False, type=bool))
-        self._turn_url.setText(self._settings.value("network/turn_url", ""))
-        self._turn_username.setText(self._settings.value("network/turn_username", ""))
-        self._turn_credential.setText(self._settings.value("network/turn_credential", ""))
+        self._enable_p2p.setChecked(
+            cast(bool, self._settings.value("network/p2p_enabled", False, type=bool))
+        )
+        self._turn_url.setText(cast(str, self._settings.value("network/turn_url", "", type=str)))
+        self._turn_username.setText(
+            cast(str, self._settings.value("network/turn_username", "", type=str))
+        )
+        self._turn_credential.setText(
+            cast(str, self._settings.value("network/turn_credential", "", type=str))
+        )
 
         self._require_auth.setChecked(
-            self._settings.value("security/require_auth", True, type=bool)
+            cast(bool, self._settings.value("security/require_auth", True, type=bool))
         )
-        self._e2ee_check.setChecked(self._settings.value("security/e2ee", True, type=bool))
+        self._e2ee_check.setChecked(
+            cast(bool, self._settings.value("security/e2ee", True, type=bool))
+        )
 
         self._enable_clipboard_sync.setChecked(
-            self._settings.value("general/clipboard_sync", False, type=bool)
+            cast(bool, self._settings.value("general/clipboard_sync", False, type=bool))
         )
-        self._enable_audio.setChecked(self._settings.value("audio/enabled", False, type=bool))
+        self._enable_audio.setChecked(
+            cast(bool, self._settings.value("audio/enabled", False, type=bool))
+        )
 
-        self._enable_camera.setChecked(self._settings.value("camera/enabled", False, type=bool))
-        camera_device = int(self._settings.value("camera/device", 0))
+        self._enable_camera.setChecked(
+            cast(bool, self._settings.value("camera/enabled", False, type=bool))
+        )
+        camera_device = cast(int, self._settings.value("camera/device", 0, type=int))
         cam_idx = self._camera_device_combo.findData(camera_device)
         if cam_idx >= 0:
             self._camera_device_combo.setCurrentIndex(cam_idx)
-        camera_quality = self._settings.value("camera/quality", "medium")
+        camera_quality = cast(str, self._settings.value("camera/quality", "medium", type=str))
         cq_idx = self._camera_quality_combo.findData(camera_quality)
         if cq_idx >= 0:
             self._camera_quality_combo.setCurrentIndex(cq_idx)

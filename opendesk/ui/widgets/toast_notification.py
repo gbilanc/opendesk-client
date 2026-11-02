@@ -98,7 +98,7 @@ class ToastNotification(QFrame):
         self._opacity = value
         self.setWindowOpacity(value)
 
-    windowOpacity = Property(float, get_window_opacity, set_window_opacity)  # noqa: N815
+    windowOpacity = Property(float, get_window_opacity, set_window_opacity)  # type: ignore[assignment]  # noqa: N815
 
     # ── public API ──────────────────────────────────────────────────
 

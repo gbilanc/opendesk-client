@@ -16,6 +16,7 @@ from PySide6.QtCore import (
     QAbstractListModel,
     QEvent,
     QModelIndex,
+    QPersistentModelIndex,
     QRect,
     QSize,
     Qt,
@@ -65,12 +66,16 @@ class DeviceListModel(QAbstractListModel):
 
     # ── QAbstractListModel interface ────────────────────────────────
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
+    def rowCount(  # noqa: N802
+        self, parent: QModelIndex | QPersistentModelIndex = QModelIndex()
+    ) -> int:  # noqa: N802
         if parent.isValid():
             return 0
         return len(self._devices)
 
-    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
+    def data(
+        self, index: QModelIndex | QPersistentModelIndex, role: int = Qt.ItemDataRole.DisplayRole
+    ):
         if not index.isValid():
             return None
         dev = self._devices[index.row()]
@@ -93,7 +98,7 @@ class DeviceListModel(QAbstractListModel):
             return dev.device_name
         return None
 
-    def flags(self, index: QModelIndex) -> Qt.ItemFlags:
+    def flags(self, index: QModelIndex | QPersistentModelIndex) -> Qt.ItemFlag:
         if not index.isValid():
             return Qt.ItemFlag.NoItemFlags
         dev = self._devices[index.row()]
@@ -148,16 +153,21 @@ class DeviceDelegate(QStyledItemDelegate):
     _BUTTON_WIDTH = 84
     _BUTTON_HEIGHT = 26
 
-    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
         painter.save()
 
         from PySide6.QtWidgets import QStyle
 
         state = option.state
         # Background — use QStyle.State_* (Qt6 API)
-        if state & QStyle.State_Selected:
+        if state & QStyle.StateFlag.State_Selected:
             painter.fillRect(option.rect, QColor("#dbeafe"))
-        elif state & QStyle.State_MouseOver:
+        elif state & QStyle.StateFlag.State_MouseOver:
             painter.fillRect(option.rect, QColor("#f8fafc"))
         else:
             painter.fillRect(option.rect, QColor("#ffffff"))
@@ -229,7 +239,11 @@ class DeviceDelegate(QStyledItemDelegate):
         )
 
     def editorEvent(  # noqa: N802
-        self, event, model, option: QStyleOptionViewItem, index: QModelIndex
+        self,
+        event,
+        model,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
     ) -> bool:
         """Emit ``connect_clicked`` when the per-row button is clicked."""
         if event.type() == QEvent.Type.MouseButtonRelease:
@@ -239,7 +253,9 @@ class DeviceDelegate(QStyledItemDelegate):
                 return True
         return super().editorEvent(event, model, option, index)
 
-    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:  # noqa: N802
+    def sizeHint(  # noqa: N802
+        self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
+    ) -> QSize:  # noqa: N802
         return QSize(200, self._ITEM_HEIGHT)
 
 

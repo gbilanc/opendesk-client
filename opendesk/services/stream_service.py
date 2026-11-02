@@ -14,6 +14,7 @@ import queue
 import threading
 import time
 from collections.abc import Callable
+from typing import cast
 
 from PySide6.QtCore import QObject, QSettings, QTimer, Signal, Slot
 
@@ -304,14 +305,16 @@ class StreamService(QObject):
             self._bw_estimated_kbps = 0.0
 
             # Leggi impostazioni
-            fps = int(self._settings.value("video/max_fps", 30))
-            quality_name = self._settings.value("video/quality", "HIGH")
+            fps = cast(int, self._settings.value("video/max_fps", 30, type=int))
+            quality_name = cast(str, self._settings.value("video/quality", "HIGH", type=str))
             quality = getattr(QualityLevel, quality_name, QualityLevel.HIGH)
-            resolution_scale = float(self._settings.value("video/resolution_scale", 1.0))
+            resolution_scale = cast(
+                float, self._settings.value("video/resolution_scale", 1.0, type=float)
+            )
 
             # Codice video: preferisci HEVC HW se disponibile, altrimenti H.264
-            codec = self._settings.value("video/codec", "")  # auto-detect
-            prefer_hw = self._settings.value("video/hw_encoding", True, type=bool)
+            codec = cast(str, self._settings.value("video/codec", "", type=str))  # auto-detect
+            prefer_hw = cast(bool, self._settings.value("video/hw_encoding", True, type=bool))
             if not codec:
                 codec = VideoEncoder.default_codec(prefer_hw=prefer_hw)
 
@@ -322,14 +325,14 @@ class StreamService(QObject):
             crf = _QUALITY_CRF.get(quality)
 
             # Pixel format: default dal PlatformConfig, poi da impostazioni
-            pixel_format = self._settings.value("video/pixel_format", "")
+            pixel_format = cast(str, self._settings.value("video/pixel_format", "", type=str))
             if not pixel_format:
                 pixel_format = cfg.default_pixel_format
             if pixel_format not in ("yuv420p", "yuv444p"):
                 pixel_format = cfg.default_pixel_format
 
             # Encoder preset: empty = auto by quality level
-            encoder_preset = self._settings.value("video/encoder_preset", "")
+            encoder_preset = cast(str, self._settings.value("video/encoder_preset", "", type=str))
 
             # Crea configurazione della pipeline
             config = PipelineConfig(

@@ -28,7 +28,7 @@ import queue
 import threading
 import time
 from enum import Enum, auto
-from typing import Any
+from typing import Any, cast
 
 import msgpack
 import numpy as np
@@ -1463,10 +1463,13 @@ class RelayClient(QObject):
         self._host_inbox: queue.Queue = queue.Queue()
         self._host_seq: int = 0
         self._host_role: RelayRole | None = None
-        self._e2ee_enabled = QSettings("OpenDesk", "OpenDesk").value(
-            "security/e2ee",
-            True,
-            type=bool,
+        self._e2ee_enabled = cast(
+            bool,
+            QSettings("OpenDesk", "OpenDesk").value(
+                "security/e2ee",
+                True,
+                type=bool,
+            ),
         )
         self._p2p_enabled = False
         self._stun_server = ""
@@ -1496,14 +1499,15 @@ class RelayClient(QObject):
         picked up without restarting the application.
         """
         settings = QSettings("OpenDesk", "OpenDesk")
-        self._p2p_enabled = settings.value("network/p2p_enabled", False, type=bool)
-        self._stun_server = settings.value(
-            "network/stun_server", "stun:stun.l.google.com:19302", type=str
+        self._p2p_enabled = cast(bool, settings.value("network/p2p_enabled", False, type=bool))
+        self._stun_server = cast(
+            str,
+            settings.value("network/stun_server", "stun:stun.l.google.com:19302", type=str),
         )
-        self._turn_url = settings.value("network/turn_url", "", type=str)
-        self._turn_username = settings.value("network/turn_username", "", type=str)
-        self._turn_credential = settings.value("network/turn_credential", "", type=str)
-        self._relay_fallback = settings.value("network/enable_relay", True, type=bool)
+        self._turn_url = cast(str, settings.value("network/turn_url", "", type=str))
+        self._turn_username = cast(str, settings.value("network/turn_username", "", type=str))
+        self._turn_credential = cast(str, settings.value("network/turn_credential", "", type=str))
+        self._relay_fallback = cast(bool, settings.value("network/enable_relay", True, type=bool))
         self._ice_servers = build_ice_servers(
             stun_server=self._stun_server,
             turn_url=self._turn_url,
@@ -1695,7 +1699,7 @@ class RelayClient(QObject):
         """Send the local Caps Lock state so the remote host can sync it."""
         self.send_message(Message.caps_lock_state(active))
 
-    def disconnect(self) -> None:
+    def disconnect(self) -> None:  # type: ignore[override]
         """Disconnect from the relay — stops both host and client sessions."""
         self._stop_host_session()
         self._stop_client_session()

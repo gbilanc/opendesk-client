@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from typing import cast
 
 import numpy as np
 from PySide6.QtCore import QObject, QSettings, QTimer, Signal, Slot
@@ -76,11 +77,11 @@ class ConnectionService(QObject):
         self._host_session_id: str = ""
 
         # Device identity
-        self._device_id = self._settings.value("device/id", "")
+        self._device_id = cast(str, self._settings.value("device/id", "", type=str))
         if not self._device_id:
             self._device_id = str(uuid.uuid4())
             self._settings.setValue("device/id", self._device_id)
-        self._device_name = self._settings.value("device/name", "")
+        self._device_name = cast(str, self._settings.value("device/name", "", type=str))
         if not self._device_name:
             self._device_name = f"Desktop-{self._device_id[:8]}"
             self._settings.setValue("device/name", self._device_name)
@@ -266,7 +267,7 @@ class ConnectionService(QObject):
             known_device_secrets=self._device_registry.known_peer_secrets(),
         )
 
-    def disconnect(self) -> None:
+    def disconnect(self) -> None:  # type: ignore[override]
         """Disconnetti completamente: ferma sia host che client."""
         self._host_retries = 0
         self._relay.disconnect()
@@ -278,13 +279,13 @@ class ConnectionService(QObject):
     # ── relay config ────────────────────────────────────────────────
 
     def _get_relay_config(self) -> tuple[str, int]:
-        host = self._settings.value("network/relay_host", "")
+        host = cast(str, self._settings.value("network/relay_host", "", type=str))
         if not host:
             host = "127.0.0.1"
         if host == "0.0.0.0":
             host = "127.0.0.1"
         try:
-            port = int(self._settings.value("network/relay_port", 8474))
+            port = cast(int, self._settings.value("network/relay_port", 8474, type=int))
         except (ValueError, TypeError):
             logger.warning("Invalid relay port in settings, using default 8474")
             port = 8474
