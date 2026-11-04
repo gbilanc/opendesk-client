@@ -221,9 +221,7 @@ class RemoteViewer(QGraphicsView):
         # ── Scene setup ──
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
-        self.setRenderHints(
-            QPainter.RenderHint.SmoothPixmapTransform | QPainter.RenderHint.Antialiasing
-        )
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
@@ -240,6 +238,7 @@ class RemoteViewer(QGraphicsView):
         self._zoom_level: float = 1.0
         self._connection_active: bool = False
         self._sharp_text: bool = True  # sharp text mode (default on)
+        self._apply_sharp_text()
 
         # ── Ring buffer for frame data (avoids per-frame allocation)
         self._frame_buffers: deque[bytearray] = deque(maxlen=3)
@@ -1012,6 +1011,8 @@ class ViewerWindow(QMainWindow):
         self._toolbar.chat_requested.connect(self.chat_requested)
         self._toolbar.files_requested.connect(self.files_requested)
         self.addToolBar(self._toolbar)
+        # Sync viewer with the toolbar default (sharp text on)
+        self._viewer.set_sharp_text(self._toolbar._sharp_act.isChecked())
 
         # ── Status bar ──
         self._status = QStatusBar(self)

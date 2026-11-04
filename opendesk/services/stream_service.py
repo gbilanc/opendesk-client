@@ -306,8 +306,8 @@ class StreamService(QObject):
 
             # Leggi impostazioni
             fps = cast(int, self._settings.value("video/max_fps", 30, type=int))
-            quality_name = cast(str, self._settings.value("video/quality", "HIGH", type=str))
-            quality = getattr(QualityLevel, quality_name, QualityLevel.HIGH)
+            quality_name = cast(str, self._settings.value("video/quality", "SHARP", type=str))
+            quality = getattr(QualityLevel, quality_name, QualityLevel.SHARP)
             resolution_scale = cast(
                 float, self._settings.value("video/resolution_scale", 1.0, type=float)
             )
