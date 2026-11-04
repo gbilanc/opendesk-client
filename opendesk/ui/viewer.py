@@ -443,15 +443,26 @@ class RemoteViewer(QGraphicsView):
         self._fit_mode = mode
         self._apply_fit_mode()
 
+    def _zoom_base(self) -> float:
+        """Zoom level to step from.
+
+        In fit mode ``_zoom_level`` is 0.0 (managed by ``fitInView``): using
+        it as the base would scale by 0 and make the remote screen vanish on
+        the first zoom click.  Use the current fit scale instead.
+        """
+        if self._zoom_level > 0:
+            return self._zoom_level
+        return self.transform().m11() or 1.0
+
     def zoom_in(self) -> None:
         """Zoom in by one step."""
-        self._zoom_level = min(_MAX_ZOOM, self._zoom_level * _ZOOM_STEP)
+        self._zoom_level = min(_MAX_ZOOM, self._zoom_base() * _ZOOM_STEP)
         self._fit_mode = self.FitMode.CUSTOM_ZOOM
         self._apply_zoom()
 
     def zoom_out(self) -> None:
         """Zoom out by one step."""
-        self._zoom_level = max(_MIN_ZOOM, self._zoom_level / _ZOOM_STEP)
+        self._zoom_level = max(_MIN_ZOOM, self._zoom_base() / _ZOOM_STEP)
         self._fit_mode = self.FitMode.CUSTOM_ZOOM
         self._apply_zoom()
 
