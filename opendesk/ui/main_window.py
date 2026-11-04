@@ -13,7 +13,7 @@ import queue
 from typing import cast
 
 import numpy as np
-from PySide6.QtCore import QSettings, QSize, Qt, QTimer, Slot
+from PySide6.QtCore import QSettings, Qt, QTimer, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -22,11 +22,11 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QStatusBar,
-    QToolBar,
     QVBoxLayout,
     QWidget,
 )
 
+from opendesk import __version__
 from opendesk.core.clipboard_sync import ClipboardSync
 from opendesk.core.file_transfer import FileTransferManager, TransferState
 from opendesk.core.keyboard_state import caps_lock_active
@@ -131,7 +131,6 @@ class MainWindow(QMainWindow):
         # Build UI
         self._setup_actions()
         self._setup_menus()
-        self._setup_toolbar()
         self._setup_statusbar()
 
         # Mostra warning di piattaforma all'avvio (se ci sono criticità)
@@ -195,11 +194,6 @@ class MainWindow(QMainWindow):
         self.act_zoom_out.triggered.connect(self._on_zoom_out)
 
         # ── Tools ──
-        self.act_toggle_theme = QAction("Toggle &Dark Theme", self)
-        self.act_toggle_theme.setShortcut(QKeySequence("Ctrl+T"))
-        self.act_toggle_theme.setStatusTip("Switch between light and dark theme")
-        self.act_toggle_theme.triggered.connect(self._on_toggle_theme)
-
         self.act_settings = QAction("&Settings...", self)
         self.act_settings.setShortcut(QKeySequence("Ctrl+,"))
         self.act_settings.setStatusTip("Configure OpenDesk")
@@ -240,65 +234,22 @@ class MainWindow(QMainWindow):
         session_menu.addSeparator()
         session_menu.addAction(self.act_quit)
 
-        # ── View ──
-        view_menu = menubar.addMenu("&View")
-        view_menu.addAction(self.act_fit)
-        view_menu.addSeparator()
-        view_menu.addAction(self.act_zoom_in)
-        view_menu.addAction(self.act_zoom_out)
-        view_menu.addSeparator()
-        view_menu.addAction(self.act_fullscreen)
-        view_menu.addSeparator()
-        view_menu.addAction(self.act_toggle_theme)
+        # View actions: shortcut-only (they act on the viewer window)
+        for act in (self.act_fit, self.act_zoom_in, self.act_zoom_out):
+            self.addAction(act)
 
         # ── Tools ──
         tools_menu = menubar.addMenu("&Tools")
         tools_menu.addAction(self.act_settings)
         tools_menu.addSeparator()
         tools_menu.addAction(self.act_send_file)
+        tools_menu.addSeparator()
+        tools_menu.addAction(self.act_toggle_mic)
+        tools_menu.addAction(self.act_toggle_camera)
 
         # ── Help ──
         help_menu = menubar.addMenu("&Help")
         help_menu.addAction(self.act_about)
-
-    def _setup_toolbar(self) -> None:
-        """Create the main navigation toolbar."""
-        toolbar = QToolBar("Main", self)
-        toolbar.setMovable(False)
-        toolbar.setIconSize(QSize(20, 20))
-        toolbar.setStyleSheet("""
-            QToolBar {
-                background: #ffffff;
-                border-bottom: 1px solid #e2e8f0;
-                padding: 4px 8px;
-                spacing: 6px;
-            }
-            QToolButton {
-                padding: 6px 14px;
-                border-radius: 6px;
-                border: 1px solid transparent;
-                font-size: 13px;
-            }
-            QToolButton:hover {
-                background: #f1f5f9;
-                border-color: #e2e8f0;
-            }
-            QToolButton:pressed {
-                background: #e2e8f0;
-            }
-        """)
-
-        toolbar.addSeparator()
-        toolbar.addAction(self.act_fit)
-        toolbar.addAction(self.act_zoom_in)
-        toolbar.addAction(self.act_zoom_out)
-        toolbar.addSeparator()
-        toolbar.addAction(self.act_fullscreen)
-        toolbar.addSeparator()
-        toolbar.addAction(self.act_toggle_mic)
-        toolbar.addAction(self.act_toggle_camera)
-
-        self.addToolBar(toolbar)
 
     def _setup_docks(self) -> None:
         """Create floating windows for chat and file transfers."""
@@ -324,6 +275,10 @@ class MainWindow(QMainWindow):
         )
         self._session_info.session_refreshed.connect(self._on_session_refreshed)
         self._session_info.device_name_changed.connect(self._on_device_name_changed)
+        from opendesk.app import get_current_theme  # local import: avoids app↔main_window cycle
+
+        self._session_info.theme_toggle_requested.connect(self._on_toggle_theme)
+        self._session_info.set_theme(get_current_theme())
         layout.addWidget(self._session_info)
 
         # Connection panel (device list + manual entry)
@@ -348,6 +303,10 @@ class MainWindow(QMainWindow):
         self._esc_shortcut = QShortcut(QKeySequence("Escape"), self)
         self._esc_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self._esc_shortcut.activated.connect(self._on_exit_fullscreen_in_viewer)
+
+        self._theme_shortcut = QShortcut(QKeySequence("Ctrl+T"), self)
+        self._theme_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._theme_shortcut.activated.connect(self._on_toggle_theme)
 
     def _on_exit_fullscreen_in_viewer(self) -> None:
         """Exit fullscreen in the viewer window if it's active."""
@@ -1108,9 +1067,7 @@ class MainWindow(QMainWindow):
         if app is None:
             return
         theme = toggle_theme(cast(QApplication, app))
-        self.act_toggle_theme.setText(
-            "Toggle &Light Theme" if theme == "dark" else "Toggle &Dark Theme"
-        )
+        self._session_info.set_theme(theme)
         logger.info("Theme switched to %s", theme)
 
     @Slot()
@@ -1269,7 +1226,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "About OpenDesk",
-            "<h3>OpenDesk v1.0.0</h3>"
+            "<h3>OpenDesk v" + __version__ + "</h3>"
             "<p>Multi-platform remote desktop application.</p>"
             "<p>Built with Python, PySide6, and WebRTC.</p>"
             "<hr>"

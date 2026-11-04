@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from opendesk import __version__
 from opendesk.core.device_registry import DeviceRegistry
 from opendesk.core.file_transfer import FileTransferManager, TransferState
 from opendesk.core.platform_config import HealthSeverity, get_platform_config
@@ -1191,7 +1192,7 @@ class HostWindow(QMainWindow):
         QMessageBox.about(
             self,
             "About OpenDesk Host",
-            "<h3>OpenDesk Host v1.0.0</h3>"
+            "<h3>OpenDesk Host v" + __version__ + "</h3>"
             "<p>Remote desktop host — accepts incoming connections.</p>"
             "<p>Built with Python, PySide6.</p>"
             "<hr>"

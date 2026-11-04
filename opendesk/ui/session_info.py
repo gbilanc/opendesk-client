@@ -35,6 +35,7 @@ class SessionInfoWidget(QWidget):
 
     session_refreshed = Signal(str, str)  # session_id, password
     device_name_changed = Signal(str)  # new device name
+    theme_toggle_requested = Signal()  # switch light/dark theme
 
     def __init__(
         self,
@@ -198,7 +199,21 @@ class SessionInfoWidget(QWidget):
         self._refresh_btn.clicked.connect(self.refresh_session)
         row2.addWidget(self._refresh_btn)
 
+        # ── Theme switch (next to New Session) ──
+        self._theme_btn = QPushButton("🌙")
+        self._theme_btn.setFixedHeight(26)
+        self._theme_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._theme_btn.setToolTip("Switch light/dark theme (Ctrl+T)")
+        self._theme_btn.setStyleSheet(self._button_style())
+        self._theme_btn.clicked.connect(lambda: self.theme_toggle_requested.emit())
+        row2.addWidget(self._theme_btn)
+
         layout.addLayout(row2)
+
+    @Slot(str)
+    def set_theme(self, theme: str) -> None:
+        """Update the switch icon (icon = the theme it will switch to)."""
+        self._theme_btn.setText("☀️" if theme == "dark" else "🌙")
 
     @staticmethod
     def _button_style() -> str:
