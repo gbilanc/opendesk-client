@@ -519,36 +519,41 @@ class RemoteViewer(QGraphicsView):
             self._mouse_coalesce_timer.stop()
         self._send_pending_mouse()
 
+    def _emit_click(self, event, pressed: bool) -> None:
+        """Forward a mouse button press/release at the cursor position."""
+        btn = self._qt_button_to_remote(event.button())
+        if btn is None:
+            return
+        # Flush pending movement first, then send click at correct pos
+        self._flush_pending_mouse()
+        scene_pos = self.mapToScene(event.pos())
+        self.remote_mouse_event.emit(
+            int(scene_pos.x()),
+            int(scene_pos.y()),
+            btn,
+            pressed,
+            True,
+        )
+
     def mousePressEvent(self, event) -> None:  # noqa: N802
         """Forward mouse press (all buttons)."""
-        btn = self._qt_button_to_remote(event.button())
-        if btn is not None:
-            # Flush pending movement first, then send click at correct pos
-            self._flush_pending_mouse()
-            scene_pos = self.mapToScene(event.pos())
-            self.remote_mouse_event.emit(
-                int(scene_pos.x()),
-                int(scene_pos.y()),
-                btn,
-                True,
-                True,
-            )
+        self._emit_click(event, True)
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
         """Forward mouse release (all buttons)."""
-        btn = self._qt_button_to_remote(event.button())
-        if btn is not None:
-            self._flush_pending_mouse()
-            scene_pos = self.mapToScene(event.pos())
-            self.remote_mouse_event.emit(
-                int(scene_pos.x()),
-                int(scene_pos.y()),
-                btn,
-                False,
-                True,
-            )
+        self._emit_click(event, False)
         super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
+        """Forward the second press of a double click.
+
+        Qt delivers the second press as ``MouseButtonDblClick`` instead of
+        ``MouseButtonPress``, so without this override the remote host only
+        receives press/release/release and never registers a double click.
+        """
+        self._emit_click(event, True)
+        super().mouseDoubleClickEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
         """Forward mouse movement with coalescing (~30 fps)."""
