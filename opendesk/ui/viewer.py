@@ -293,15 +293,20 @@ class RemoteViewer(QGraphicsView):
         self._apply_sharp_text()
 
     def _apply_sharp_text(self) -> None:
-        """Apply or remove sharp-text rendering hints."""
-        if self._sharp_text:
-            self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
-        else:
-            self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        """Choose pixmap sampling based on the current view scale.
+
+        Nearest-neighbour (``FastTransformation``) is only pixel-perfect at
+        1:1; when the remote screen is scaled (fit-to-window, zoom) it drops
+        glyph strokes and makes text look grainy.  So keep it sharp only
+        around 100% and smooth everywhere else.
+        """
+        scale = self.transform().m11()
+        sharp = self._sharp_text and 0.99 <= scale <= 1.01
+        self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, not sharp)
         if self._pixmap_item is not None:
             self._pixmap_item.setTransformationMode(
                 Qt.TransformationMode.FastTransformation
-                if self._sharp_text
+                if sharp
                 else Qt.TransformationMode.SmoothTransformation
             )
 
@@ -362,16 +367,12 @@ class RemoteViewer(QGraphicsView):
             # ── Update or create scene pixmap ─────────────────────
             if self._pixmap_item is None:
                 self._pixmap_item = self._scene.addPixmap(pixmap)
-                self._pixmap_item.setTransformationMode(
-                    Qt.TransformationMode.FastTransformation
-                    if self._sharp_text
-                    else Qt.TransformationMode.SmoothTransformation
-                )
                 self._remote_resolution = (width, height)
                 self._apply_fit_mode()
             else:
                 self._pixmap_item.setPixmap(pixmap)
                 self._remote_resolution = (width, height)
+            self._apply_sharp_text()
 
             # Track FPS
             self._frame_count_since_hud += 1
@@ -658,11 +659,13 @@ class RemoteViewer(QGraphicsView):
             self._zoom_level = 1.0
         else:
             self._apply_zoom()
+        self._apply_sharp_text()
 
     def _apply_zoom(self) -> None:
         """Apply the current zoom level."""
         self.resetTransform()
         self.scale(self._zoom_level, self._zoom_level)
+        self._apply_sharp_text()
 
     def _update_hud(self) -> None:
         """Recalculate and trigger HUD paint."""
