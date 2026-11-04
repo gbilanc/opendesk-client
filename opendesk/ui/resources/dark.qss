@@ -67,8 +67,97 @@ QMenu::separator {
 
 /* ── Session Info ── */
 #SessionInfoWidget {
-    background-color: #0f172a;
-    border-bottom: 1px solid #1e3a5f;
+    background-color: #16213b;
+    border-bottom: 1px solid #334155;
+}
+
+/* ── Design system: typography & containers ── */
+QLabel#SectionTitle {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    color: #94a3b8;
+}
+QLabel#FieldLabel {
+    font-size: 12px;
+    font-weight: 700;
+    color: #60a5fa;
+}
+QLabel#MutedLabel {
+    font-size: 11px;
+    color: #64748b;
+    padding: 0 4px;
+}
+QLabel#DeviceNameLabel {
+    font-size: 13px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: #e2e8f0;
+}
+QLabel#DeviceNameLabel:hover {
+    border-color: #334155;
+    background: rgba(96, 165, 250, 0.12);
+}
+QLabel#SessionIdDisplay {
+    font-size: 20px;
+    font-weight: 800;
+    font-family: 'Courier New', 'Consolas', monospace;
+    letter-spacing: 3px;
+    padding: 2px 12px;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    min-width: 160px;
+    background: #1e293b;
+    color: #e2e8f0;
+}
+QLabel#SessionPwdDisplay {
+    font-size: 14px;
+    font-weight: 700;
+    font-family: 'Courier New', 'Consolas', monospace;
+    letter-spacing: 1px;
+    padding: 2px 12px;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    min-width: 100px;
+    background: #1e293b;
+    color: #e2e8f0;
+}
+QFrame#Divider {
+    background: #334155;
+    border: none;
+    max-height: 1px;
+}
+QPushButton[class="flat"] {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 2px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+}
+QPushButton[class="flat"]:hover {
+    background: rgba(96, 165, 250, 0.15);
+    border-color: #60a5fa;
+    color: #e2e8f0;
+}
+QPushButton[class="flat"]:pressed { background: rgba(96, 165, 250, 0.25); }
+QPushButton[class="link"] {
+    background: transparent;
+    border: none;
+    padding: 4px 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: #60a5fa;
+    text-align: left;
+}
+QPushButton[class="link"]:hover { color: #93c5fd; }
+QLineEdit#ManualIdInput {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 2px;
 }
 
 /* ── Toolbar ── */
@@ -144,6 +233,7 @@ QPushButton[class="danger"] {
     font-weight: 600;
 }
 QPushButton[class="danger"]:hover { background-color: #b91c1c; }
+QPushButton[class="danger"]:disabled { background-color: #334155; color: #64748b; }
 
 /* ── Input fields ── */
 QLineEdit, QTextEdit, QPlainTextEdit {
@@ -362,6 +452,33 @@ QStatusBar {
 
 QStatusBar::item {
     border: none;
+}
+
+QStatusBar QLabel[class="on"] {
+    color: #22c55e;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 0 6px;
+}
+
+QStatusBar QLabel[class="off"] {
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 0 6px;
+}
+
+QStatusBar QLabel[class="warn"] {
+    color: #f87171;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 0 6px;
+}
+
+QStatusBar QLabel#StatusDot {
+    font-size: 16px;
+    padding: 0;
+    font-weight: 400;
 }
 
 /* ── DialogButtonBox ── */

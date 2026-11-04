@@ -54,10 +54,6 @@ class MainWindow(QMainWindow):
     MIN_WIDTH = 1024
     MIN_HEIGHT = 680
 
-    # ── Caps Lock indicator styles ──
-    _CAPS_ON_STYLE = "font-size: 12px; font-weight: 700; color: #dc2626; padding: 0 6px;"
-    _CAPS_OFF_STYLE = "font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;"
-
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(self.WINDOW_TITLE)
@@ -387,22 +383,18 @@ class MainWindow(QMainWindow):
 
         # ── Media status indicators ──
         self._mic_indicator = QLabel("Mic Off")
-        self._mic_indicator.setStyleSheet(
-            "font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;"
-        )
+        self._mic_indicator.setProperty("class", "off")
         self._mic_indicator.setVisible(False)
         status.addPermanentWidget(self._mic_indicator)
 
         self._camera_indicator = QLabel("Cam Off")
-        self._camera_indicator.setStyleSheet(
-            "font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;"
-        )
+        self._camera_indicator.setProperty("class", "off")
         self._camera_indicator.setVisible(False)
         status.addPermanentWidget(self._camera_indicator)
 
         # ── Caps Lock indicator ──
         self._caps_lock_label = QLabel("⇪")
-        self._caps_lock_label.setStyleSheet(MainWindow._CAPS_OFF_STYLE)
+        self._caps_lock_label.setProperty("class", "off")
         self._caps_lock_label.setVisible(False)
         status.addPermanentWidget(self._caps_lock_label)
 
@@ -411,6 +403,13 @@ class MainWindow(QMainWindow):
         self._caps_timer.start(500)
 
         self.setStatusBar(status)
+
+    @staticmethod
+    def _set_status_state(label: QLabel, active: bool) -> None:
+        """Switch a status-bar label between the QSS ``on``/``off`` classes."""
+        label.setProperty("class", "on" if active else "off")
+        label.style().unpolish(label)
+        label.style().polish(label)
 
     # ── Relay / Networking ──────────────────────────────────────────
 
@@ -818,7 +817,9 @@ class MainWindow(QMainWindow):
                 on_disconnect=self._on_disconnect,
                 on_mic_toggle=self._on_toggle_mic,
                 on_camera_toggle=self._on_toggle_camera,
-                parent=self,
+                # No parent: keeps the viewer open (and independent) when the
+                # main window is minimised or restored.
+                parent=None,
             )
             self._viewer_window.frame_timeout.connect(self._on_frame_timeout)
             self._viewer_window.chat_requested.connect(self._on_chat_toggled)
@@ -874,15 +875,11 @@ class MainWindow(QMainWindow):
         if checked:
             self._stream._start_audio_capture()
             self._mic_indicator.setText("Mic On")
-            self._mic_indicator.setStyleSheet(
-                "font-size: 12px; font-weight: 700; color: #22c55e; padding: 0 6px;"
-            )
+            self._set_status_state(self._mic_indicator, True)
         else:
             self._stream._stop_audio_capture()
             self._mic_indicator.setText("Mic Off")
-            self._mic_indicator.setStyleSheet(
-                "font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;"
-            )
+            self._set_status_state(self._mic_indicator, False)
         self._mic_indicator.setVisible(True)
         # Sync viewer toolbar button state
         if self._viewer_window:
@@ -898,15 +895,11 @@ class MainWindow(QMainWindow):
         if checked:
             self._stream._start_camera_capture()
             self._camera_indicator.setText("Cam On")
-            self._camera_indicator.setStyleSheet(
-                "font-size: 12px; font-weight: 700; color: #22c55e; padding: 0 6px;"
-            )
+            self._set_status_state(self._camera_indicator, True)
         else:
             self._stream._stop_camera_capture()
             self._camera_indicator.setText("Cam Off")
-            self._camera_indicator.setStyleSheet(
-                "font-size: 12px; font-weight: 600; color: #94a3b8; padding: 0 6px;"
-            )
+            self._set_status_state(self._camera_indicator, False)
 
         # Notify remote peer
         if self._connection.relay.is_connected:
@@ -1240,10 +1233,9 @@ class MainWindow(QMainWindow):
     def _update_caps_lock(self) -> None:
         """Poll Caps Lock state and update the status bar indicator."""
         active = caps_lock_active()
-        if active:
-            self._caps_lock_label.setStyleSheet(MainWindow._CAPS_ON_STYLE)
-        else:
-            self._caps_lock_label.setStyleSheet(MainWindow._CAPS_OFF_STYLE)
+        self._caps_lock_label.setProperty("class", "warn" if active else "off")
+        self._caps_lock_label.style().unpolish(self._caps_lock_label)
+        self._caps_lock_label.style().polish(self._caps_lock_label)
         self._caps_lock_label.setVisible(active)
 
     def _show_file_transfer_dock(self) -> None:
@@ -1308,5 +1300,8 @@ class MainWindow(QMainWindow):
 
         self._stop_streaming()
         self._connection.disconnect()
+        # Detached viewer window: hide it so the app can actually quit
+        if self._viewer_window is not None:
+            self._viewer_window.hide()
         logger.info("Application closing")
         event.accept()

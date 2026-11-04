@@ -23,7 +23,7 @@ from PySide6.QtCore import (
     Signal,
     Slot,
 )
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPalette, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -146,8 +146,6 @@ class DeviceDelegate(QStyledItemDelegate):
 
     _STATUS_ONLINE = "#22c55e"
     _STATUS_OFFLINE = "#ef4444"
-    _TEXT_PRIMARY = "#0f172a"
-    _TEXT_MUTED = "#94a3b8"
     _ITEM_HEIGHT = 44
     _MARGIN = 8
     _BUTTON_WIDTH = 84
@@ -164,16 +162,19 @@ class DeviceDelegate(QStyledItemDelegate):
         from PySide6.QtWidgets import QStyle
 
         state = option.state
-        # Background — use QStyle.State_* (Qt6 API)
+        pal = option.palette
+        # Background — colours come from the active palette (light/dark aware)
         if state & QStyle.StateFlag.State_Selected:
-            painter.fillRect(option.rect, QColor("#dbeafe"))
+            bg = QColor(pal.color(QPalette.ColorRole.Highlight))
+            bg.setAlpha(48)
         elif state & QStyle.StateFlag.State_MouseOver:
-            painter.fillRect(option.rect, QColor("#f8fafc"))
+            bg = pal.color(QPalette.ColorRole.AlternateBase)
         else:
-            painter.fillRect(option.rect, QColor("#ffffff"))
+            bg = pal.color(QPalette.ColorRole.Base)
+        painter.fillRect(option.rect, bg)
 
         # Draw bottom border
-        painter.setPen(QPen(QColor("#f1f5f9"), 1))
+        painter.setPen(QPen(pal.color(QPalette.ColorRole.Midlight), 1))
         painter.drawLine(option.rect.bottomLeft(), option.rect.bottomRight())
 
         rect = option.rect.adjusted(12, 0, -12, 0)
@@ -194,7 +195,7 @@ class DeviceDelegate(QStyledItemDelegate):
         )
         # Reserve room on the right for the per-row Connect button (online only)
         reserve = self._BUTTON_WIDTH + 8 if online else 0
-        painter.setPen(QColor(self._TEXT_PRIMARY))
+        painter.setPen(pal.color(QPalette.ColorRole.Text))
         font = QFont("Segoe UI", 13, QFont.Weight.DemiBold)
         painter.setFont(font)
         name_rect = rect.adjusted(24, 4, -reserve, -18)
@@ -207,7 +208,7 @@ class DeviceDelegate(QStyledItemDelegate):
         # Session ID (small, muted)
         session_id = index.data(Qt.ItemDataRole.UserRole + 1) or ""
         if session_id:
-            painter.setPen(QColor(self._TEXT_MUTED))
+            painter.setPen(pal.color(QPalette.ColorRole.PlaceholderText))
             font2 = QFont("Segoe UI", 11)
             painter.setFont(font2)
             id_rect = rect.adjusted(24, 18, -reserve, 0)
@@ -300,12 +301,12 @@ class ConnectionPanel(QWidget):
 
         # ── Title ──
         title = QLabel("Remote Connection")
-        title.setStyleSheet("font-size: 18px; font-weight: 700;")
+        title.setObjectName("SectionTitle")
         layout.addWidget(title)
 
         # ── Device list (Model-View) ──
         list_label = QLabel("Known devices:")
-        list_label.setStyleSheet("font-size: 12px; font-weight: 600;")
+        list_label.setObjectName("SectionTitle")
         layout.addWidget(list_label)
 
         self._list_view = QListView()
@@ -339,23 +340,7 @@ class ConnectionPanel(QWidget):
 
         self._disconnect_btn = QPushButton("Disconnect")
         self._disconnect_btn.setEnabled(False)
-        self._disconnect_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #dc2626;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 6px 18px;
-                font-weight: 600;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background-color: #b91c1c;
-            }
-            QPushButton:disabled {
-                background-color: #94a3b8;
-            }
-        """)
+        self._disconnect_btn.setProperty("class", "danger")
         self._disconnect_btn.clicked.connect(self._on_disconnect)
         btn_row.addWidget(self._disconnect_btn)
 
@@ -363,17 +348,13 @@ class ConnectionPanel(QWidget):
 
         # ── Manual entry section ──
         sep = QFrame()
+        sep.setObjectName("Divider")
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("max-height: 1px; background: #e2e8f0;")
         layout.addWidget(sep)
 
         self._manual_toggle = QPushButton("➕ Connect to new device...")
         self._manual_toggle.setFlat(True)
-        self._manual_toggle.setStyleSheet(
-            "QPushButton { font-size: 12px; color: #2563eb; text-align: left; "
-            "padding: 4px 0; }"
-            "QPushButton:hover { color: #1d4ed8; }"
-        )
+        self._manual_toggle.setProperty("class", "link")
         self._manual_toggle.clicked.connect(self._toggle_manual)
         layout.addWidget(self._manual_toggle)
 
@@ -388,15 +369,14 @@ class ConnectionPanel(QWidget):
 
         self._manual_id = QLineEdit()
         self._manual_id.setPlaceholderText("Device ID (e.g. ABC-12345)")
+        self._manual_id.setObjectName("ManualIdInput")
         self._manual_id.setMinimumHeight(36)
-        self._manual_id.setStyleSheet("font-size: 14px; font-weight: 600; letter-spacing: 2px;")
         fields.addWidget(self._manual_id, 2)
 
         self._manual_pwd = QLineEdit()
         self._manual_pwd.setPlaceholderText("Password")
         self._manual_pwd.setEchoMode(QLineEdit.EchoMode.Password)
         self._manual_pwd.setMinimumHeight(36)
-        self._manual_pwd.setStyleSheet("font-size: 14px;")
         self._manual_pwd.returnPressed.connect(self._on_manual_connect)
         fields.addWidget(self._manual_pwd, 1)
 
@@ -413,8 +393,6 @@ class ConnectionPanel(QWidget):
 
         self._manual_form.setVisible(False)
         layout.addWidget(self._manual_form)
-
-        layout.addStretch()
 
     def _setup_connections(self) -> None:
         self._delegate.connect_clicked.connect(self._on_row_connect)
@@ -566,16 +544,20 @@ class SessionStatusWidget(QWidget):
         layout.setSpacing(8)
 
         self._indicator = QLabel("●")
-        self._indicator.setStyleSheet("font-size: 16px;")
+        self._indicator.setObjectName("StatusDot")
+        self._indicator.setProperty("class", "off")
         layout.addWidget(self._indicator)
 
         self._label = QLabel("Disconnected")
-        self._label.setStyleSheet("font-size: 12px; color: #64748b;")
+        self._label.setProperty("class", "off")
         layout.addWidget(self._label)
 
     @Slot(str)
     def set_status(self, status: str, connected: bool = False) -> None:
         """Update the displayed status."""
         self._label.setText(status)
-        color = "#22c55e" if connected else "#64748b"
-        self._indicator.setStyleSheet(f"color: {color}; font-size: 16px;")
+        state = "on" if connected else "off"
+        for widget in (self._indicator, self._label):
+            widget.setProperty("class", state)
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)

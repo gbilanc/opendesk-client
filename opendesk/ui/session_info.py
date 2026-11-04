@@ -58,40 +58,25 @@ class SessionInfoWidget(QWidget):
         self.setObjectName("SessionInfoWidget")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 6, 16, 6)
-        layout.setSpacing(4)
+        layout.setContentsMargins(16, 10, 16, 10)
+        layout.setSpacing(6)
 
         # ── Row 1: Device info ──
         row1 = QHBoxLayout()
         row1.setSpacing(8)
 
         device_label = QLabel("Device:")
-        device_label.setStyleSheet("font-size: 12px; font-weight: 700; color: #2563eb;")
+        device_label.setObjectName("FieldLabel")
         row1.addWidget(device_label)
 
         self._device_name_label = QLabel(self._device_name)
         self._device_name_label.setObjectName("DeviceNameLabel")
-        self._device_name_label.setStyleSheet("""
-            QLabel#DeviceNameLabel {
-                font-size: 13px;
-                font-weight: 700;
-                padding: 2px 6px;
-                border: 1px solid transparent;
-                border-radius: 4px;
-            }
-            QLabel#DeviceNameLabel:hover {
-                border-color: palette(mid);
-                background: rgba(37, 99, 235, 0.08);
-            }
-            """)
         self._device_name_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self._device_name_label.mousePressEvent = self._start_name_edit  # type: ignore[method-assign]
         row1.addWidget(self._device_name_label)
 
         self._device_id_label = QLabel(self._device_id[:8])
-        self._device_id_label.setStyleSheet(
-            "font-size: 11px; color: palette(shadow); padding: 0 4px;"
-        )
+        self._device_id_label.setObjectName("MutedLabel")
         self._device_id_label.setToolTip(
             f"UUID: {self._device_id}\n"
             "Usa questo UUID per pre-autorizzare il dispositivo in Settings → Security"
@@ -115,23 +100,11 @@ class SessionInfoWidget(QWidget):
         row2.setSpacing(8)
 
         id_label = QLabel("Device ID:")
-        id_label.setStyleSheet("font-size: 12px; font-weight: 700; color: #2563eb;")
+        id_label.setObjectName("FieldLabel")
         row2.addWidget(id_label)
 
         self._id_display = QLabel("—")
         self._id_display.setObjectName("SessionIdDisplay")
-        self._id_display.setStyleSheet("""
-            QLabel#SessionIdDisplay {
-                font-size: 20px;
-                font-weight: 800;
-                font-family: 'Courier New', 'Consolas', monospace;
-                letter-spacing: 3px;
-                padding: 1px 12px;
-                border: 1px solid palette(mid);
-                border-radius: 6px;
-                min-width: 160px;
-            }
-            """)
         row2.addWidget(self._id_display)
 
         self._copy_id_btn = QPushButton("Copy")
@@ -148,23 +121,11 @@ class SessionInfoWidget(QWidget):
         row2.addWidget(sep)
 
         pwd_label = QLabel("Password:")
-        pwd_label.setStyleSheet("font-size: 12px; font-weight: 700; color: #2563eb;")
+        pwd_label.setObjectName("FieldLabel")
         row2.addWidget(pwd_label)
 
         self._pwd_display = QLabel("—")
         self._pwd_display.setObjectName("SessionPwdDisplay")
-        self._pwd_display.setStyleSheet("""
-            QLabel#SessionPwdDisplay {
-                font-size: 14px;
-                font-weight: 700;
-                font-family: 'Courier New', 'Consolas', monospace;
-                letter-spacing: 1px;
-                padding: 1px 12px;
-                border: 1px solid palette(mid);
-                border-radius: 6px;
-                min-width: 100px;
-            }
-            """)
         row2.addWidget(self._pwd_display)
 
         self._copy_pwd_btn = QPushButton("Copy")
@@ -180,22 +141,7 @@ class SessionInfoWidget(QWidget):
         self._refresh_btn = QPushButton("🔄 New Session")
         self._refresh_btn.setFixedHeight(26)
         self._refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._refresh_btn.setStyleSheet("""
-            QPushButton {
-                padding: 2px 12px;
-                background: transparent;
-                font-size: 11px;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                background: rgba(37, 99, 235, 0.12);
-                border-color: #2563eb;
-                color: #2563eb;
-            }
-            QPushButton:pressed {
-                background: rgba(37, 99, 235, 0.20);
-            }
-            """)
+        self._refresh_btn.setProperty("class", "flat")
         self._refresh_btn.clicked.connect(self.refresh_session)
         row2.addWidget(self._refresh_btn)
 
@@ -204,7 +150,7 @@ class SessionInfoWidget(QWidget):
         self._theme_btn.setFixedHeight(26)
         self._theme_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._theme_btn.setToolTip("Switch light/dark theme (Ctrl+T)")
-        self._theme_btn.setStyleSheet(self._button_style())
+        self._theme_btn.setProperty("class", "flat")
         self._theme_btn.clicked.connect(lambda: self.theme_toggle_requested.emit())
         row2.addWidget(self._theme_btn)
 
