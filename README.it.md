@@ -8,14 +8,14 @@
 
 Applicazione di desktop remoto multipiattaforma (simile a TeamViewer / AnyDesk).
 
-[![PyPI version](https://img.shields.io/pypi/v/opendesk?color=blue)](https://pypi.org/project/opendesk/)
-[![Python versions](https://img.shields.io/pypi/pyversions/opendesk)](https://pypi.org/project/opendesk/)
-[![License](https://img.shields.io/pypi/l/opendesk?color=green)](https://github.com/gbilanc/opendesk-client/blob/main/LICENSE)
+[![Versione](https://img.shields.io/badge/versione-2.0.0-blue)](https://github.com/gbilanc/opendesk-client/releases)
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://github.com/gbilanc/opendesk-client)
+[![Licenza](https://img.shields.io/badge/licenza-MIT-green)](https://github.com/gbilanc/opendesk-client/blob/main/LICENSE)
 [![CI](https://github.com/gbilanc/opendesk-client/actions/workflows/ci.yml/badge.svg)](https://github.com/gbilanc/opendesk-client/actions/workflows/ci.yml)
 
 - **Piattaforme:** Windows, macOS, Linux
 - **Tecnologie:** Python 3.12+, PySide6 (Qt6), PyAV (FFmpeg), crittografia E2E
-- **Rete:** relay TCP con supporto P2P
+- **Rete:** relay TCP con P2P diretto WebRTC (aiortc) e fallback automatico sul relay
 - **Funzionalità:** condivisione schermo, controllo remoto, trasferimento file,
   sincronizzazione clipboard, streaming microfono, streaming webcam con overlay
   PiP, audio, chat, multi-monitor
@@ -33,23 +33,15 @@ uv sync
 uv run opendesk
 ```
 
-### Tramite pip
+### Installer precompilati
 
-```bash
-pip install opendesk
-```
+Scarica gli installer dalla
+[pagina release](https://github.com/gbilanc/opendesk-client/releases)
+(OpenDesk Host: `.exe` Windows, `.deb` / `.tar.gz` Linux, `.dmg` macOS).
 
-> **Suggerimento:** usa [pipx](https://pipx.pypa.io/) per un'installazione
-> isolata dell'app: `pipx install opendesk`
-
-### Tramite uv (sviluppo)
-
-```bash
-git clone https://github.com/gbilanc/opendesk-client
-cd opendesk-client
-uv sync
-uv run opendesk
-```
+> **Nota:** il package `opendesk` su PyPI è un progetto di terze parti non
+> correlato. OpenDesk **non** è distribuito su PyPI: installalo dal checkout
+> dei sorgenti qui sopra o dagli installer nelle GitHub Releases.
 
 ### Avvio rapido dal repository
 
@@ -161,7 +153,8 @@ uv run mypy opendesk/  # type check
 
 ```bash
 # Streaming audio (microfono) — richiede soundcard
-pip install opendesk[audio]
+uv sync --extra audio
+# oppure, in un env esistente: pip install -e ".[audio]"
 ```
 
 ### Configurazione Wayland (Linux)
@@ -219,8 +212,8 @@ supporto all'accelerazione hardware.
 |---------|-----|-------------------|------------|
 | **LOW** | 32 | ~0.5 Mbps | Connessioni lente |
 | **MEDIUM** | 27 | ~2 Mbps | Bilanciato |
-| **HIGH** (default) | 23 | ~8 Mbps | Buona qualità |
-| **SHARP** | 18 | ~15 Mbps | Testo nitido, ottimo per la lettura |
+| **HIGH** | 23 | ~8 Mbps | Buona qualità |
+| **SHARP** (default) | 18 | ~15 Mbps | Testo nitido, ottimo per la lettura |
 | **LOSSLESS** | 16 | ~20+ Mbps | LAN / quasi lossless |
 
 CRF (Constant Rate Factor) è la modalità di controllo di rate predefinita:
@@ -449,6 +442,10 @@ Valori validi: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`.
 
 Il relay server è ora un'app standalone separata in **`../opendesk-relay`** (o
 [github.com/opendesk/opendesk-relay](https://github.com/opendesk/opendesk-relay)).
+
+Con il P2P WebRTC attivo (**Strumenti → Impostazioni → Rete → Prefer direct P2P
+connection**), il relay viene usato solo per la segnalazione e come fallback
+quando la connessione diretta non è possibile.
 
 Documentazione completa e istruzioni nel README del progetto relay:
 
