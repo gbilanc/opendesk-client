@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Build a Linux installer for OpenDesk Host.
+# Build a Linux installer for OpenDesk (client) or OpenDesk Host.
 #
-# Output:
-#   dist/opendesk-host_<version>_amd64.deb   (Debian/Ubuntu/Mint)
-#   dist/opendesk-host-<version>-linux.tar.gz (portable fallback)
+# Usage: bash packaging/build_installer_linux.sh [host|client]
 #
-# Usage: bash packaging/build_installer_linux.sh
+# Output (host):
+#   dist/opendesk-host_<version>_amd64.deb
+#   dist/opendesk-host-<version>-linux.tar.gz
+# Output (client):
+#   dist/opendesk_<version>_amd64.deb
+#   dist/opendesk-<version>-linux.tar.gz
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -15,8 +18,37 @@ VERSION="$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' pyproj
 [ -n "$VERSION" ] || { echo "Cannot read version from pyproject.toml" >&2; exit 1; }
 echo "==> Version: $VERSION"
 
+COMPONENT="${1:-host}"
+case "$COMPONENT" in
+    host)
+        PKG="opendesk-host"
+        APP_NAME="OpenDesk Host"
+        APP_DESC="OpenDesk Host (incoming-only)"
+        APP_LONG_DESC="$(printf 'Cross-platform remote desktop host: accepts incoming connections,\n streams the screen and injects remote input.')"
+        SPEC="packaging/opendesk-host.spec"
+        ICON="opendesk-host.ico"
+        EXEC_ARGS="--minimized"
+        WITH_SYSTEMD=1
+        ;;
+    client)
+        PKG="opendesk"
+        APP_NAME="OpenDesk"
+        APP_DESC="OpenDesk"
+        APP_LONG_DESC="$(printf 'Cross-platform remote desktop client: connects to remote hosts,\n views/controls their screen and transfers files.')"
+        SPEC="packaging/opendesk-client.spec"
+        ICON="opendesk.ico"
+        EXEC_ARGS=""
+        WITH_SYSTEMD=0
+        ;;
+    *)
+        echo "Usage: $0 [host|client]" >&2
+        exit 2
+        ;;
+esac
+
+echo "==> Component: $COMPONENT ($PKG)"
+
 ARCH="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
-PKG="opendesk-host"
 STAGE="build/deb/${PKG}_${VERSION}_${ARCH}"
 DIST="dist"
 
@@ -34,7 +66,7 @@ echo "==> [2/6] Generating icon"
 "$PY" packaging/make_icon.py || echo "  (icon generation skipped)"
 
 echo "==> [3/6] Building onedir bundle with PyInstaller"
-"$PY" -m PyInstaller packaging/opendesk-host.spec --noconfirm
+"$PY" -m PyInstaller "$SPEC" --noconfirm
 
 echo "==> [4/6] Staging .deb tree"
 rm -rf "$STAGE"
@@ -42,8 +74,10 @@ mkdir -p "$STAGE/DEBIAN" \
     "$STAGE/opt/$PKG" \
     "$STAGE/usr/bin" \
     "$STAGE/usr/share/applications" \
-    "$STAGE/usr/share/icons/hicolor/256x256/apps" \
-    "$STAGE/usr/lib/systemd/user"
+    "$STAGE/usr/share/icons/hicolor/256x256/apps"
+if [ "$WITH_SYSTEMD" = 1 ]; then
+    mkdir -p "$STAGE/usr/lib/systemd/user"
+fi
 
 cp -a "dist/$PKG/." "$STAGE/opt/$PKG/"
 ln -sf "/opt/$PKG/$PKG" "$STAGE/usr/bin/$PKG"
@@ -51,7 +85,7 @@ ln -sf "/opt/$PKG/$PKG" "$STAGE/usr/bin/$PKG"
 # PNG icon (extract the 256x256 frame from the generated .ico)
 "$PY" - <<PY
 from PIL import Image
-img = Image.open("packaging/opendesk-host.ico")
+img = Image.open("packaging/$ICON")
 img.size = (256, 256)
 img.convert("RGBA").save("$STAGE/usr/share/icons/hicolor/256x256/apps/$PKG.png")
 PY
@@ -59,18 +93,19 @@ PY
 cat > "$STAGE/usr/share/applications/$PKG.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=OpenDesk Host
-Comment=Remote Desktop Application (incoming-only)
+Name=$APP_NAME
+Comment=Remote Desktop Application
 Icon=$PKG
-Exec=$PKG --minimized
+Exec=${PKG}${EXEC_ARGS:+ $EXEC_ARGS}
 Terminal=false
 Categories=Network;RemoteAccess;
 StartupWMClass=opendesk
 EOF
 
-cat > "$STAGE/usr/lib/systemd/user/$PKG.service" <<EOF
+if [ "$WITH_SYSTEMD" = 1 ]; then
+    cat > "$STAGE/usr/lib/systemd/user/$PKG.service" <<EOF
 [Unit]
-Description=OpenDesk Host (incoming-only)
+Description=$APP_DESC
 After=network-online.target
 Wants=network-online.target
 
@@ -85,6 +120,7 @@ StandardError=journal
 [Install]
 WantedBy=default.target
 EOF
+fi
 
 cat > "$STAGE/DEBIAN/control" <<EOF
 Package: $PKG
@@ -94,9 +130,8 @@ Priority: optional
 Architecture: $ARCH
 Maintainer: OpenDesk <noreply@opendesk.io>
 Depends: ffmpeg, libx11-6, libxext6, libxrender1, libxtst6, libgl1
-Description: OpenDesk Host (incoming-only)
- Cross-platform remote desktop host: accepts incoming connections,
- streams the screen and injects remote input.
+Description: $APP_DESC
+ $APP_LONG_DESC
 EOF
 
 cat > "$STAGE/DEBIAN/postinst" <<'EOF'

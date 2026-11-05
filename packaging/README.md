@@ -1,14 +1,18 @@
-# Packaging — installer OpenDesk Host
+# Packaging — installer OpenDesk
 
-Script per generare gli installer nativi di **OpenDesk Host** su ogni piattaforma.
-Tutti usano PyInstaller (bundle `onedir`/`.app`) tramite lo spec condiviso
-`opendesk-host.spec`.
+Script per generare gli installer nativi di **OpenDesk** (client) e **OpenDesk Host** su ogni
+piattaforma.  Tutti usano PyInstaller (bundle `onedir`/`.app`) tramite uno dei due spec:
+`opendesk-client.spec` (client, eseguibile `opendesk`) e `opendesk-host.spec`
+(host, eseguibile `opendesk-host`).
 
-| Piattaforma | Script | Output |
-|-------------|--------|--------|
-| Windows | `build_installer.ps1` | `dist/OpenDeskHostSetup-<ver>.exe` (Inno Setup) |
-| Linux   | `build_installer_linux.sh` | `dist/opendesk-host_<ver>_<arch>.deb` + `.tar.gz` |
-| macOS   | `build_installer_macos.sh` | `dist/OpenDeskHost-<ver>.dmg` |
+| Piattaforma | Script | Output client | Output host |
+|-------------|--------|---------------|-------------|
+| Windows | `build_installer.ps1 [-Component host\|client]` | `dist/OpenDeskSetup-<ver>.exe` | `dist/OpenDeskHostSetup-<ver>.exe` |
+| Linux   | `build_installer_linux.sh [host\|client]` | `dist/opendesk_<ver>_<arch>.deb` + `.tar.gz` | `dist/opendesk-host_<ver>_<arch>.deb` + `.tar.gz` |
+| macOS   | `build_installer_macos.sh [host\|client]` | `dist/OpenDesk-<ver>.dmg` | `dist/OpenDeskHost-<ver>.dmg` |
+
+Il componente predefinito è `host` (comportamento storico); passa `client` per l'app completa.
+Il client **non** viene avviato automaticamente al login (niente Run key / systemd / LaunchAgent).
 
 ## Prerequisiti
 
@@ -21,15 +25,18 @@ Tutti usano PyInstaller (bundle `onedir`/`.app`) tramite lo spec condiviso
 
 ```powershell
 # Windows (PowerShell)
-powershell -ExecutionPolicy Bypass -File packaging\build_installer.ps1
+powershell -ExecutionPolicy Bypass -File packaging\build_installer.ps1              # host
+powershell -ExecutionPolicy Bypass -File packaging\build_installer.ps1 -Component client
 ```
 
 ```bash
 # Linux
-bash packaging/build_installer_linux.sh
+bash packaging/build_installer_linux.sh          # host
+bash packaging/build_installer_linux.sh client   # client
 
 # macOS
-bash packaging/build_installer_macos.sh
+bash packaging/build_installer_macos.sh          # host
+bash packaging/build_installer_macos.sh client   # client
 ```
 
 ## Firma del codice (opzionale)

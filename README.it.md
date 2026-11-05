@@ -36,8 +36,12 @@ uv run opendesk
 ### Installer precompilati
 
 Scarica gli installer dalla
-[pagina release](https://github.com/gbilanc/opendesk-client/releases)
-(OpenDesk Host: `.exe` Windows, `.deb` / `.tar.gz` Linux, `.dmg` macOS).
+[pagina release](https://github.com/gbilanc/opendesk-client/releases):
+
+| App | Windows | Linux | macOS |
+|-----|---------|-------|-------|
+| **OpenDesk** (client) | `OpenDeskSetup-<ver>.exe` | `opendesk_<ver>_<arch>.deb` / `opendesk-<ver>-linux.tar.gz` | `OpenDesk-<ver>.dmg` |
+| **OpenDesk Host** (solo incoming) | `OpenDeskHostSetup-<ver>.exe` | `opendesk-host_<ver>_<arch>.deb` / `opendesk-host-<ver>-linux.tar.gz` | `OpenDeskHost-<ver>.dmg` |
 
 > **Nota:** il package `opendesk` su PyPI è un progetto di terze parti non
 > correlato. OpenDesk **non** è distribuito su PyPI: installalo dal checkout

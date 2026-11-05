@@ -56,6 +56,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg dpkg-dev libx11-dev libxext-dev libxrender-dev libxtst-dev
           bash packaging/build_installer_linux.sh
+          bash packaging/build_installer_linux.sh client
 
       # ── Windows ────────────────────────────────────────────────────
       - name: Import code-signing certificate (Windows)
@@ -80,6 +81,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: powershell -ExecutionPolicy Bypass -File packaging/build_installer.ps1
+
+      - name: Build client installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File packaging/build_installer.ps1 -Component client
 
       # ── macOS ──────────────────────────────────────────────────────
       - name: Import code-signing certificate (macOS)
@@ -108,6 +114,7 @@ jobs:
         run: |
           brew install ffmpeg || true
           bash packaging/build_installer_macos.sh
+          bash packaging/build_installer_macos.sh client
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

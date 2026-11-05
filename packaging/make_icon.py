@@ -1,4 +1,8 @@
-"""Generate opendesk-host.ico (multi-size) from opendesk.svg using Qt + Pillow."""
+"""Generate the app icons (multi-size .ico) from opendesk.svg using Qt + Pillow.
+
+Usage: python packaging/make_icon.py [output.ico ...]
+Defaults to both opendesk-host.ico and opendesk.ico.
+"""
 
 from __future__ import annotations
 
@@ -17,9 +21,10 @@ def main() -> None:
 
     QGuiApplication(sys.argv)  # required by QtSvg/QPainter
 
-    root = Path(__file__).resolve().parents[1]
+    here = Path(__file__).resolve().parent
+    names = sys.argv[1:] or ["opendesk-host.ico", "opendesk.ico"]
+    root = here.parent
     svg = root / "opendesk" / "ui" / "resources" / "opendesk.svg"
-    out = Path(__file__).resolve().parent / "opendesk-host.ico"
 
     renderer = QSvgRenderer(str(svg))
     image = QImage(256, 256, QImage.Format.Format_ARGB32)
@@ -37,8 +42,12 @@ def main() -> None:
         buf.setsize(image.sizeInBytes())  # older sip.voidptr
         data = bytes(buf)
     pil = Image.frombuffer("RGBA", (256, 256), data, "raw", "RGBA", 0, 1)
-    pil.save(out, format="ICO", sizes=SIZES)
-    print(f"[icon] wrote {out} ({out.stat().st_size} bytes)")
+    for name in names:
+        out = Path(name)
+        if not out.is_absolute():
+            out = here / out
+        pil.save(out, format="ICO", sizes=SIZES)
+        print(f"[icon] wrote {out} ({out.stat().st_size} bytes)")
 
 
 if __name__ == "__main__":
